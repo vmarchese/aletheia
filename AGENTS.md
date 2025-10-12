@@ -36,6 +36,7 @@ uv pip sync requirements.txt
 
 At the beginning of every development session, you **MUST**:
 - Read thouroughlly the file SPECIFICATION.md
+- Read the TODO.md file and .claude/memory.md file to check what is still missing
 - Create a new worktree and branch:
   1. **Ask the user for the feature name:**
    ```
