@@ -23,38 +23,38 @@
 
 ### 1.1 Project Setup
 
-- [ ] **1.1.1** Initialize Python project structure
-  - [ ] Create directory structure as per spec (section 6.2)
-  - [ ] Set up `pyproject.toml` with project metadata
-  - [ ] Configure uv package manager
-  - [ ] Set up Python 3.10+ virtual environment
-  - **Acceptance**: Directory structure matches specification exactly
+- [x] **1.1.1** Initialize Python project structure
+  - [x] Create directory structure as per spec (section 6.2)
+  - [x] Set up `pyproject.toml` with project metadata
+  - [x] Configure uv package manager
+  - [x] Set up Python 3.10+ virtual environment
+  - **Acceptance**: ✅ Directory structure matches specification exactly
 
-- [ ] **1.1.2** Install and configure core dependencies
-  - [ ] Add typer ^0.9.0 for CLI framework
-  - [ ] Add pyyaml ^6.0 for config parsing
-  - [ ] Add pycryptodome ^3.19 for encryption
-  - [ ] Add rich ^13.7 for terminal output
-  - [ ] Add requests ^2.31 for HTTP APIs
-  - [ ] Add semantic-kernel ^1.37.0 for LLM orchestration
-  - [ ] Add gitpython ^3.1 (optional for MVP)
-  - [ ] Create requirements.txt and requirements-dev.txt
-  - **Acceptance**: All dependencies install without errors
+- [x] **1.1.2** Install and configure core dependencies
+  - [x] Add typer ^0.9.0 for CLI framework
+  - [x] Add pyyaml ^6.0 for config parsing
+  - [x] Add pycryptodome ^3.19 for encryption
+  - [x] Add rich ^13.7 for terminal output
+  - [x] Add requests ^2.31 for HTTP APIs
+  - [x] Add semantic-kernel ^1.37.0 for LLM orchestration
+  - [x] Add gitpython ^3.1 (optional for MVP)
+  - [x] Create requirements.txt and requirements-dev.txt
+  - **Acceptance**: ✅ All dependencies install without errors (100 packages installed)
 
-- [ ] **1.1.3** Set up development tooling
-  - [ ] Configure pytest for testing
-  - [ ] Set up pytest-cov for coverage reporting
-  - [ ] Configure black for code formatting
-  - [ ] Set up mypy for type checking
-  - [ ] Create .gitignore with Python, IDE, and session data exclusions
+- [x] **1.1.3** Set up development tooling
+  - [x] Configure pytest for testing
+  - [x] Set up pytest-cov for coverage reporting
+  - [x] Configure black for code formatting
+  - [x] Set up mypy for type checking
+  - [x] Create .gitignore with Python, IDE, and session data exclusions
   - [ ] Set up pre-commit hooks (optional)
-  - **Acceptance**: All dev tools run successfully
+  - **Acceptance**: ✅ All dev tools run successfully (4/4 tests passing, 92.86% coverage)
 
-- [ ] **1.1.4** Create base package structure
-  - [ ] Create `aletheia/__init__.py` with version info
-  - [ ] Create empty modules for agents/, fetchers/, llm/, utils/
+- [x] **1.1.4** Create base package structure
+  - [x] Create `aletheia/__init__.py` with version info
+  - [x] Create empty modules for agents/, fetchers/, llm/, utils/
   - [ ] Add `py.typed` marker for type hints
-  - **Acceptance**: Package imports successfully
+  - **Acceptance**: ✅ Package imports successfully (`aletheia version` command works)
 
 ### 1.2 Configuration System
 
