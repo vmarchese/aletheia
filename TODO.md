@@ -58,35 +58,35 @@
 
 ### 1.2 Configuration System
 
-- [ ] **1.2.1** Implement multi-level config loader (spec 6.3)
-  - [ ] Create `aletheia/config.py` module
-  - [ ] Implement ConfigLoader class with precedence order:
-    - [ ] 1. Environment variables (highest)
-    - [ ] 2. Project config `./.aletheia/config.yaml`
-    - [ ] 3. User config `~/.aletheia/config.yaml`
-    - [ ] 4. System config `/etc/aletheia/config.yaml`
-  - [ ] Implement config merging logic
-  - [ ] Add config validation with schema
-  - **Acceptance**: Config loads from all sources in correct precedence
+- [x] **1.2.1** Implement multi-level config loader (spec 6.3)
+  - [x] Create `aletheia/config.py` module
+  - [x] Implement ConfigLoader class with precedence order:
+    - [x] 1. Environment variables (highest)
+    - [x] 2. Project config `./.aletheia/config.yaml`
+    - [x] 3. User config `~/.aletheia/config.yaml`
+    - [x] 4. System config `/etc/aletheia/config.yaml`
+  - [x] Implement config merging logic
+  - [x] Add config validation with schema
+  - **Acceptance**: ✅ Config loads from all sources in correct precedence
 
-- [ ] **1.2.2** Define configuration schema
-  - [ ] Create ConfigSchema with typed dataclasses/Pydantic models
-  - [ ] Define LLM configuration section
-  - [ ] Define data_sources configuration section
-  - [ ] Define ui configuration section
-  - [ ] Define session configuration section
-  - [ ] Define encryption configuration section
-  - [ ] Define sampling configuration section
-  - **Acceptance**: Example config validates successfully
+- [x] **1.2.2** Define configuration schema
+  - [x] Create ConfigSchema with typed dataclasses/Pydantic models
+  - [x] Define LLM configuration section
+  - [x] Define data_sources configuration section
+  - [x] Define ui configuration section
+  - [x] Define session configuration section
+  - [x] Define encryption configuration section
+  - [x] Define sampling configuration section
+  - **Acceptance**: ✅ Example config validates successfully
 
-- [ ] **1.2.3** Unit tests for config system
-  - [ ] Test precedence order
-  - [ ] Test config merging
-  - [ ] Test environment variable override
-  - [ ] Test schema validation
-  - [ ] Test missing config handling
-  - [ ] Test invalid config error messages
-  - **Coverage Target**: >90%
+- [x] **1.2.3** Unit tests for config system
+  - [x] Test precedence order
+  - [x] Test config merging
+  - [x] Test environment variable override
+  - [x] Test schema validation
+  - [x] Test missing config handling
+  - [x] Test invalid config error messages
+  - **Coverage Target**: ✅ 100% (24/24 tests passing)
 
 ### 1.3 Encryption Module
 
