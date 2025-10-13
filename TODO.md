@@ -225,28 +225,28 @@
 
 ### 1.6 Utility Modules
 
-- [ ] **1.6.1** Implement retry logic (spec 3.5)
-  - [ ] Create `aletheia/utils/retry.py` module
-  - [ ] Implement `@retry_with_backoff` decorator:
-    - [ ] 3 retries by default
-    - [ ] Exponential backoff (1s, 2s, 4s)
-    - [ ] Configurable retry count and delays
-    - [ ] Exception filtering
-  - **Acceptance**: Retries work with exponential backoff
+- [x] **1.6.1** Implement retry logic (spec 3.5)
+  - [x] Create `aletheia/utils/retry.py` module
+  - [x] Implement `@retry_with_backoff` decorator:
+    - [x] 3 retries by default
+    - [x] Exponential backoff (1s, 2s, 4s)
+    - [x] Configurable retry count and delays
+    - [x] Exception filtering
+  - **Acceptance**: ✅ Retries work with exponential backoff
 
-- [ ] **1.6.2** Implement validation utilities
-  - [ ] Create `aletheia/utils/validation.py` module
-  - [ ] Implement `validate_git_repository()` - Check if path is git repo
-  - [ ] Implement `validate_time_window()` - Parse time window string
-  - [ ] Implement `validate_service_name()` - Validate service name format
-  - [ ] Implement `validate_commit_hash()` - Validate git commit format
-  - **Acceptance**: All validators handle edge cases
+- [x] **1.6.2** Implement validation utilities
+  - [x] Create `aletheia/utils/validation.py` module
+  - [x] Implement `validate_git_repository()` - Check if path is git repo
+  - [x] Implement `validate_time_window()` - Parse time window string
+  - [x] Implement `validate_service_name()` - Validate service name format
+  - [x] Implement `validate_commit_hash()` - Validate git commit format
+  - **Acceptance**: ✅ All validators handle edge cases
 
-- [ ] **1.6.3** Unit tests for utilities
-  - [ ] Test retry decorator with success/failure
-  - [ ] Test validation functions
-  - [ ] Test edge cases and error handling
-  - **Coverage Target**: >80%
+- [x] **1.6.3** Unit tests for utilities
+  - [x] Test retry decorator with success/failure
+  - [x] Test validation functions
+  - [x] Test edge cases and error handling
+  - **Coverage Target**: ✅ 94.85% (exceeds >80% target)
 
 ### 1.7 Phase 1 Completion Checklist
 
