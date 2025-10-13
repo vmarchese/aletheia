@@ -32,6 +32,9 @@ uv pip sync requirements.txt
 
 ## Session Workflow
 
+### 0. General instructions
+- Use a memory file to store information between interactions. The memory file should be named `.claude/memory.md`. 
+
 ### 1. Start of Session - Feature Branch Setup
 
 At the beginning of every development session, you **MUST**:
@@ -103,6 +106,10 @@ Before considering the session complete, you **MUST**:
    - Provide a summary of changes made
    - Confirm all tests passed
    - Note the branch name and worktree location
+   - append to the memory file, do not overwrite it.
+   - summarize the key points and append them to the memory file.
+   - separate the different sections of the memory file with a line of dashes (`--------------------`)  and a timestamp for clarity.   
+   - update the TODO.md file marking the task as completed
 
 ## Git Worktree Management
 
@@ -203,6 +210,7 @@ uv pip install -r requirements.txt -r requirements-dev.txt
 - [ ] Ran all tests successfully
 - [ ] All tests passing
 - [ ] Provided session summary
+- [ ] Updated TODO.md file
 
 ## Notes
 

@@ -1,6 +1,1 @@
 - Read @AGENTS.md
-- Use a memory file to store information between interactions. The memory file should be named `.claude/memory.md`. 
-- Each interaction should append to the memory file, not overwrite it.
-- At the start of each interaction, read the memory file and use its contents to inform your response.
-- At the end of each interaction, summarize the key points and append them to the memory file.
-- separate the different sections of the memory file with a line of dashes (`--------------------`)  and a timestamp for clarity.
