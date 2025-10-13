@@ -1,3 +1,5 @@
+# Worktrees folder
+worktrees/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
