@@ -1,0 +1,434 @@
+"""Data Fetcher Agent for collecting observability data.
+
+This agent is responsible for:
+- Collecting logs, metrics, and traces from various data sources
+- Constructing queries using templates or LLM-assisted generation
+- Sampling data intelligently
+- Generating summaries of collected data
+- Writing results to the scratchpad's DATA_COLLECTED section
+"""
+
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from aletheia.agents.base import BaseAgent
+from aletheia.fetchers.base import BaseFetcher, FetchResult, FetchError
+from aletheia.fetchers.kubernetes import KubernetesFetcher
+from aletheia.fetchers.prometheus import PrometheusFetcher
+from aletheia.fetchers.summarization import LogSummarizer, MetricSummarizer
+from aletheia.llm.prompts import compose_messages, get_user_prompt_template
+from aletheia.scratchpad import ScratchpadSection
+from aletheia.utils.retry import retry_with_backoff
+from aletheia.utils.validation import validate_time_window
+
+
+class DataFetcherAgent(BaseAgent):
+    """Agent responsible for collecting observability data from various sources.
+    
+    The Data Fetcher Agent:
+    1. Reads the PROBLEM_DESCRIPTION section to understand what data to collect
+    2. Selects appropriate data sources (Kubernetes, Prometheus, etc.)
+    3. Constructs queries using templates or LLM-assisted generation
+    4. Fetches data with intelligent sampling
+    5. Generates summaries of collected data
+    6. Writes results to the DATA_COLLECTED section
+    
+    Attributes:
+        config: Agent configuration including data source settings
+        scratchpad: Scratchpad for reading problem and writing data
+        fetchers: Dictionary of available data source fetchers
+    """
+    
+    def __init__(self, config: Dict[str, Any], scratchpad: Any):
+        """Initialize the Data Fetcher Agent.
+        
+        Args:
+            config: Configuration dictionary with data_sources and llm sections
+            scratchpad: Scratchpad instance for agent communication
+        """
+        super().__init__(config, scratchpad, agent_name="data_fetcher")
+        
+        # Initialize available fetchers
+        self.fetchers: Dict[str, BaseFetcher] = {}
+        self._initialize_fetchers()
+    
+    def _initialize_fetchers(self) -> None:
+        """Initialize data source fetchers from configuration."""
+        data_sources_config = self.config.get("data_sources", {})
+        
+        # Initialize Kubernetes fetcher if configured
+        if "kubernetes" in data_sources_config:
+            k8s_config = data_sources_config["kubernetes"]
+            if k8s_config.get("context"):
+                self.fetchers["kubernetes"] = KubernetesFetcher(k8s_config)
+        
+        # Initialize Prometheus fetcher if configured
+        if "prometheus" in data_sources_config:
+            prom_config = data_sources_config["prometheus"]
+            if prom_config.get("endpoint"):
+                self.fetchers["prometheus"] = PrometheusFetcher(prom_config)
+    
+    def execute(
+        self,
+        sources: Optional[List[str]] = None,
+        time_window: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Execute the data fetching process.
+        
+        Args:
+            sources: List of data source names to fetch from (e.g., ["kubernetes", "prometheus"])
+                    If None, attempts to determine from problem description
+            time_window: Time window string (e.g., "2h", "30m")
+                        If None, uses session default or problem description
+            **kwargs: Additional parameters for specific data sources
+        
+        Returns:
+            Dictionary with execution results:
+                - success: bool - Whether execution succeeded
+                - sources_fetched: List[str] - Successfully fetched sources
+                - sources_failed: List[str] - Failed sources
+                - total_data_points: int - Total data points collected
+                - summaries: Dict[str, str] - Summaries by source
+        
+        Raises:
+            ValueError: If no data sources are available or specified
+        """
+        # Read problem description from scratchpad
+        problem = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
+        
+        # Determine which sources to fetch from
+        sources_to_fetch = self._determine_sources(sources, problem)
+        if not sources_to_fetch:
+            raise ValueError("No data sources specified or available")
+        
+        # Parse time window
+        time_range = self._parse_time_window(time_window, problem)
+        
+        # Fetch data from each source
+        results = {
+            "success": True,
+            "sources_fetched": [],
+            "sources_failed": [],
+            "total_data_points": 0,
+            "summaries": {},
+        }
+        
+        collected_data = {}
+        
+        for source in sources_to_fetch:
+            try:
+                # Fetch data from source
+                fetch_result = self._fetch_from_source(
+                    source=source,
+                    time_range=time_range,
+                    problem=problem,
+                    **kwargs
+                )
+                
+                # Generate summary
+                summary = self._summarize_data(source, fetch_result)
+                
+                # Store results
+                collected_data[source] = {
+                    "source": source,
+                    "count": fetch_result.count,
+                    "time_range": f"{fetch_result.time_range[0].isoformat()} - {fetch_result.time_range[1].isoformat()}",
+                    "summary": summary,
+                    "metadata": fetch_result.metadata,
+                }
+                
+                results["sources_fetched"].append(source)
+                results["total_data_points"] += fetch_result.count
+                results["summaries"][source] = summary
+                
+            except FetchError as e:
+                # Handle fetch failures
+                results["sources_failed"].append(source)
+                results["success"] = False
+                collected_data[source] = {
+                    "source": source,
+                    "error": str(e),
+                    "status": "failed",
+                }
+        
+        # Write collected data to scratchpad
+        self.write_scratchpad(ScratchpadSection.DATA_COLLECTED, collected_data)
+        
+        return results
+    
+    def _determine_sources(
+        self,
+        sources: Optional[List[str]],
+        problem: Dict[str, Any]
+    ) -> List[str]:
+        """Determine which data sources to fetch from.
+        
+        Args:
+            sources: User-specified sources
+            problem: Problem description from scratchpad
+        
+        Returns:
+            List of data source names to fetch from
+        """
+        if sources:
+            # Validate requested sources are available
+            available = []
+            for source in sources:
+                if source in self.fetchers:
+                    available.append(source)
+            return available
+        
+        # If no sources specified, use all available fetchers
+        return list(self.fetchers.keys())
+    
+    def _parse_time_window(
+        self,
+        time_window: Optional[str],
+        problem: Dict[str, Any]
+    ) -> Tuple[datetime, datetime]:
+        """Parse time window into start and end datetime.
+        
+        Args:
+            time_window: Time window string (e.g., "2h")
+            problem: Problem description which may contain time_window
+        
+        Returns:
+            Tuple of (start_time, end_time)
+        """
+        # Get time window from parameter, problem, or default
+        window_str = (
+            time_window
+            or problem.get("time_window")
+            or self.config.get("session", {}).get("default_time_window", "2h")
+        )
+        
+        # Parse time window
+        delta = validate_time_window(window_str)
+        end_time = datetime.now()
+        start_time = end_time - delta
+        
+        return (start_time, end_time)
+    
+    @retry_with_backoff(retries=3, delays=(1, 2, 4))
+    def _fetch_from_source(
+        self,
+        source: str,
+        time_range: Tuple[datetime, datetime],
+        problem: Dict[str, Any],
+        **kwargs
+    ) -> FetchResult:
+        """Fetch data from a specific source with retry logic.
+        
+        Args:
+            source: Data source name
+            time_range: Tuple of (start_time, end_time)
+            problem: Problem description for context
+            **kwargs: Source-specific parameters
+        
+        Returns:
+            FetchResult containing the fetched data
+        
+        Raises:
+            FetchError: If fetching fails after retries
+        """
+        fetcher = self.fetchers.get(source)
+        if not fetcher:
+            raise ValueError(f"Unknown data source: {source}")
+        
+        # Fetch data with source-specific parameters
+        if source == "kubernetes":
+            return self._fetch_kubernetes(fetcher, time_range, problem, **kwargs)
+        elif source == "prometheus":
+            return self._fetch_prometheus(fetcher, time_range, problem, **kwargs)
+        else:
+            # Generic fetch
+            return fetcher.fetch(time_window=time_range, **kwargs)
+    
+    def _fetch_kubernetes(
+        self,
+        fetcher: KubernetesFetcher,
+        time_range: Tuple[datetime, datetime],
+        problem: Dict[str, Any],
+        **kwargs
+    ) -> FetchResult:
+        """Fetch logs from Kubernetes.
+        
+        Args:
+            fetcher: Kubernetes fetcher instance
+            time_range: Time range for logs
+            problem: Problem description
+            **kwargs: Additional parameters (pod, namespace, etc.)
+        
+        Returns:
+            FetchResult with Kubernetes logs
+        """
+        # Extract parameters
+        pod = kwargs.get("pod")
+        namespace = kwargs.get("namespace") or fetcher.config.get("namespace")
+        container = kwargs.get("container")
+        
+        # Get sample size from config
+        sample_size = self.config.get("sampling", {}).get("logs", {}).get(
+            "default_sample_size", 200
+        )
+        
+        # Get priority levels from config
+        priority_levels = self.config.get("sampling", {}).get("logs", {}).get(
+            "always_include_levels", ["ERROR", "FATAL", "CRITICAL"]
+        )
+        
+        # If no pod specified, try to get from problem description
+        if not pod:
+            affected_services = problem.get("affected_services", [])
+            if affected_services:
+                # List pods for the first affected service
+                pods = fetcher.list_pods(
+                    namespace=namespace,
+                    selector=f"app={affected_services[0]}"
+                )
+                if pods:
+                    pod = pods[0]
+        
+        # Fetch logs
+        return fetcher.fetch(
+            pod=pod,
+            namespace=namespace,
+            container=container,
+            time_window=time_range,
+            sample_size=sample_size,
+            always_include_levels=priority_levels,
+        )
+    
+    def _fetch_prometheus(
+        self,
+        fetcher: PrometheusFetcher,
+        time_range: Tuple[datetime, datetime],
+        problem: Dict[str, Any],
+        **kwargs
+    ) -> FetchResult:
+        """Fetch metrics from Prometheus.
+        
+        Args:
+            fetcher: Prometheus fetcher instance
+            time_range: Time range for metrics
+            problem: Problem description
+            **kwargs: Additional parameters (query, template, etc.)
+        
+        Returns:
+            FetchResult with Prometheus metrics
+        """
+        # Check if query or template is provided
+        query = kwargs.get("query")
+        template = kwargs.get("template")
+        template_params = kwargs.get("template_params", {})
+        
+        # If no query/template, try to generate one
+        if not query and not template:
+            # Get affected services from problem
+            affected_services = problem.get("affected_services", [])
+            if affected_services:
+                # Use error_rate template for first service
+                template = "error_rate"
+                template_params = {
+                    "metric_name": "http_requests_total",
+                    "service": affected_services[0],
+                    "window": "5m",
+                }
+        
+        # Get step from config or calculate adaptively
+        step = kwargs.get("step")
+        
+        return fetcher.fetch(
+            query=query,
+            template=template,
+            template_params=template_params,
+            time_window=time_range,
+            step=step,
+        )
+    
+    def _summarize_data(self, source: str, fetch_result: FetchResult) -> str:
+        """Generate a summary of fetched data.
+        
+        Args:
+            source: Data source name
+            fetch_result: Result from fetching
+        
+        Returns:
+            Human-readable summary string
+        """
+        if source == "kubernetes":
+            # Use log summarizer
+            summarizer = LogSummarizer()
+            summary_dict = summarizer.summarize(fetch_result.data)
+            return summary_dict.get("summary", "No summary available")
+        elif source == "prometheus":
+            # Use metric summarizer
+            summarizer = MetricSummarizer()
+            summary_dict = summarizer.summarize(fetch_result.data)
+            return summary_dict.get("summary", "No summary available")
+        else:
+            # Generic summary
+            return fetch_result.summary
+    
+    def generate_query(
+        self,
+        source: str,
+        intent: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Generate a query for a data source using LLM assistance.
+        
+        This method uses the LLM to construct complex queries when templates
+        are insufficient.
+        
+        Args:
+            source: Data source name (e.g., "prometheus", "elasticsearch")
+            intent: User's intent in natural language
+            context: Optional context for query generation
+        
+        Returns:
+            Generated query string
+        
+        Raises:
+            ValueError: If source is not supported
+        """
+        # Get prompt template
+        template = get_user_prompt_template("data_fetcher_query_generation")
+        
+        # Prepare context
+        context = context or {}
+        context_str = "\n".join(f"{k}: {v}" for k, v in context.items())
+        
+        # Format prompt
+        prompt = template.format(
+            source=source,
+            intent=intent,
+            context=context_str if context_str else "None"
+        )
+        
+        # Get LLM completion
+        llm = self.get_llm()
+        messages = compose_messages(
+            agent="data_fetcher",
+            user_prompt=prompt
+        )
+        
+        response = llm.complete(messages=messages, temperature=0.0)
+        
+        return response.content.strip()
+    
+    def validate_query(self, source: str, query: str) -> bool:
+        """Validate a generated query.
+        
+        Args:
+            source: Data source name
+            query: Query string to validate
+        
+        Returns:
+            True if query is valid, False otherwise
+        """
+        # For MVP, we rely on the data source to validate
+        # More sophisticated validation can be added later
+        return bool(query and query.strip())
