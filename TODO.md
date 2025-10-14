@@ -433,34 +433,34 @@
 
 ### 3.1 LLM Provider Abstraction
 
-- [ ] **3.1.1** Implement LLM base interface (spec 6.5)
-  - [ ] Create `aletheia/llm/provider.py` module
-  - [ ] Define `LLMProvider` abstract class:
-    - [ ] `complete()` - Generate completion
-    - [ ] `supports_model()` - Check model support
-  - [ ] Define `LLMMessage` dataclass for messages
-  - **Acceptance**: Interface supports multiple providers
+- [x] **3.1.1** Implement LLM base interface (spec 6.5)
+  - [x] Create `aletheia/llm/provider.py` module
+  - [x] Define `LLMProvider` abstract class:
+    - [x] `complete()` - Generate completion
+    - [x] `supports_model()` - Check model support
+  - [x] Define `LLMMessage` dataclass for messages
+  - **Acceptance**: ✅ Interface supports multiple providers
 
-- [ ] **3.1.2** Implement OpenAI provider
-  - [ ] Implement `OpenAIProvider` class
-  - [ ] Support gpt-4o, gpt-4o-mini, o1 models
-  - [ ] Implement API key from environment
-  - [ ] Handle rate limiting and errors
-  - [ ] Add timeout configuration
-  - **Acceptance**: Can call OpenAI API successfully
+- [x] **3.1.2** Implement OpenAI provider
+  - [x] Implement `OpenAIProvider` class
+  - [x] Support gpt-4o, gpt-4o-mini, o1 models
+  - [x] Implement API key from environment
+  - [x] Handle rate limiting and errors
+  - [x] Add timeout configuration
+  - **Acceptance**: ✅ Can call OpenAI API successfully (mocked in tests)
 
-- [ ] **3.1.3** Implement LLM factory
-  - [ ] Implement `LLMFactory.create_provider()` from config
-  - [ ] Support model-based provider selection
-  - [ ] Add provider caching for performance
-  - **Acceptance**: Factory creates correct providers
+- [x] **3.1.3** Implement LLM factory
+  - [x] Implement `LLMFactory.create_provider()` from config
+  - [x] Support model-based provider selection
+  - [x] Add provider caching for performance
+  - **Acceptance**: ✅ Factory creates correct providers
 
-- [ ] **3.1.4** Unit tests for LLM abstraction
-  - [ ] Test provider interface
-  - [ ] Test OpenAI provider (mocked API)
-  - [ ] Test factory creation
-  - [ ] Test error handling
-  - **Coverage Target**: >80%
+- [x] **3.1.4** Unit tests for LLM abstraction
+  - [x] Test provider interface
+  - [x] Test OpenAI provider (mocked API)
+  - [x] Test factory creation
+  - [x] Test error handling
+  - **Coverage Target**: ✅ 94.87% (exceeds >80% target, 49/49 tests passing)
 
 ### 3.2 Base Agent Framework
 
