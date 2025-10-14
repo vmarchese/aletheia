@@ -35,6 +35,7 @@ uv pip sync requirements.txt
 ### 0. General instructions
 - Use a memory file to store information between interactions. The memory file should be named `.claude/memory.md`. 
 - NEVER change files outside the current worktree. 
+- When updating `TODO.md` and `.claude/memory.md` ALWAYS use the workingtree you are working in
 
 ### 1. Start of Session - Feature Branch Setup
 
