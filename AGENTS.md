@@ -49,12 +49,13 @@ At the beginning of every development session, you **MUST**:
    ```
   2. **Create the worktree and branch:**
    ```bash
-   git worktree add worktrees/feat/<feat-name> -b feat/<feat-name>
+   git worktree add worktrees/feat/<task-id>-<feat-name> -b feat/<task-id>-<feat-name>
    ```
+   where `<task-id>` is the id of the task in the `TODO.md` file the user requested to implement
 
   3. **Navigate to the worktree:**
    ```bash
-   cd worktrees/feat/<feat-name>
+   cd worktrees/feat/<task-id>-<feat-name>
    ```
 
   4. **Set up the environment:**
@@ -123,16 +124,16 @@ git worktree list
 ### Removing a Worktree (after merging)
 ```bash
 # Remove the worktree
-git worktree remove worktrees/feat/<feat-name>
+git worktree remove worktrees/feat/<task-id>-<feat-name>
 
 # Delete the branch (if merged)
-git branch -d feat/<feat-name>
+git branch -d feat/<task-id>-<feat-name>
 ```
 
 ### Switching Between Worktrees
 Navigate to different worktrees using standard `cd` commands:
 ```bash
-cd worktrees/feat/<different-feat-name>
+cd worktrees/feat/<task-id>-<different-feat-name>
 ```
 
 ## Code Quality Standards
@@ -190,21 +191,21 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Issue: Worktree already exists
 **Solution:** Remove existing worktree first:
 ```bash
-git worktree remove worktrees/feat/<feat-name>
+git worktree remove worktrees/feat/<task-id>-<feat-name>
 ```
 
 ### Issue: Tests failing in worktree
 **Solution:** Ensure dependencies are installed in the worktree:
 ```bash
-cd worktrees/feat/<feat-name>
+cd worktrees/feat/<task-id>-<feat-name>
 uv pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ## Session Checklist
 
 - [ ] Asked user for feature name
-- [ ] Created worktree: `worktrees/feat/<feat-name>`
-- [ ] Created branch: `feat/<feat-name>`
+- [ ] Created worktree: `worktrees/feat/<task-id>-<feat-name>`, example: `worktrees/feat/2.2-kubernetes-fetcher`
+- [ ] Created branch: `feat/<task-id>-<feat-name>`
 - [ ] Installed dependencies with uv
 - [ ] Implemented feature/fix
 - [ ] Written/updated tests
