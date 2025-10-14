@@ -225,5 +225,9 @@ uv pip install -r requirements.txt -r requirements-dev.txt
 ---
 
 **Remember:** The mandatory steps are:
-1. **Start:** Ask for feature name and create worktree
-2. **End:** Run all tests and verify they pass
+1. **Start:** 
+- Ask for feature name and create worktree with task id and feature name
+- ALWAYS be sure to `cd` in the created worktree
+2. **End:** 
+- Run ALL tests and verify they pass
+- update `worktrees/feat/<task-id>-<feat-name>/TODO.md` and `worktrees/feat/<task-id>-<feat-name>/.claude/memory.md`
