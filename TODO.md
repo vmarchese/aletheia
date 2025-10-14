@@ -265,25 +265,25 @@
 
 ### 2.1 Base Fetcher Interface
 
-- [ ] **2.1.1** Design fetcher abstraction
-  - [ ] Create `aletheia/fetchers/base.py` module
-  - [ ] Define `BaseFetcher` abstract class:
-    - [ ] `fetch()` - Main fetch method
-    - [ ] `validate_config()` - Validate fetcher config
-    - [ ] `test_connection()` - Test connectivity
-    - [ ] `get_capabilities()` - Return fetcher capabilities
-  - **Acceptance**: Interface supports all planned fetchers
+- [x] **2.1.1** Design fetcher abstraction
+  - [x] Create `aletheia/fetchers/base.py` module
+  - [x] Define `BaseFetcher` abstract class:
+    - [x] `fetch()` - Main fetch method
+    - [x] `validate_config()` - Validate fetcher config
+    - [x] `test_connection()` - Test connectivity
+    - [x] `get_capabilities()` - Return fetcher capabilities
+  - **Acceptance**: ✅ Interface supports all planned fetchers (Kubernetes, Elasticsearch, Prometheus)
 
-- [ ] **2.1.2** Define data models
-  - [ ] Define `FetchResult` dataclass:
-    - [ ] source: str
-    - [ ] data: Any
-    - [ ] summary: str
-    - [ ] count: int
-    - [ ] time_range: Tuple[datetime, datetime]
-    - [ ] metadata: Dict[str, Any]
-  - [ ] Define `FetchError` exception hierarchy
-  - **Acceptance**: Models support all data source types
+- [x] **2.1.2** Define data models
+  - [x] Define `FetchResult` dataclass:
+    - [x] source: str
+    - [x] data: Any
+    - [x] summary: str
+    - [x] count: int
+    - [x] time_range: Tuple[datetime, datetime]
+    - [x] metadata: Dict[str, Any]
+  - [x] Define `FetchError` exception hierarchy
+  - **Acceptance**: ✅ Models support all data source types (logs, metrics, traces)
 
 ### 2.2 Kubernetes Fetcher
 
