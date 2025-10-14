@@ -768,27 +768,27 @@
 
 ### 4.3 Rich Terminal Output
 
-- [ ] **4.3.1** Implement formatted output (spec 5.6)
-  - [ ] Use Rich library for formatting
-  - [ ] Implement progress indicators (⏳)
-  - [ ] Implement status indicators (✅ ❌ ⚠️)
-  - [ ] Implement section headers
-  - [ ] Implement tables for structured data
-  - **Acceptance**: Output is visually appealing
+- [x] **4.3.1** Implement formatted output (spec 5.6)
+  - [x] Use Rich library for formatting
+  - [x] Implement progress indicators (⏳)
+  - [x] Implement status indicators (✅ ❌ ⚠️)
+  - [x] Implement section headers
+  - [x] Implement tables for structured data
+  - **Acceptance**: ✅ Output is visually appealing (95.68% coverage, 37/37 tests passing)
 
-- [ ] **4.3.2** Implement progress feedback (spec 5.4)
-  - [ ] Show elapsed time for long operations
-  - [ ] Show spinners for active operations
-  - [ ] Show agent names in verbose mode
-  - [ ] Show operation descriptions
-  - **Acceptance**: User always knows what's happening
+- [x] **4.3.2** Implement progress feedback (spec 5.4)
+  - [x] Show elapsed time for long operations
+  - [x] Show spinners for active operations
+  - [x] Show agent names in verbose mode
+  - [x] Show operation descriptions
+  - **Acceptance**: ✅ User always knows what's happening (progress_context + print_operation_progress)
 
-- [ ] **4.3.3** Implement error display (spec 5.5)
-  - [ ] Format error messages clearly
-  - [ ] Show recovery options as menu
-  - [ ] Show partial success warnings
-  - [ ] Provide actionable guidance
-  - **Acceptance**: Errors are user-friendly
+- [x] **4.3.3** Implement error display (spec 5.5)
+  - [x] Format error messages clearly
+  - [x] Show recovery options as menu
+  - [x] Show partial success warnings
+  - [x] Provide actionable guidance
+  - **Acceptance**: ✅ Errors are user-friendly (print_error + print_partial_success)
 
 ### 4.4 Diagnosis Output
 

@@ -121,6 +121,53 @@ class OutputFormatter:
         if details:
             self.console.print(f"[yellow]{details}[/yellow]")
 
+    def print_partial_success(
+        self,
+        success_message: str,
+        failure_details: str,
+        prompt: Optional[str] = None
+    ) -> None:
+        """
+        Print a partial success warning with optional prompt.
+
+        Args:
+            success_message: Description of what succeeded
+            failure_details: Description of what failed
+            prompt: Optional prompt for user action
+        """
+        self.console.print(f"\n[bold yellow]{self.WARNING} {success_message}[/bold yellow]")
+        self.console.print(f"[yellow]Note: {failure_details}[/yellow]")
+        if prompt:
+            self.console.print(f"[cyan]{prompt}[/cyan]")
+
+    def print_operation_progress(
+        self,
+        operation: str,
+        elapsed_seconds: Optional[int] = None,
+        agent_name: Optional[str] = None
+    ) -> None:
+        """
+        Print progress for a long-running operation with elapsed time.
+
+        Args:
+            operation: Description of the operation
+            elapsed_seconds: Elapsed time in seconds
+            agent_name: Optional agent name (shown in verbose mode)
+        """
+        prefix = "[bold cyan][Aletheia][/bold cyan]"
+
+        if self.verbose and agent_name:
+            prefix += f" [dim][{agent_name}][/dim]"
+
+        message = f"{prefix} {operation}"
+
+        if elapsed_seconds is not None:
+            message += f" {self.PROGRESS} (elapsed: {elapsed_seconds}s)"
+        else:
+            message += f" {self.PROGRESS}"
+
+        self.console.print(message)
+
     def print_table(
         self,
         title: str,
@@ -250,13 +297,30 @@ class OutputFormatter:
             task = progress.add_task(description, total=None)
             yield task
 
+    def print_action_menu(
+        self,
+        title: str,
+        actions: List[str]
+    ) -> None:
+        """
+        Print an action menu for user selection.
+
+        Args:
+            title: Menu title
+            actions: List of action descriptions
+        """
+        self.console.print(f"\n[bold cyan]{title}[/bold cyan]")
+        for idx, action in enumerate(actions, start=1):
+            self.console.print(f"{idx}. {action}")
+
     def print_diagnosis(
         self,
         root_cause: str,
         description: str,
         evidence: List[str],
         actions: List[Dict[str, str]],
-        confidence: float
+        confidence: float,
+        show_action_menu: bool = False
     ) -> None:
         """
         Print formatted diagnosis output.
@@ -267,6 +331,7 @@ class OutputFormatter:
             evidence: List of evidence items
             actions: List of recommended actions (dicts with 'priority' and 'action')
             confidence: Confidence score (0.0-1.0)
+            show_action_menu: Whether to show action menu at the end
         """
         # Header
         self.print_header("ROOT CAUSE ANALYSIS", level=1)
@@ -304,6 +369,18 @@ class OutputFormatter:
                 color = "white"
 
             self.console.print(f"[{color}][{priority}][/{color}] {action_text}")
+
+        # Optional action menu
+        if show_action_menu:
+            self.print_action_menu(
+                "Choose an action:",
+                [
+                    "Show proposed patch",
+                    "Open in $EDITOR",
+                    "Save diagnosis to file",
+                    "End session"
+                ]
+            )
 
 
 def create_output_formatter(
