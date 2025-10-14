@@ -406,12 +406,14 @@
   - [ ] Test against local Kubernetes cluster (k3d, use existing cluster)
   - [ ] Test log fetching end-to-end
   - [ ] Test error scenarios
+  - [ ] Add an option to skip the local kubernetes tests
   - **Acceptance**: Works with real kubectl
 
-- [ ] **2.6.2** Test Elasticsearch/Prometheus integration
-  - [ ] Test against local ES/Prometheus instance (Docker)
+- [ ] **2.6.2** Test Prometheus integration
+  - [ ] Test against local Prometheus instance (Docker)
   - [ ] Test query execution end-to-end
   - [ ] Test error scenarios
+  - [ ] Add an option to skip the local Prometheus tests
   - **Acceptance**: Works with real data source
 
 ### 2.7 Phase 2 Completion Checklist
