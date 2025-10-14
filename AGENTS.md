@@ -66,6 +66,9 @@ At the beginning of every development session, you **MUST**:
    # Install development dependencies if they exist
    uv pip install -r requirements-dev.txt  # if applicable
    ```
+- Create a new virtual environment in the worktree `worktrees/feat/<task-id>-<feat-name>` with `uv venv --python 3.12`
+- activate the virtual environment with `source .venv/bin/activate``
+- install the required dependencies with `uv pip install --prerelease=allow -r requirements.txt -r requirements-dev.txt`
 
 ### 2. Development Phase
 
@@ -228,6 +231,7 @@ uv pip install -r requirements.txt -r requirements-dev.txt
 1. **Start:** 
 - Ask for feature name and create worktree with task id and feature name
 - ALWAYS be sure to `cd` in the created worktree
+- ALWAYS create and activate the python virtual environment
 2. **End:** 
 - Run ALL tests and verify they pass
 - update `worktrees/feat/<task-id>-<feat-name>/TODO.md` and `worktrees/feat/<task-id>-<feat-name>/.claude/memory.md`
