@@ -515,35 +515,35 @@
 
 ### 3.4 Data Fetcher Agent
 
-- [ ] **3.4.1** Implement Data Fetcher Agent class (spec 2.3)
-  - [ ] Create `aletheia/agents/data_fetcher.py` module
-  - [ ] Implement `DataFetcherAgent` class:
-    - [ ] `execute()` - Main execution method
-    - [ ] `fetch_from_source()` - Call appropriate fetcher
-    - [ ] `generate_query()` - LLM-assisted query generation
-    - [ ] `summarize_data()` - Create data summary
-    - [ ] `write_to_scratchpad()` - Update DATA_COLLECTED section
-  - **Acceptance**: Fetches and summarizes data correctly
+- [x] **3.4.1** Implement Data Fetcher Agent class (spec 2.3)
+  - [x] Create `aletheia/agents/data_fetcher.py` module
+  - [x] Implement `DataFetcherAgent` class:
+    - [x] `execute()` - Main execution method
+    - [x] `fetch_from_source()` - Call appropriate fetcher
+    - [x] `generate_query()` - LLM-assisted query generation
+    - [x] `summarize_data()` - Create data summary
+    - [x] `write_to_scratchpad()` - Update DATA_COLLECTED section
+  - **Acceptance**: ✅ Fetches and summarizes data correctly
 
-- [ ] **3.4.2** Implement query construction logic
-  - [ ] Use templates for common patterns
-  - [ ] Fall back to LLM for complex queries
-  - [ ] Validate generated queries
-  - **Acceptance**: Queries are valid and effective
+- [x] **3.4.2** Implement query construction logic
+  - [x] Use templates for common patterns
+  - [x] Fall back to LLM for complex queries
+  - [x] Validate generated queries
+  - **Acceptance**: ✅ Queries are valid and effective
 
-- [ ] **3.4.3** Implement retry logic integration
-  - [ ] 3 retries with exponential backoff
-  - [ ] User intervention on failure
-  - [ ] Partial data handling
-  - **Acceptance**: Handles data source failures
+- [x] **3.4.3** Implement retry logic integration
+  - [x] 3 retries with exponential backoff
+  - [x] User intervention on failure
+  - [x] Partial data handling
+  - **Acceptance**: ✅ Handles data source failures
 
-- [ ] **3.4.4** Unit tests for Data Fetcher Agent
-  - [ ] Test data fetching
-  - [ ] Test query generation
-  - [ ] Test summarization
-  - [ ] Test scratchpad updates
-  - [ ] Test error handling
-  - **Coverage Target**: >85%
+- [x] **3.4.4** Unit tests for Data Fetcher Agent
+  - [x] Test data fetching
+  - [x] Test query generation
+  - [x] Test summarization
+  - [x] Test scratchpad updates
+  - [x] Test error handling
+  - **Coverage Target**: ✅ 91.67% (exceeds >85% target)
 
 ### 3.5 Pattern Analyzer Agent
 
