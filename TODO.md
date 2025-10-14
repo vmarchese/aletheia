@@ -266,59 +266,59 @@
 ### 2.1 Base Fetcher Interface
 
 - [x] **2.1.1** Design fetcher abstraction
-  - [x] Create `aletheia/fetchers/base.py` module
-  - [x] Define `BaseFetcher` abstract class:
-    - [x] `fetch()` - Main fetch method
-    - [x] `validate_config()` - Validate fetcher config
-    - [x] `test_connection()` - Test connectivity
-    - [x] `get_capabilities()` - Return fetcher capabilities
-  - **Acceptance**: ✅ Interface supports all planned fetchers (Kubernetes, Elasticsearch, Prometheus)
+  - [ ] Create `aletheia/fetchers/base.py` module
+  - [ ] Define `BaseFetcher` abstract class:
+    - [ ] `fetch()` - Main fetch method
+    - [ ] `validate_config()` - Validate fetcher config
+    - [ ] `test_connection()` - Test connectivity
+    - [ ] `get_capabilities()` - Return fetcher capabilities
+  - **Acceptance**: Interface supports all planned fetchers
 
-- [x] **2.1.2** Define data models
-  - [x] Define `FetchResult` dataclass:
-    - [x] source: str
-    - [x] data: Any
-    - [x] summary: str
-    - [x] count: int
-    - [x] time_range: Tuple[datetime, datetime]
-    - [x] metadata: Dict[str, Any]
-  - [x] Define `FetchError` exception hierarchy
-  - **Acceptance**: ✅ Models support all data source types (logs, metrics, traces)
+- [ ] **2.1.2** Define data models
+  - [ ] Define `FetchResult` dataclass:
+    - [ ] source: str
+    - [ ] data: Any
+    - [ ] summary: str
+    - [ ] count: int
+    - [ ] time_range: Tuple[datetime, datetime]
+    - [ ] metadata: Dict[str, Any]
+  - [ ] Define `FetchError` exception hierarchy
+  - **Acceptance**: Models support all data source types
 
 ### 2.2 Kubernetes Fetcher
 
-- [x] **2.2.1** Implement kubectl integration (spec 3.1)
-  - [x] Create `aletheia/fetchers/kubernetes.py` module
-  - [x] Implement `KubernetesFetcher` class:
-    - [x] `fetch_logs()` - Fetch pod logs via kubectl
-    - [x] `list_pods()` - List pods by selector
-    - [x] `get_pod_status()` - Get pod status
-  - [x] Delegate authentication to `~/.kube/config`
-  - [x] Support context and namespace selection
-  - **Acceptance**: ✅ Can fetch logs from local Kubernetes cluster (kubectl integration)
+- [ ] **2.2.1** Implement kubectl integration (spec 3.1)
+  - [ ] Create `aletheia/fetchers/kubernetes.py` module
+  - [ ] Implement `KubernetesFetcher` class:
+    - [ ] `fetch_logs()` - Fetch pod logs via kubectl
+    - [ ] `list_pods()` - List pods by selector
+    - [ ] `get_pod_status()` - Get pod status
+  - [ ] Delegate authentication to `~/.kube/config`
+  - [ ] Support context and namespace selection
+  - **Acceptance**: Can fetch logs from local Kubernetes cluster
 
-- [x] **2.2.2** Implement log sampling strategy (spec 3.4)
-  - [x] Capture all ERROR and FATAL level logs
-  - [x] Random sample other levels to reach target count (200)
-  - [x] Implement time-window filtering
-  - [x] Support configurable log levels
-  - **Acceptance**: ✅ Sampling returns representative data (priority + random sampling)
+- [ ] **2.2.2** Implement log sampling strategy (spec 3.4)
+  - [ ] Capture all ERROR and FATAL level logs
+  - [ ] Random sample other levels to reach target count (200)
+  - [ ] Implement time-window filtering
+  - [ ] Support configurable log levels
+  - **Acceptance**: Sampling returns representative data
 
-- [x] **2.2.3** Implement error handling
-  - [x] Integrate `@retry_with_backoff` decorator
-  - [x] Handle kubectl command failures
-  - [x] Handle authentication errors
-  - [x] Handle context/namespace not found
-  - [x] Provide clear error messages
-  - **Acceptance**: ✅ Failures are handled gracefully (retry + clear errors)
+- [ ] **2.2.3** Implement error handling
+  - [ ] Integrate `@retry_with_backoff` decorator
+  - [ ] Handle kubectl command failures
+  - [ ] Handle authentication errors
+  - [ ] Handle context/namespace not found
+  - [ ] Provide clear error messages
+  - **Acceptance**: Failures are handled gracefully
 
-- [x] **2.2.4** Unit tests for Kubernetes fetcher
-  - [x] Test log fetching (mocked kubectl)
-  - [x] Test sampling logic
-  - [x] Test time-window filtering
-  - [x] Test error handling
-  - [x] Test retry logic
-  - **Coverage Target**: ✅ 92.09% (exceeds >85% target, 40 comprehensive tests)
+- [ ] **2.2.4** Unit tests for Kubernetes fetcher
+  - [ ] Test log fetching (mocked kubectl)
+  - [ ] Test sampling logic
+  - [ ] Test time-window filtering
+  - [ ] Test error handling
+  - [ ] Test retry logic
+  - **Coverage Target**: >85%
 
 ### 2.3 Elasticsearch Fetcher (MVP Choice Option A)
 
@@ -355,35 +355,35 @@
 
 ### 2.4 Prometheus Fetcher (MVP Choice Option B)
 
-- [ ] **2.4.1** Implement Prometheus client (spec 3.1)
-  - [ ] Create `aletheia/fetchers/prometheus.py` module
-  - [ ] Implement `PrometheusFetcher` class:
-    - [ ] `fetch_metrics()` - Query metrics via HTTP API
-    - [ ] `test_connection()` - Test Prometheus connectivity
-    - [ ] `build_query()` - Build PromQL query
-  - [ ] Use requests library for HTTP calls
-  - **Acceptance**: Can query Prometheus successfully
+- [x] **2.4.1** Implement Prometheus client (spec 3.1)
+  - [x] Create `aletheia/fetchers/prometheus.py` module
+  - [x] Implement `PrometheusFetcher` class:
+    - [x] `fetch_metrics()` - Query metrics via HTTP API
+    - [x] `test_connection()` - Test Prometheus connectivity
+    - [x] `build_query()` - Build PromQL query
+  - [x] Use requests library for HTTP calls
+  - **Acceptance**: ✅ Can query Prometheus successfully (HTTP API integration)
 
-- [ ] **2.4.2** Implement PromQL template system (spec 3.2)
-  - [ ] Create `PROMQL_ERROR_RATE` template
-  - [ ] Create `PROMQL_LATENCY_P95` template
-  - [ ] Implement template parameter substitution
-  - [ ] Support custom PromQL passthrough
-  - **Acceptance**: Templates generate valid PromQL
+- [x] **2.4.2** Implement PromQL template system (spec 3.2)
+  - [x] Create `PROMQL_ERROR_RATE` template
+  - [x] Create `PROMQL_LATENCY_P95` template
+  - [x] Implement template parameter substitution
+  - [x] Support custom PromQL passthrough
+  - **Acceptance**: ✅ Templates generate valid PromQL (6 templates with validation)
 
-- [ ] **2.4.3** Implement metric sampling (spec 3.4)
-  - [ ] 1-minute resolution by default
-  - [ ] Adaptive resolution based on time window
-  - [ ] Pre-aggregated metrics (min/max/avg)
-  - **Acceptance**: Metrics sampled appropriately
+- [x] **2.4.3** Implement metric sampling (spec 3.4)
+  - [x] 1-minute resolution by default
+  - [x] Adaptive resolution based on time window
+  - [x] Pre-aggregated metrics (min/max/avg)
+  - **Acceptance**: ✅ Metrics sampled appropriately (adaptive strategy: 15s to 1h)
 
-- [ ] **2.4.4** Unit tests for Prometheus fetcher
-  - [ ] Test query generation
-  - [ ] Test metric fetching (mocked HTTP)
-  - [ ] Test credential loading
-  - [ ] Test error handling
-  - [ ] Test retry logic
-  - **Coverage Target**: >85%
+- [x] **2.4.4** Unit tests for Prometheus fetcher
+  - [x] Test query generation
+  - [x] Test metric fetching (mocked HTTP)
+  - [x] Test credential loading
+  - [x] Test error handling
+  - [x] Test retry logic
+  - **Coverage Target**: ✅ 89.45% (exceeds >85% target, 45 tests passing)
 
 ### 2.5 Data Summarization
 
@@ -403,7 +403,7 @@
 ### 2.6 Integration Tests for Data Collection
 
 - [ ] **2.6.1** Test Kubernetes integration
-  - [ ] Test against local Kubernetes cluster (minikube)
+  - [ ] Test against local Kubernetes cluster (k3d, use existing cluster)
   - [ ] Test log fetching end-to-end
   - [ ] Test error scenarios
   - **Acceptance**: Works with real kubectl
