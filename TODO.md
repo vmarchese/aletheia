@@ -464,21 +464,21 @@
 
 ### 3.2 Base Agent Framework
 
-- [ ] **3.2.1** Design base agent class
-  - [ ] Create `aletheia/agents/base.py` module
-  - [ ] Define `BaseAgent` abstract class:
-    - [ ] `execute()` - Main execution method
-    - [ ] `read_scratchpad()` - Read from scratchpad
-    - [ ] `write_scratchpad()` - Write to scratchpad
-    - [ ] `get_llm()` - Get configured LLM provider
-  - **Acceptance**: Base class provides common functionality
+- [x] **3.2.1** Design base agent class
+  - [x] Create `aletheia/agents/base.py` module
+  - [x] Define `BaseAgent` abstract class:
+    - [x] `execute()` - Main execution method
+    - [x] `read_scratchpad()` - Read from scratchpad
+    - [x] `write_scratchpad()` - Write to scratchpad
+    - [x] `get_llm()` - Get configured LLM provider
+  - **Acceptance**: ✅ Base class provides common functionality
 
-- [ ] **3.2.2** Implement agent prompt system
-  - [ ] Create `aletheia/llm/prompts.py` module
-  - [ ] Define prompt templates for each agent
-  - [ ] Implement prompt composition utilities
-  - [ ] Support system and user prompts
-  - **Acceptance**: Prompts are well-structured
+- [x] **3.2.2** Implement agent prompt system
+  - [x] Create `aletheia/llm/prompts.py` module
+  - [x] Define prompt templates for each agent
+  - [x] Implement prompt composition utilities
+  - [x] Support system and user prompts
+  - **Acceptance**: ✅ Prompts are well-structured
 
 ### 3.3 Orchestrator Agent
 
