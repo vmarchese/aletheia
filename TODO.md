@@ -402,19 +402,19 @@
 
 ### 2.6 Integration Tests for Data Collection
 
-- [ ] **2.6.1** Test Kubernetes integration
-  - [ ] Test against local Kubernetes cluster (k3d, use existing cluster)
-  - [ ] Test log fetching end-to-end
-  - [ ] Test error scenarios
-  - [ ] Add an option to skip the local kubernetes tests
-  - **Acceptance**: Works with real kubectl
+- [x] **2.6.1** Test Kubernetes integration
+  - [x] Test against local Kubernetes cluster (k3d, use existing cluster)
+  - [x] Test log fetching end-to-end
+  - [x] Test error scenarios
+  - [x] Add an option to skip the local kubernetes tests
+  - **Acceptance**: ✅ Works with real kubectl (17 tests, SKIP_K8S_INTEGRATION flag)
 
-- [ ] **2.6.2** Test Prometheus integration
-  - [ ] Test against local Prometheus instance (Docker)
-  - [ ] Test query execution end-to-end
-  - [ ] Test error scenarios
-  - [ ] Add an option to skip the local Prometheus tests
-  - **Acceptance**: Works with real data source
+- [x] **2.6.2** Test Prometheus integration
+  - [x] Test against local Prometheus instance (Docker)
+  - [x] Test query execution end-to-end
+  - [x] Test error scenarios
+  - [x] Add an option to skip the local Prometheus tests
+  - **Acceptance**: ✅ Works with real data source (28 tests, SKIP_PROMETHEUS_INTEGRATION flag)
 
 ### 2.7 Phase 2 Completion Checklist
 
