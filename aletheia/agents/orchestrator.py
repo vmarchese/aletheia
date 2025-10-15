@@ -7,8 +7,14 @@ investigation workflow, including:
 - Routing to specialist agents
 - Presenting findings to the user
 - Error handling and recovery
+
+The orchestrator supports two modes:
+1. Custom routing (legacy): Direct agent-to-agent routing
+2. SK HandoffOrchestration: Using Semantic Kernel's orchestration pattern
 """
 
+import asyncio
+import os
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -22,6 +28,13 @@ from rich.table import Table
 
 from aletheia.agents.base import BaseAgent
 from aletheia.scratchpad import ScratchpadSection
+
+# SK orchestration support (optional, for future use)
+try:
+    from aletheia.agents.orchestration_sk import AletheiaHandoffOrchestration, create_aletheia_handoffs
+    SK_ORCHESTRATION_AVAILABLE = True
+except ImportError:
+    SK_ORCHESTRATION_AVAILABLE = False
 
 
 class InvestigationPhase(Enum):
@@ -67,6 +80,38 @@ class OrchestratorAgent(BaseAgent):
         ui_config = config.get("ui", {})
         self.confirmation_level = ui_config.get("confirmation_level", "normal")
         self.agent_visibility = ui_config.get("agent_visibility", False)
+        
+        # SK orchestration feature flag
+        # Enable this when all agents are converted to SK ChatCompletionAgents
+        self.use_sk_orchestration = self._should_use_sk_orchestration(config)
+        self.sk_orchestration: Optional[Any] = None  # AletheiaHandoffOrchestration instance
+    
+    def _should_use_sk_orchestration(self, config: Dict[str, Any]) -> bool:
+        """Determine if SK orchestration should be used.
+        
+        Checks (in order of precedence):
+        1. Environment variable USE_SK_ORCHESTRATION
+        2. Config setting orchestration.use_semantic_kernel
+        3. Default: False (use custom routing)
+        
+        Args:
+            config: Configuration dictionary
+        
+        Returns:
+            True if SK orchestration should be used
+        """
+        # Environment variable takes precedence
+        env_value = os.getenv("USE_SK_ORCHESTRATION", "").lower()
+        if env_value in ("true", "1", "yes"):
+            return SK_ORCHESTRATION_AVAILABLE and True
+        if env_value in ("false", "0", "no"):
+            return False
+        
+        # Check config
+        orchestration_config = config.get("orchestration", {})
+        use_sk = orchestration_config.get("use_semantic_kernel", False)
+        
+        return SK_ORCHESTRATION_AVAILABLE and use_sk
     
     def register_agent(self, name: str, agent: BaseAgent) -> None:
         """Register a specialist agent for routing.
