@@ -33,15 +33,15 @@ uv pip sync requirements.txt
 ## Session Workflow
 
 ### 0. General instructions
-- Use a memory file to store information between interactions. The memory file should be named `.claude/memory.md`. 
+- Use a memory file to store information between interactions. The memory file should be named `.claude/memory/<task-id>-<task-description>.md` where `<task-id>` is the id of the task you are working on (example: `./claude/memory/2.4-prometheus-fetcher-16.md`)
 - NEVER change files outside the current worktree. 
-- When updating `TODO.md` and `.claude/memory.md` ALWAYS use the workingtree you are working in
+- When updating `TODO.md` and `.claude/memory/<task-id>-<task-description>.md` ALWAYS use the workingtree you are working in
 
 ### 1. Start of Session - Feature Branch Setup
 
 At the beginning of every development session, you **MUST**:
 - Read thouroughlly the file SPECIFICATION.md
-- Read the TODO.md file and .claude/memory.md file to check what is still missing
+- Read the `TODO.md` file and the `.claude/memory/*.md` files to check what is still missing
 - Create a new worktree and branch:
   1. **Ask the user for the feature name:**
    ```
@@ -112,9 +112,22 @@ Before considering the session complete, you **MUST**:
    - Provide a summary of changes made
    - Confirm all tests passed
    - Note the branch name and worktree location
-   - append to the memory file, do not overwrite it.
-   - summarize the key points and append them to the memory file.
-   - separate the different sections of the memory file with a line of dashes (`--------------------`)  and a timestamp for clarity.   
+   - summarize the key points and write them to the memory file.
+   - Use the following exampletemplate for the memory file start:
+```
+## Session Update - 2025-10-14 (Prometheus Fetcher Implementation)
+
+### Completed: TODO Step 2.4 - Prometheus Fetcher
+
+**Status**: ✅ COMPLETE
+
+**Worktree**: `worktrees/feat/2.4-prometheus-fetcher`
+**Branch**: `feat/2.4-prometheus-fetcher`
+**Commit**: `658c681`
+
+#### What Was Implemented:
+...details
+```
    - update the TODO.md file marking the task as completed
 
 ## Git Worktree Management
@@ -234,4 +247,4 @@ uv pip install -r requirements.txt -r requirements-dev.txt
 - ALWAYS create and activate the python virtual environment
 2. **End:** 
 - Run ALL tests and verify they pass
-- update `worktrees/feat/<task-id>-<feat-name>/TODO.md` and `worktrees/feat/<task-id>-<feat-name>/.claude/memory.md`
+- update `worktrees/feat/<task-id>-<feat-name>/TODO.md` and `worktrees/feat/<task-id>-<feat-name>/.claude/memory/*.md`
