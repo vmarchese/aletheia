@@ -768,3 +768,225 @@ class TestRootCauseAnalystAgent:
         """Test agent string representation."""
         assert "RootCauseAnalystAgent" in str(agent)
         assert "root_cause_analyst" in str(agent)
+    
+    # SK-specific tests
+    
+    def test_sk_mode_initialization(self, config, scratchpad):
+        """Test agent initialization with SK mode enabled."""
+        agent = RootCauseAnalystAgent(config, scratchpad, use_sk=True)
+        assert agent.use_sk is True
+        assert agent.agent_name == "root_cause_analyst"
+    
+    def test_execute_with_sk_override(self, agent, scratchpad, sample_problem, 
+                                      sample_data_collected, sample_pattern_analysis):
+        """Test execute with SK mode override."""
+        # Setup scratchpad data
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            ScratchpadSection.DATA_COLLECTED: sample_data_collected,
+            ScratchpadSection.PATTERN_ANALYSIS: sample_pattern_analysis,
+            ScratchpadSection.CODE_INSPECTION: None
+        }.get(section)
+        
+        # Mock SK invoke
+        with patch.object(agent, 'invoke') as mock_invoke:
+            mock_invoke.return_value = '''{
+                "root_cause": {
+                    "type": "nil_pointer_dereference",
+                    "confidence": 0.85,
+                    "description": "Nil pointer dereference in features.go",
+                    "location": "features.go:57"
+                },
+                "evidence": [
+                    {
+                        "type": "error_cluster",
+                        "source": "pattern_analysis",
+                        "severity": "high",
+                        "description": "45 occurrences of nil pointer",
+                        "weight": 0.9
+                    }
+                ],
+                "timeline_correlation": {
+                    "deployment_mentioned": true,
+                    "first_error_time": "2025-10-14T08:05:00",
+                    "alignment": "Errors started after deployment"
+                },
+                "recommended_actions": [
+                    {
+                        "priority": "high",
+                        "action": "Add nil check",
+                        "rationale": "Prevent nil pointer dereference",
+                        "type": "code_fix",
+                        "location": "features.go:57"
+                    }
+                ]
+            }'''
+            
+            # Execute with SK override
+            result = agent.execute(use_sk=True)
+            
+            # Verify SK was called
+            assert mock_invoke.called
+            
+            # Verify results
+            assert result["success"] is True
+            assert result["confidence"] == 0.85
+            assert result["root_cause_type"] == "nil_pointer_dereference"
+            assert result["recommendations_count"] == 1
+    
+    def test_build_sk_synthesis_prompt(self, agent, sample_problem, 
+                                       sample_data_collected, sample_pattern_analysis):
+        """Test SK synthesis prompt building."""
+        prompt = agent._build_sk_synthesis_prompt(
+            problem=sample_problem,
+            data_collected=sample_data_collected,
+            pattern_analysis=sample_pattern_analysis,
+            code_inspection=None
+        )
+        
+        # Verify prompt contains key sections
+        assert "Problem Description:" in prompt
+        assert "Data Collected:" in prompt
+        assert "Pattern Analysis:" in prompt
+        assert "Evidence Synthesis" in prompt
+        assert "Causal Chain Building" in prompt
+        assert "Root Cause Hypothesis" in prompt
+        assert "Confidence Scoring" in prompt
+        assert "Recommendations" in prompt
+        assert "Return your analysis as a JSON object" in prompt
+    
+    def test_build_sk_synthesis_prompt_with_code_inspection(
+        self, agent, sample_problem, sample_data_collected, 
+        sample_pattern_analysis, sample_code_inspection
+    ):
+        """Test SK synthesis prompt with code inspection."""
+        prompt = agent._build_sk_synthesis_prompt(
+            problem=sample_problem,
+            data_collected=sample_data_collected,
+            pattern_analysis=sample_pattern_analysis,
+            code_inspection=sample_code_inspection
+        )
+        
+        # Verify code inspection is included
+        assert "Code Inspection:" in prompt
+    
+    def test_parse_sk_diagnosis_response_valid_json(self, agent):
+        """Test parsing valid SK diagnosis response."""
+        response = '''{
+            "root_cause": {
+                "type": "nil_pointer_dereference",
+                "confidence": 0.85,
+                "description": "Test description",
+                "location": "test.go:42"
+            },
+            "evidence": [],
+            "timeline_correlation": {
+                "deployment_mentioned": true,
+                "first_error_time": null,
+                "alignment": null
+            },
+            "recommended_actions": []
+        }'''
+        
+        diagnosis = agent._parse_sk_diagnosis_response(response)
+        
+        assert diagnosis["root_cause"]["type"] == "nil_pointer_dereference"
+        assert diagnosis["root_cause"]["confidence"] == 0.85
+        assert diagnosis["root_cause"]["location"] == "test.go:42"
+    
+    def test_parse_sk_diagnosis_response_embedded_json(self, agent):
+        """Test parsing SK response with embedded JSON."""
+        response = '''Here is my analysis:
+
+{
+    "root_cause": {
+        "type": "index_out_of_bounds",
+        "confidence": 0.75,
+        "description": "Array access error",
+        "location": "array.go:123"
+    },
+    "evidence": [],
+    "timeline_correlation": {
+        "deployment_mentioned": false,
+        "first_error_time": null,
+        "alignment": null
+    },
+    "recommended_actions": []
+}
+
+This is my conclusion.'''
+        
+        diagnosis = agent._parse_sk_diagnosis_response(response)
+        
+        assert diagnosis["root_cause"]["type"] == "index_out_of_bounds"
+        assert diagnosis["root_cause"]["confidence"] == 0.75
+    
+    def test_parse_sk_diagnosis_response_invalid_json(self, agent):
+        """Test parsing invalid SK response (fallback)."""
+        response = "This is not valid JSON, just plain text analysis."
+        
+        diagnosis = agent._parse_sk_diagnosis_response(response)
+        
+        # Should fall back to default structure
+        assert diagnosis["root_cause"]["type"] == "unknown"
+        assert diagnosis["root_cause"]["confidence"] == 0.5
+        assert "This is not valid JSON" in diagnosis["root_cause"]["description"]
+    
+    def test_execute_with_sk_fallback_on_error(self, agent, scratchpad,
+                                                sample_problem, sample_data_collected,
+                                                sample_pattern_analysis):
+        """Test SK mode falls back to direct mode on error."""
+        # Setup scratchpad data
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            ScratchpadSection.DATA_COLLECTED: sample_data_collected,
+            ScratchpadSection.PATTERN_ANALYSIS: sample_pattern_analysis,
+            ScratchpadSection.CODE_INSPECTION: None
+        }.get(section)
+        
+        # Mock SK invoke to raise error
+        with patch.object(agent, 'invoke') as mock_invoke:
+            mock_invoke.side_effect = Exception("SK failed")
+            
+            # Mock LLM for fallback
+            with patch.object(agent, 'get_llm') as mock_get_llm:
+                mock_llm = Mock()
+                mock_llm.complete.return_value = "Fallback hypothesis"
+                mock_get_llm.return_value = mock_llm
+                
+                # Execute with SK (should fallback to direct)
+                result = agent.execute(use_sk=True)
+                
+                # Should still succeed via fallback
+                assert result["success"] is True
+    
+    def test_sk_mode_default_disabled(self, config, scratchpad):
+        """Test that SK mode is disabled by default."""
+        agent = RootCauseAnalystAgent(config, scratchpad)
+        assert agent.use_sk is False
+    
+    def test_execute_defaults_to_direct_mode(self, agent, scratchpad,
+                                             sample_problem, sample_data_collected,
+                                             sample_pattern_analysis):
+        """Test that execute uses direct mode by default."""
+        # Setup scratchpad data
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            ScratchpadSection.DATA_COLLECTED: sample_data_collected,
+            ScratchpadSection.PATTERN_ANALYSIS: sample_pattern_analysis,
+            ScratchpadSection.CODE_INSPECTION: None
+        }.get(section)
+        
+        # Mock LLM for direct mode
+        with patch.object(agent, 'get_llm') as mock_get_llm:
+            mock_llm = Mock()
+            mock_llm.complete.return_value = "Direct mode hypothesis"
+            mock_get_llm.return_value = mock_llm
+            
+            # Execute without SK flag
+            result = agent.execute()
+            
+            # Should use direct mode
+            assert result["success"] is True
+            assert mock_get_llm.called
+

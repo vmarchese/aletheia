@@ -9,19 +9,26 @@ This agent is responsible for:
 - Calculating confidence score
 - Generating prioritized recommendations
 - Writing results to the scratchpad's FINAL_DIAGNOSIS section
+
+This is the SK-based version that uses Semantic Kernel's ChatCompletionAgent
+for root cause analysis with maintained synthesis and recommendation methods.
 """
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import re
+import json
 
-from aletheia.agents.base import BaseAgent
+from aletheia.agents.sk_base import SKBaseAgent
 from aletheia.llm.prompts import compose_messages, get_system_prompt, get_user_prompt_template
 from aletheia.scratchpad import ScratchpadSection
 
 
-class RootCauseAnalystAgent(BaseAgent):
-    """Agent responsible for generating the final root cause diagnosis.
+class RootCauseAnalystAgent(SKBaseAgent):
+    """SK-based agent responsible for generating the final root cause diagnosis.
+    
+    This agent uses Semantic Kernel's ChatCompletionAgent with analytical
+    helper functions for evidence synthesis and recommendation generation.
     
     The Root Cause Analyst Agent:
     1. Reads the entire scratchpad (all sections)
@@ -35,22 +42,30 @@ class RootCauseAnalystAgent(BaseAgent):
     Attributes:
         config: Agent configuration including LLM settings
         scratchpad: Scratchpad for reading data and writing diagnosis
+        use_sk: Whether to use SK agent for analysis (default: False for compatibility)
     """
     
-    def __init__(self, config: Dict[str, Any], scratchpad: Any):
-        """Initialize the Root Cause Analyst Agent.
+    def __init__(self, config: Dict[str, Any], scratchpad: Any, use_sk: bool = False):
+        """Initialize the SK-based Root Cause Analyst Agent.
         
         Args:
             config: Configuration dictionary with LLM settings
             scratchpad: Scratchpad instance for agent communication
+            use_sk: Whether to use SK agent for root cause analysis (default: False)
         """
         super().__init__(config, scratchpad, agent_name="root_cause_analyst")
+        self.use_sk = use_sk
     
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute the root cause analysis process.
         
+        Supports both SK-based and direct analysis modes. SK mode uses the
+        ChatCompletionAgent for analysis (future), while direct mode uses
+        the analytical helper methods (current default).
+        
         Args:
             **kwargs: Additional parameters for analysis
+                - use_sk: Optional override for SK mode
         
         Returns:
             Dictionary with execution results:
@@ -58,6 +73,29 @@ class RootCauseAnalystAgent(BaseAgent):
                 - confidence: float - Confidence score (0.0-1.0)
                 - recommendations_count: int - Number of recommendations
                 - root_cause_type: str - Type of root cause identified
+        
+        Raises:
+            ValueError: If required scratchpad sections are missing
+        """
+        # Allow per-call override of SK mode
+        use_sk = kwargs.get("use_sk", self.use_sk)
+        
+        if use_sk:
+            return self._execute_with_sk(**kwargs)
+        else:
+            return self._execute_direct(**kwargs)
+    
+    def _execute_direct(self, **kwargs) -> Dict[str, Any]:
+        """Execute root cause analysis using direct analytical methods (original implementation).
+        
+        This is the original implementation that uses helper methods for analysis.
+        Maintains full backward compatibility.
+        
+        Args:
+            **kwargs: Additional parameters for analysis
+        
+        Returns:
+            Dictionary with execution results
         
         Raises:
             ValueError: If required scratchpad sections are missing
@@ -121,6 +159,217 @@ class RootCauseAnalystAgent(BaseAgent):
             "recommendations_count": len(recommendations),
             "root_cause_type": hypothesis.get("type", "unknown")
         }
+    
+    def _execute_with_sk(self, **kwargs) -> Dict[str, Any]:
+        """Execute root cause analysis using SK ChatCompletionAgent.
+        
+        This method uses the SK agent to perform root cause analysis. It builds
+        a comprehensive prompt with all scratchpad sections and asks the SK agent
+        to synthesize findings and generate a diagnosis, then parses the response.
+        
+        Falls back to direct mode if SK fails.
+        
+        Args:
+            **kwargs: Additional parameters for analysis
+        
+        Returns:
+            Dictionary with execution results
+        
+        Raises:
+            ValueError: If required scratchpad sections are missing
+        """
+        try:
+            # Read all scratchpad sections
+            problem = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION)
+            data_collected = self.read_scratchpad(ScratchpadSection.DATA_COLLECTED)
+            pattern_analysis = self.read_scratchpad(ScratchpadSection.PATTERN_ANALYSIS)
+            code_inspection = self.read_scratchpad(ScratchpadSection.CODE_INSPECTION)
+            
+            # Validate required sections
+            if not problem:
+                raise ValueError("PROBLEM_DESCRIPTION section is missing")
+            if not data_collected:
+                raise ValueError("DATA_COLLECTED section is missing")
+            if not pattern_analysis:
+                raise ValueError("PATTERN_ANALYSIS section is missing")
+            
+            # Build SK prompt for root cause analysis
+            prompt = self._build_sk_synthesis_prompt(
+                problem=problem,
+                data_collected=data_collected,
+                pattern_analysis=pattern_analysis,
+                code_inspection=code_inspection
+            )
+            
+            # Invoke SK agent
+            response = self.invoke(prompt)
+            
+            # Parse SK response
+            diagnosis = self._parse_sk_diagnosis_response(response)
+            
+            # Write diagnosis to scratchpad
+            self.write_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS, diagnosis)
+            
+            # Return execution results
+            return {
+                "success": True,
+                "confidence": diagnosis.get("root_cause", {}).get("confidence", 0.0),
+                "recommendations_count": len(diagnosis.get("recommended_actions", [])),
+                "root_cause_type": diagnosis.get("root_cause", {}).get("type", "unknown")
+            }
+        
+        except Exception as e:
+            # Fall back to direct mode on SK failure
+            print(f"SK analysis failed ({str(e)}), falling back to direct mode")
+            return self._execute_direct(**kwargs)
+    
+    def _build_sk_synthesis_prompt(
+        self,
+        problem: Dict[str, Any],
+        data_collected: Dict[str, Any],
+        pattern_analysis: Dict[str, Any],
+        code_inspection: Optional[Dict[str, Any]]
+    ) -> str:
+        """Build comprehensive prompt for SK agent root cause synthesis.
+        
+        Args:
+            problem: Problem description from PROBLEM_DESCRIPTION section
+            data_collected: Collected data from DATA_COLLECTED section
+            pattern_analysis: Pattern analysis from PATTERN_ANALYSIS section
+            code_inspection: Code inspection from CODE_INSPECTION section (optional)
+        
+        Returns:
+            Formatted prompt string for SK agent
+        """
+        prompt = f"""Synthesize all findings and generate a comprehensive root cause diagnosis.
+
+Problem Description:
+{json.dumps(problem, indent=2)}
+
+Data Collected:
+{json.dumps(data_collected, indent=2)}
+
+Pattern Analysis:
+{json.dumps(pattern_analysis, indent=2)}
+"""
+        
+        if code_inspection:
+            prompt += f"""
+Code Inspection:
+{json.dumps(code_inspection, indent=2)}
+"""
+        
+        prompt += """
+
+Please perform the following root cause analysis:
+
+1. **Evidence Synthesis**: Identify and weight key evidence:
+   - Extract evidence from anomalies, error clusters, correlations
+   - Extract code issues (if available)
+   - Assign weights based on severity and reliability
+   - Sort by weight (highest first)
+
+2. **Causal Chain Building**: Construct timeline of events:
+   - Order events chronologically
+   - Identify cause-and-effect relationships
+   - Link deployment events to errors/anomalies
+
+3. **Root Cause Hypothesis**: Generate hypothesis:
+   - Identify root cause type (nil_pointer_dereference, index_out_of_bounds, etc.)
+   - Provide detailed description
+   - Identify location (file:line if available)
+   - Base on strongest evidence
+
+4. **Confidence Scoring**: Calculate confidence (0.0-1.0):
+   - Evidence quality and quantity
+   - Data completeness
+   - Consistency across evidence
+   - Presence of code-level evidence
+   - Correlation strength
+
+5. **Recommendations**: Generate prioritized actions:
+   - Immediate: Critical actions (rollback if deployment correlation)
+   - High: Code fixes based on evidence
+   - Medium: Testing and monitoring improvements
+   - Low: Preventive code reviews
+
+Return your analysis as a JSON object with this structure:
+{{
+  "root_cause": {{
+    "type": "root_cause_type",
+    "confidence": 0.0-1.0,
+    "description": "detailed description",
+    "location": "file:line or service name"
+  }},
+  "evidence": [
+    {{
+      "type": "anomaly|error_cluster|correlation|code_issue",
+      "source": "pattern_analysis|code_inspection",
+      "severity": "critical|high|medium|low",
+      "description": "evidence description",
+      "weight": 0.0-1.0
+    }}
+  ],
+  "timeline_correlation": {{
+    "deployment_mentioned": true|false,
+    "first_error_time": "ISO timestamp or null",
+    "alignment": "description of temporal alignment or null"
+  }},
+  "recommended_actions": [
+    {{
+      "priority": "immediate|high|medium|low",
+      "action": "action description",
+      "rationale": "why this action is recommended",
+      "type": "rollback|code_fix|testing|monitoring|code_review",
+      "location": "file:line if applicable"
+    }}
+  ]
+}}
+
+Ensure all JSON is valid and properly formatted."""
+        
+        return prompt
+    
+    def _parse_sk_diagnosis_response(self, response: str) -> Dict[str, Any]:
+        """Parse SK agent response to extract diagnosis.
+        
+        Args:
+            response: Response from SK agent
+        
+        Returns:
+            Parsed diagnosis dictionary
+        
+        Raises:
+            ValueError: If response cannot be parsed
+        """
+        # Try to extract JSON from response
+        try:
+            # Look for JSON block in response
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                diagnosis = json.loads(json_match.group(0))
+                return diagnosis
+            else:
+                # No JSON found, try to parse entire response
+                diagnosis = json.loads(response)
+                return diagnosis
+        except json.JSONDecodeError as e:
+            # Fallback: construct diagnosis from response text
+            return {
+                "root_cause": {
+                    "type": "unknown",
+                    "confidence": 0.5,
+                    "description": response[:500],  # First 500 chars
+                    "location": "unknown"
+                },
+                "evidence": [],
+                "timeline_correlation": {
+                    "deployment_mentioned": False,
+                    "first_error_time": None,
+                    "alignment": None
+                },
+                "recommended_actions": []
+            }
     
     def synthesize_findings(
         self,
