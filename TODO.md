@@ -795,12 +795,12 @@
   - [x] Test scratchpad updates
   - **Coverage Target**: ✅ 86.34% (exceeds >85% target, 32/32 tests passing)
 
-- [ ] **3.7.6** Convert Root Cause Analyst to SK Agent (NEW - SK REQUIRED)
-  - [ ] Migrate `RootCauseAnalystAgent` to inherit from SK `ChatCompletionAgent`
-  - [ ] Configure agent with synthesis-focused instructions
-  - [ ] Maintain existing synthesis, scoring, and recommendation methods
-  - [ ] Update unit tests to use SK agent pattern
-  - **Acceptance**: Root Cause Analyst is SK agent with maintained functionality
+- [x] **3.7.6** Convert Root Cause Analyst to SK Agent (NEW - SK REQUIRED)
+  - [x] Migrate `RootCauseAnalystAgent` to inherit from SK `ChatCompletionAgent` (via SKBaseAgent)
+  - [x] Configure agent with synthesis-focused instructions
+  - [x] Maintain existing synthesis, scoring, and recommendation methods
+  - [x] Update unit tests to use SK agent pattern (42/42 tests passing, 87.47% coverage)
+  - **Acceptance**: ✅ Root Cause Analyst is SK agent with maintained functionality (Completed: 2025-10-15)
 
 ### 3.8 Agent Integration Testing
 
