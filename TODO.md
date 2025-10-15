@@ -462,6 +462,15 @@
   - [x] Test error handling
   - **Coverage Target**: ✅ 94.87% (exceeds >80% target, 49/49 tests passing)
 
+- [ ] **3.1.5** Migrate to Semantic Kernel LLM services (NEW - SK REQUIRED)
+  - [ ] Replace custom `OpenAIProvider` with SK's `OpenAIChatCompletion`
+  - [ ] Update `LLMFactory` to create SK services (`from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion`)
+  - [ ] Configure SK kernel with LLM service
+  - [ ] Update all agent LLM calls to use SK service pattern
+  - [ ] Add unit tests for SK service integration
+  - [ ] Maintain backward compatibility during migration (feature flag)
+  - **Acceptance**: All LLM calls go through Semantic Kernel services
+
 ### 3.2 Base Agent Framework
 
 - [x] **3.2.1** Design base agent class
@@ -471,7 +480,7 @@
     - [x] `read_scratchpad()` - Read from scratchpad
     - [x] `write_scratchpad()` - Write to scratchpad
     - [x] `get_llm()` - Get configured LLM provider
-  - **Acceptance**: ✅ Base class provides common functionality
+  - **Acceptance**: ✅ Base class provides common functionality (custom implementation)
 
 - [x] **3.2.2** Implement agent prompt system
   - [x] Create `aletheia/llm/prompts.py` module
@@ -479,6 +488,16 @@
   - [x] Implement prompt composition utilities
   - [x] Support system and user prompts
   - **Acceptance**: ✅ Prompts are well-structured
+
+- [ ] **3.2.3** Create SK-based agent foundation (NEW - SK REQUIRED)
+  - [ ] Create `aletheia/agents/sk_base.py` with Semantic Kernel integration
+  - [ ] Use SK's `ChatCompletionAgent` as base (`from semantic_kernel.agents import ChatCompletionAgent`)
+  - [ ] Initialize SK `Kernel` instance per agent
+  - [ ] Configure `FunctionChoiceBehavior.Auto()` for automatic plugin invocation
+  - [ ] Integrate scratchpad operations with SK agent pattern
+  - [ ] Maintain `read_scratchpad()` and `write_scratchpad()` compatibility
+  - [ ] Add unit tests for SK agent base
+  - **Acceptance**: Base agent uses Semantic Kernel ChatCompletionAgent framework
 
 ### 3.3 Orchestrator Agent
 
@@ -490,7 +509,7 @@
     - [x] `handle_user_interaction()` - Manage user prompts
     - [x] `present_findings()` - Display results to user
     - [x] `handle_error()` - Handle agent failures
-  - **Acceptance**: ✅ Orchestrates full investigation flow
+  - **Acceptance**: ✅ Orchestrates full investigation flow (custom registry pattern)
 
 - [x] **3.3.2** Implement guided mode interaction
   - [x] Menu-driven workflow
@@ -513,6 +532,28 @@
   - [x] Test user interaction flow
   - **Coverage Target**: ✅ 75% (exceeds target, 37 tests passing)
 
+- [ ] **3.3.5** Implement SK HandoffOrchestration (NEW - SK REQUIRED)
+  - [ ] Replace `agent_registry` dict with SK agent list
+  - [ ] Create `OrchestrationHandoffs` with routing rules:
+    - [ ] data_fetcher → pattern_analyzer (after data collection completes)
+    - [ ] pattern_analyzer → code_inspector (after pattern analysis completes)
+    - [ ] code_inspector → root_cause_analyst (after code inspection completes)
+    - [ ] pattern_analyzer → root_cause_analyst (skip code inspection option)
+  - [ ] Implement `HandoffOrchestration` with agents and handoff rules
+  - [ ] Add `agent_response_callback` for tracking and scratchpad updates
+  - [ ] Add `human_response_function` for guided mode user interaction
+  - [ ] Integrate with existing guided mode UI (menus, confirmations)
+  - [ ] Update `_execute_guided_mode()` to use SK orchestration
+  - **Acceptance**: Orchestration uses Semantic Kernel HandoffOrchestration pattern
+
+- [ ] **3.3.6** Implement SK termination conditions (NEW - SK REQUIRED)
+  - [ ] Define termination condition for each agent (success/failure/skip)
+  - [ ] Implement completion detection logic per agent
+  - [ ] Handle user abort scenarios (return termination signal)
+  - [ ] Handle skip scenarios (route to next appropriate agent)
+  - [ ] Test all termination paths (success, failure, abort, skip)
+  - **Acceptance**: SK orchestration properly terminates and transitions between agents
+
 ### 3.4 Data Fetcher Agent
 
 - [x] **3.4.1** Implement Data Fetcher Agent class (spec 2.3)
@@ -523,7 +564,7 @@
     - [x] `generate_query()` - LLM-assisted query generation
     - [x] `summarize_data()` - Create data summary
     - [x] `write_to_scratchpad()` - Update DATA_COLLECTED section
-  - **Acceptance**: ✅ Fetches and summarizes data correctly
+  - **Acceptance**: ✅ Fetches and summarizes data correctly (direct API calls)
 
 - [x] **3.4.2** Implement query construction logic
   - [x] Use templates for common patterns
@@ -545,6 +586,50 @@
   - [x] Test error handling
   - **Coverage Target**: ✅ 91.67% (exceeds >85% target)
 
+- [ ] **3.4.5** Create Kubernetes Plugin (NEW - SK REQUIRED)
+  - [ ] Create `aletheia/plugins/kubernetes_plugin.py`
+  - [ ] Convert `KubernetesFetcher` methods to `@kernel_function` decorated methods
+  - [ ] Implement functions:
+    - [ ] `fetch_kubernetes_logs(pod: Annotated[str, "Pod name"], namespace: Annotated[str, "Namespace"], ...)`
+    - [ ] `list_kubernetes_pods(namespace: Annotated[str, "Namespace"], selector: Annotated[str, "Label selector"])`
+    - [ ] `get_pod_status(pod: Annotated[str, "Pod name"], namespace: Annotated[str, "Namespace"])`
+  - [ ] Use `Annotated` type hints for parameter descriptions (SK documentation)
+  - [ ] Register plugin with kernel using `kernel.add_plugin(KubernetesPlugin(), plugin_name="kubernetes")`
+  - [ ] Unit tests with mocked kubectl operations
+  - **Acceptance**: Kubernetes operations exposed as SK kernel functions
+
+- [ ] **3.4.6** Create Prometheus Plugin (NEW - SK REQUIRED)
+  - [ ] Create `aletheia/plugins/prometheus_plugin.py`
+  - [ ] Convert `PrometheusFetcher` methods to `@kernel_function` decorated methods
+  - [ ] Implement functions:
+    - [ ] `fetch_prometheus_metrics(query: Annotated[str, "PromQL query"], start: Annotated[str, "Start time"], ...)`
+    - [ ] `execute_promql_query(query: Annotated[str, "PromQL query string"])`
+    - [ ] `build_promql_from_template(template: Annotated[str, "Template name"], params: Annotated[dict, "Template parameters"])`
+  - [ ] Use `Annotated` type hints for parameter descriptions
+  - [ ] Register plugin with kernel using `kernel.add_plugin(PrometheusPlugin(), plugin_name="prometheus")`
+  - [ ] Unit tests with mocked HTTP API calls
+  - **Acceptance**: Prometheus operations exposed as SK kernel functions
+
+- [ ] **3.4.7** Create Git Plugin (NEW - SK REQUIRED)
+  - [ ] Create `aletheia/plugins/git_plugin.py`
+  - [ ] Expose git operations as `@kernel_function` decorated methods:
+    - [ ] `git_blame(file_path: Annotated[str, "File path"], line_number: Annotated[int, "Line number"], repo: Annotated[str, "Repository path"])`
+    - [ ] `find_file_in_repo(filename: Annotated[str, "File name"], repo: Annotated[str, "Repository path"])`
+    - [ ] `extract_code_context(file_path: Annotated[str, "File path"], line_number: Annotated[int, "Line"], context_lines: Annotated[int, "Context lines"])`
+  - [ ] Use `Annotated` type hints for parameter descriptions
+  - [ ] Register plugin with kernel
+  - [ ] Unit tests with mocked git subprocess calls
+  - **Acceptance**: Git operations exposed as SK kernel functions
+
+- [ ] **3.4.8** Convert Data Fetcher to SK Agent (NEW - SK REQUIRED)
+  - [ ] Migrate `DataFetcherAgent` to inherit from SK `ChatCompletionAgent`
+  - [ ] Add `KubernetesPlugin` and `PrometheusPlugin` to agent's kernel
+  - [ ] Configure `FunctionChoiceBehavior.Auto()` for automatic plugin invocation
+  - [ ] Update `execute()` method to use SK invoke pattern
+  - [ ] Maintain scratchpad write operations
+  - [ ] Update all unit tests to use SK agent pattern (mock kernel, plugins)
+  - **Acceptance**: Data Fetcher is SK agent using plugins for external calls
+
 ### 3.5 Pattern Analyzer Agent
 
 - [x] **3.5.1** Implement Pattern Analyzer Agent class (spec 2.3)
@@ -556,7 +641,7 @@
     - [x] `cluster_errors()` - Group similar error messages
     - [x] `build_timeline()` - Create incident timeline
     - [x] `write_to_scratchpad()` - Update PATTERN_ANALYSIS section
-  - **Acceptance**: ✅ Identifies patterns in collected data (524 lines, full implementation)
+  - **Acceptance**: ✅ Identifies patterns in collected data (524 lines, full implementation - not SK agent)
 
 - [x] **3.5.2** Implement anomaly detection
   - [x] Detect error rate spikes (>20% error rate = anomaly, >=50% = critical)
@@ -587,6 +672,14 @@
   - [x] Test helper methods (6 tests: timestamp/error extraction)
   - **Coverage Target**: ✅ 96.72% (exceeds >85% target, 37/37 tests passing)
 
+- [ ] **3.5.6** Convert Pattern Analyzer to SK Agent (NEW - SK REQUIRED)
+  - [ ] Migrate `PatternAnalyzerAgent` to inherit from SK `ChatCompletionAgent`
+  - [ ] Create analysis helper functions as kernel functions if beneficial
+  - [ ] Configure agent with appropriate instructions for pattern analysis
+  - [ ] Maintain existing analysis methods (anomaly detection, clustering, timeline)
+  - [ ] Update unit tests to use SK agent pattern
+  - **Acceptance**: Pattern Analyzer is SK agent with maintained functionality
+
 ### 3.6 Code Inspector Agent
 
 - [x] **3.6.1** Implement Code Inspector Agent class (spec 2.3)
@@ -598,7 +691,7 @@
     - [x] `_run_git_blame()` - Get git blame info
     - [x] `_analyze_callers()` - Analyze caller relationships
     - [x] `write_scratchpad()` - Update CODE_INSPECTION section
-  - **Acceptance**: ✅ Maps errors to code locations
+  - **Acceptance**: ✅ Maps errors to code locations (direct subprocess calls)
 
 - [x] **3.6.2** Implement repository access (spec 4.1)
   - [x] Accept user-provided repository paths
@@ -642,6 +735,15 @@
   - [x] Test analysis depth configuration (2 tests)
   - **Coverage Target**: ✅ 89.49% (exceeds >85% target, 34/34 tests passing)
 
+- [ ] **3.6.7** Convert Code Inspector to SK Agent (NEW - SK REQUIRED)
+  - [ ] Migrate `CodeInspectorAgent` to inherit from SK `ChatCompletionAgent`
+  - [ ] Add `GitPlugin` to agent's kernel for git operations
+  - [ ] Configure `FunctionChoiceBehavior.Auto()` for plugin invocation
+  - [ ] Update git operations to use GitPlugin functions instead of direct subprocess
+  - [ ] Maintain existing analysis methods (file mapping, code extraction, caller analysis)
+  - [ ] Update unit tests to use SK agent pattern
+  - **Acceptance**: Code Inspector is SK agent using GitPlugin for git operations
+
 ### 3.7 Root Cause Analyst Agent
 
 - [x] **3.7.1** Implement Root Cause Analyst Agent class (spec 2.3)
@@ -653,7 +755,7 @@
     - [x] `calculate_confidence()` - Assign confidence score
     - [x] `generate_recommendations()` - Create action items
     - [x] `write_to_scratchpad()` - Update FINAL_DIAGNOSIS section
-  - **Acceptance**: ✅ Produces comprehensive diagnosis
+  - **Acceptance**: ✅ Produces comprehensive diagnosis (not SK agent)
 
 - [x] **3.7.2** Implement evidence synthesis
   - [x] Read entire scratchpad
@@ -683,6 +785,13 @@
   - [x] Test scratchpad updates
   - **Coverage Target**: ✅ 86.34% (exceeds >85% target, 32/32 tests passing)
 
+- [ ] **3.7.6** Convert Root Cause Analyst to SK Agent (NEW - SK REQUIRED)
+  - [ ] Migrate `RootCauseAnalystAgent` to inherit from SK `ChatCompletionAgent`
+  - [ ] Configure agent with synthesis-focused instructions
+  - [ ] Maintain existing synthesis, scoring, and recommendation methods
+  - [ ] Update unit tests to use SK agent pattern
+  - **Acceptance**: Root Cause Analyst is SK agent with maintained functionality
+
 ### 3.8 Agent Integration Testing
 
 - [x] **3.8.1** Test agent pipeline
@@ -690,7 +799,7 @@
   - [x] Test Data Fetcher → Pattern Analyzer handoff
   - [x] Test Pattern Analyzer → Code Inspector handoff
   - [x] Test Code Inspector → Root Cause Analyst handoff
-  - **Acceptance**: ✅ Full pipeline executes successfully (9/9 tests passing)
+  - **Acceptance**: ✅ Full pipeline executes successfully (9/9 tests passing - custom orchestration)
 
 - [x] **3.8.2** Test scratchpad flow
   - [x] Test each agent reads correct sections
@@ -698,16 +807,52 @@
   - [x] Test scratchpad consistency
   - **Acceptance**: ✅ Scratchpad maintains coherent state (all tests passing)
 
-### 3.9 Phase 3 Completion Checklist
+- [ ] **3.8.3** SK Handoff Integration Tests (NEW - SK REQUIRED)
+  - [ ] Test agent-to-agent handoff via SK `HandoffOrchestration`
+  - [ ] Test function calling through plugins (Kubernetes, Prometheus, Git)
+  - [ ] Test termination conditions for each agent
+  - [ ] Test scratchpad consistency across SK handoff transitions
+  - [ ] Test error handling in SK orchestration context
+  - [ ] End-to-end test with real SK agents (mocked LLM responses)
+  - **Acceptance**: All integration tests pass with Semantic Kernel orchestration
 
-- [ ] All 5 agents implemented
-- [ ] LLM integration tested
-- [ ] Agent pipeline tested end-to-end
-- [ ] Unit tests passing with >85% coverage
-- [ ] Integration tests passing
-- [ ] Prompt engineering validated
-- [ ] Documentation updated
-- **Phase Gate**: Agent system ready for UX integration
+- [ ] **3.8.4** Update Existing Tests for SK (NEW - SK REQUIRED)
+  - [ ] Update all agent unit tests to mock SK kernel and services
+  - [ ] Mock SK plugins in agent tests
+  - [ ] Verify plugin registration in tests
+  - [ ] Test `FunctionChoiceBehavior.Auto()` configuration
+  - [ ] Maintain or improve test coverage (target: ≥80%)
+  - **Acceptance**: All tests pass with SK pattern, coverage ≥80%
+
+### 3.9 Documentation & Cleanup
+
+- [ ] **3.9.1** Update Architecture Documentation (NEW - SK REQUIRED)
+  - [ ] Update SPECIFICATION.md with SK architecture
+  - [ ] Document SK kernel initialization pattern
+  - [ ] Document plugin architecture and registration
+  - [ ] Document handoff rules and orchestration flow
+  - [ ] Update AGENTS.md with SK agent patterns
+  - [ ] Add SK configuration examples to documentation
+  - **Acceptance**: Documentation reflects SK implementation
+
+- [ ] **3.9.2** Deprecate Custom Implementations (NEW - SK REQUIRED)
+  - [ ] Mark custom `LLMProvider` as deprecated (keep as backup during transition)
+  - [ ] Mark custom `BaseAgent` as deprecated after SK migration complete
+  - [ ] Update configuration schema for SK-specific settings
+  - [ ] Create migration guide for transitioning to SK agents
+  - **Acceptance**: Clear deprecation path documented
+
+### 3.10 Phase 3 Completion Checklist
+
+- [ ] All 5 agents implemented as SK ChatCompletionAgents
+- [ ] All external calls via SK plugins (@kernel_function)
+- [ ] SK HandoffOrchestration implemented
+- [ ] LLM integration via SK services tested
+- [ ] Agent pipeline tested end-to-end with SK
+- [ ] Unit tests passing with >85% coverage (SK pattern)
+- [ ] Integration tests passing (SK orchestration)
+- [ ] Documentation updated for SK architecture
+- **Phase Gate**: Semantic Kernel agent system ready for UX integration
 
 ---
 
