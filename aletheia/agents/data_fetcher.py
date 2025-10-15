@@ -6,42 +6,53 @@ This agent is responsible for:
 - Sampling data intelligently
 - Generating summaries of collected data
 - Writing results to the scratchpad's DATA_COLLECTED section
+
+This is the SK-based version that uses Semantic Kernel's ChatCompletionAgent
+with Kubernetes and Prometheus plugins for automatic function calling.
 """
 
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from aletheia.agents.base import BaseAgent
+from aletheia.agents.sk_base import SKBaseAgent
 from aletheia.fetchers.base import BaseFetcher, FetchResult, FetchError
 from aletheia.fetchers.kubernetes import KubernetesFetcher
 from aletheia.fetchers.prometheus import PrometheusFetcher
 from aletheia.fetchers.summarization import LogSummarizer, MetricSummarizer
 from aletheia.llm.prompts import compose_messages, get_user_prompt_template
+from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
+from aletheia.plugins.prometheus_plugin import PrometheusPlugin
 from aletheia.scratchpad import ScratchpadSection
 from aletheia.utils.retry import retry_with_backoff
 from aletheia.utils.validation import validate_time_window
 
 
-class DataFetcherAgent(BaseAgent):
-    """Agent responsible for collecting observability data from various sources.
+class DataFetcherAgent(SKBaseAgent):
+    """SK-based agent responsible for collecting observability data from various sources.
+    
+    This agent uses Semantic Kernel's ChatCompletionAgent with plugins for
+    Kubernetes and Prometheus operations. The LLM can automatically invoke
+    plugin functions via FunctionChoiceBehavior.Auto().
     
     The Data Fetcher Agent:
     1. Reads the PROBLEM_DESCRIPTION section to understand what data to collect
-    2. Selects appropriate data sources (Kubernetes, Prometheus, etc.)
+    2. Uses SK plugins (Kubernetes, Prometheus) for data collection
     3. Constructs queries using templates or LLM-assisted generation
-    4. Fetches data with intelligent sampling
+    4. Fetches data with intelligent sampling via plugin functions
     5. Generates summaries of collected data
     6. Writes results to the DATA_COLLECTED section
     
     Attributes:
         config: Agent configuration including data source settings
         scratchpad: Scratchpad for reading problem and writing data
-        fetchers: Dictionary of available data source fetchers
+        fetchers: Dictionary of available data source fetchers (for direct access)
+        _plugins_registered: Whether SK plugins have been registered
     """
     
     def __init__(self, config: Dict[str, Any], scratchpad: Any):
-        """Initialize the Data Fetcher Agent.
+        """Initialize the SK-based Data Fetcher Agent.
         
         Args:
             config: Configuration dictionary with data_sources and llm sections
@@ -49,9 +60,12 @@ class DataFetcherAgent(BaseAgent):
         """
         super().__init__(config, scratchpad, agent_name="data_fetcher")
         
-        # Initialize available fetchers
+        # Initialize available fetchers (for direct access if needed)
         self.fetchers: Dict[str, BaseFetcher] = {}
         self._initialize_fetchers()
+        
+        # Track plugin registration
+        self._plugins_registered = False
     
     def _initialize_fetchers(self) -> None:
         """Initialize data source fetchers from configuration."""
@@ -69,19 +83,52 @@ class DataFetcherAgent(BaseAgent):
             if prom_config.get("endpoint"):
                 self.fetchers["prometheus"] = PrometheusFetcher(prom_config)
     
+    def _register_plugins(self) -> None:
+        """Register SK plugins with the kernel for automatic function calling.
+        
+        This registers Kubernetes and Prometheus plugins so the SK agent can
+        automatically invoke their functions via FunctionChoiceBehavior.Auto().
+        """
+        if self._plugins_registered:
+            return
+        
+        data_sources_config = self.config.get("data_sources", {})
+        
+        # Register Kubernetes plugin if configured
+        if "kubernetes" in data_sources_config:
+            k8s_config = data_sources_config["kubernetes"]
+            if k8s_config.get("context"):
+                k8s_plugin = KubernetesPlugin(k8s_config)
+                self.kernel.add_plugin(k8s_plugin, plugin_name="kubernetes")
+        
+        # Register Prometheus plugin if configured
+        if "prometheus" in data_sources_config:
+            prom_config = data_sources_config["prometheus"]
+            if prom_config.get("endpoint"):
+                prom_plugin = PrometheusPlugin(prom_config)
+                self.kernel.add_plugin(prom_plugin, plugin_name="prometheus")
+        
+        self._plugins_registered = True
+    
     def execute(
         self,
         sources: Optional[List[str]] = None,
         time_window: Optional[str] = None,
+        use_sk: bool = True,
         **kwargs
     ) -> Dict[str, Any]:
         """Execute the data fetching process.
+        
+        This method can operate in two modes:
+        1. SK mode (default): Uses SK agent with automatic function calling via plugins
+        2. Direct mode: Directly calls fetchers (maintains backward compatibility)
         
         Args:
             sources: List of data source names to fetch from (e.g., ["kubernetes", "prometheus"])
                     If None, attempts to determine from problem description
             time_window: Time window string (e.g., "2h", "30m")
                         If None, uses session default or problem description
+            use_sk: If True, uses SK agent with plugins. If False, uses direct fetcher calls.
             **kwargs: Additional parameters for specific data sources
         
         Returns:
@@ -91,6 +138,7 @@ class DataFetcherAgent(BaseAgent):
                 - sources_failed: List[str] - Failed sources
                 - total_data_points: int - Total data points collected
                 - summaries: Dict[str, str] - Summaries by source
+                - sk_used: bool - Whether SK mode was used
         
         Raises:
             ValueError: If no data sources are available or specified
@@ -106,6 +154,87 @@ class DataFetcherAgent(BaseAgent):
         # Parse time window
         time_range = self._parse_time_window(time_window, problem)
         
+        # Choose execution mode
+        if use_sk:
+            return self._execute_with_sk(sources_to_fetch, time_range, problem, **kwargs)
+        else:
+            return self._execute_direct(sources_to_fetch, time_range, problem, **kwargs)
+    
+    def _execute_with_sk(
+        self,
+        sources: List[str],
+        time_range: Tuple[datetime, datetime],
+        problem: Dict[str, Any],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Execute data fetching using SK agent with automatic plugin invocation.
+        
+        This method uses the SK ChatCompletionAgent which can automatically
+        call plugin functions (fetch_kubernetes_logs, fetch_prometheus_metrics, etc.)
+        based on the user's request.
+        
+        Args:
+            sources: List of data sources to fetch from
+            time_range: Time range tuple (start, end)
+            problem: Problem description from scratchpad
+            **kwargs: Additional parameters
+        
+        Returns:
+            Dictionary with execution results
+        """
+        # Register plugins with kernel
+        self._register_plugins()
+        
+        # Build prompt for SK agent
+        prompt = self._build_sk_prompt(sources, time_range, problem, **kwargs)
+        
+        # Invoke SK agent - it will automatically call plugin functions
+        try:
+            response = self.invoke(prompt, settings={"temperature": 0.1})
+            
+            # Parse the response to extract collected data
+            # The SK agent should have called the plugin functions and received results
+            collected_data = self._parse_sk_response(response, sources)
+            
+            # Build results summary
+            results = {
+                "success": True,
+                "sources_fetched": list(collected_data.keys()),
+                "sources_failed": [],
+                "total_data_points": sum(d.get("count", 0) for d in collected_data.values()),
+                "summaries": {s: d.get("summary", "") for s, d in collected_data.items()},
+                "sk_used": True,
+            }
+            
+            # Write collected data to scratchpad
+            self.write_scratchpad(ScratchpadSection.DATA_COLLECTED, collected_data)
+            
+            return results
+            
+        except Exception as e:
+            # If SK fails, fall back to direct mode
+            return self._execute_direct(sources, time_range, problem, **kwargs)
+    
+    def _execute_direct(
+        self,
+        sources: List[str],
+        time_range: Tuple[datetime, datetime],
+        problem: Dict[str, Any],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Execute data fetching using direct fetcher calls (backward compatibility).
+        
+        This method directly calls the fetcher implementations without SK.
+        
+        Args:
+            sources: List of data sources to fetch from
+            time_range: Time range tuple (start, end)
+            problem: Problem description from scratchpad
+            **kwargs: Additional parameters
+        
+        Returns:
+            Dictionary with execution results
+        """
         # Fetch data from each source
         results = {
             "success": True,
@@ -113,11 +242,12 @@ class DataFetcherAgent(BaseAgent):
             "sources_failed": [],
             "total_data_points": 0,
             "summaries": {},
+            "sk_used": False,
         }
         
         collected_data = {}
         
-        for source in sources_to_fetch:
+        for source in sources:
             try:
                 # Fetch data from source
                 fetch_result = self._fetch_from_source(
@@ -157,6 +287,120 @@ class DataFetcherAgent(BaseAgent):
         self.write_scratchpad(ScratchpadSection.DATA_COLLECTED, collected_data)
         
         return results
+    
+    def _build_sk_prompt(
+        self,
+        sources: List[str],
+        time_range: Tuple[datetime, datetime],
+        problem: Dict[str, Any],
+        **kwargs
+    ) -> str:
+        """Build a prompt for the SK agent to collect data.
+        
+        Args:
+            sources: Data sources to use
+            time_range: Time range for data collection
+            problem: Problem description
+            **kwargs: Additional parameters
+        
+        Returns:
+            Prompt string for SK agent
+        """
+        start_time = time_range[0].isoformat()
+        end_time = time_range[1].isoformat()
+        
+        affected_services = problem.get("affected_services", [])
+        description = problem.get("description", "")
+        
+        prompt = f"""Collect observability data for troubleshooting.
+
+Problem: {description}
+Affected services: {', '.join(affected_services) if affected_services else 'Unknown'}
+Time window: {start_time} to {end_time}
+Data sources to use: {', '.join(sources)}
+
+Additional parameters:
+"""
+        
+        # Add source-specific parameters
+        if "kubernetes" in sources:
+            pod = kwargs.get("pod")
+            namespace = kwargs.get("namespace", "default")
+            container = kwargs.get("container")
+            
+            prompt += f"""
+For Kubernetes:
+- Pod: {pod if pod else 'auto-discover from affected services'}
+- Namespace: {namespace}
+- Container: {container if container else 'default'}
+- Fetch logs with priority levels: ERROR, FATAL, CRITICAL
+"""
+        
+        if "prometheus" in sources:
+            query = kwargs.get("query")
+            template = kwargs.get("template")
+            
+            prompt += f"""
+For Prometheus:
+- Query: {query if query else 'generate from problem description'}
+- Template: {template if template else 'error_rate (if applicable)'}
+"""
+        
+        prompt += """
+Please use the available plugins to:
+1. Fetch data from the specified sources
+2. Collect logs and metrics relevant to the problem
+3. Focus on errors and anomalies
+4. Return a JSON summary of what was collected
+
+Format your response as JSON with this structure:
+{
+    "<source>": {
+        "count": <number of data points>,
+        "summary": "<brief summary>",
+        "metadata": {<relevant metadata>}
+    }
+}
+"""
+        
+        return prompt
+    
+    def _parse_sk_response(
+        self,
+        response: str,
+        sources: List[str]
+    ) -> Dict[str, Any]:
+        """Parse the SK agent's response to extract collected data.
+        
+        Args:
+            response: SK agent's response string
+            sources: Expected data sources
+        
+        Returns:
+            Dictionary mapping source names to collected data
+        """
+        # Try to parse as JSON
+        try:
+            # Look for JSON in the response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                data = json.loads(json_match.group(0))
+                return data
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        
+        # If JSON parsing fails, create minimal structure
+        collected_data = {}
+        for source in sources:
+            collected_data[source] = {
+                "source": source,
+                "count": 0,
+                "summary": "SK agent execution completed but data format unexpected",
+                "metadata": {"raw_response": response[:500]},  # First 500 chars
+            }
+        
+        return collected_data
     
     def _determine_sources(
         self,

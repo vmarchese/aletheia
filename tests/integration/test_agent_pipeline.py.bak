@@ -447,8 +447,7 @@ class TestScratchpadFlow:
                 data_fetcher = DataFetcherAgent(config, scratchpad)
                 data_fetcher.execute(
                     sources=["kubernetes"],
-                    time_window="1h",
-                    use_sk=False
+                    time_window="1h"
                 )
         
         # Verify original section is unchanged
@@ -493,8 +492,7 @@ class TestScratchpadFlow:
                 data_fetcher = DataFetcherAgent(config, scratchpad2)
                 data_fetcher.execute(
                     sources=["kubernetes"],
-                    time_window="1h",
-                    use_sk=False
+                    time_window="1h"
                 )
         
         scratchpad2.save()

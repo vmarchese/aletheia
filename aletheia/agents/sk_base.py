@@ -293,6 +293,45 @@ class SKBaseAgent:
         """
         self._chat_history = None
     
+    def get_llm(self):
+        """Get an LLM provider for legacy compatibility.
+        
+        This method provides backward compatibility with code that expects
+        the old BaseAgent's get_llm() method. It returns an LLMProvider
+        that wraps the SK chat service.
+        
+        Note: New code should use invoke() instead of calling LLM directly.
+        
+        Returns:
+            LLMProvider instance for backward compatibility
+        """
+        from aletheia.llm.provider import LLMFactory
+        
+        if not hasattr(self, '_llm_provider') or self._llm_provider is None:
+            llm_config = self.config.get("llm", {})
+            
+            # Try to get agent-specific configuration
+            agents_config = llm_config.get("agents", {})
+            agent_config = agents_config.get(self.agent_name, {})
+            
+            # Merge with default configuration
+            provider_config = {
+                "model": agent_config.get("model") or llm_config.get("default_model", "gpt-4o"),
+                "api_key_env": llm_config.get("api_key_env", "OPENAI_API_KEY"),
+            }
+            
+            # Add optional configuration
+            if "api_key" in llm_config:
+                provider_config["api_key"] = llm_config["api_key"]
+            if "base_url" in agent_config:
+                provider_config["base_url"] = agent_config["base_url"]
+            if "timeout" in agent_config:
+                provider_config["timeout"] = agent_config["timeout"]
+            
+            self._llm_provider = LLMFactory.create_provider(provider_config)
+        
+        return self._llm_provider
+    
     def __repr__(self) -> str:
         """Return string representation of the agent."""
         return f"{self.__class__.__name__}(agent_name='{self.agent_name}')"

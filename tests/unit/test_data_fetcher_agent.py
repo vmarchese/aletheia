@@ -395,7 +395,7 @@ class TestExecute:
     """Test agent execution."""
     
     def test_execute_success(self):
-        """Test successful execution with data fetching."""
+        """Test successful execution with data fetching (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test", "namespace": "default"}},
@@ -424,16 +424,18 @@ class TestExecute:
         )
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod")
+        # Execute in direct mode (backward compatibility)
+        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         assert result["success"] is True
         assert "kubernetes" in result["sources_fetched"]
         assert len(result["sources_failed"]) == 0
         assert result["total_data_points"] == 1
+        assert result["sk_used"] is False
         scratchpad.write_section.assert_called_once()
     
     def test_execute_with_failure(self):
-        """Test execution with fetching failure."""
+        """Test execution with fetching failure (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -449,11 +451,12 @@ class TestExecute:
         mock_fetcher.fetch.side_effect = ConnectionError("Connection failed")
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod")
+        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         assert result["success"] is False
         assert "kubernetes" in result["sources_failed"]
         assert result["total_data_points"] == 0
+        assert result["sk_used"] is False
     
     def test_execute_no_sources_error(self):
         """Test execution fails when no sources available."""
@@ -467,10 +470,10 @@ class TestExecute:
         agent = DataFetcherAgent(config, scratchpad)
         
         with pytest.raises(ValueError, match="No data sources"):
-            agent.execute()
+            agent.execute(use_sk=False)
     
     def test_execute_retry_logic(self):
-        """Test that retry logic is applied on failures."""
+        """Test that retry logic is applied on failures (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -497,11 +500,12 @@ class TestExecute:
         ]
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod")
+        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         # Should succeed after retries
         assert result["success"] is True
         assert mock_fetcher.fetch.call_count == 3
+        assert result["sk_used"] is False
 
 
 class TestQueryGeneration:
@@ -574,7 +578,7 @@ class TestErrorHandling:
     """Test error handling scenarios."""
     
     def test_handle_fetch_error(self):
-        """Test handling FetchError during execution."""
+        """Test handling FetchError during execution (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -590,7 +594,7 @@ class TestErrorHandling:
         mock_fetcher.fetch.side_effect = FetchError("Persistent failure")
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod")
+        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         # Execution should complete but mark source as failed
         assert result["success"] is False
@@ -621,7 +625,7 @@ class TestScratchpadIntegration:
     """Test scratchpad read/write operations."""
     
     def test_write_to_scratchpad(self):
-        """Test writing collected data to scratchpad."""
+        """Test writing collected data to scratchpad (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -644,7 +648,7 @@ class TestScratchpadIntegration:
         )
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        agent.execute(sources=["kubernetes"], pod="test-pod")
+        agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         # Verify scratchpad write
         scratchpad.write_section.assert_called_once()
@@ -658,7 +662,7 @@ class TestScratchpadIntegration:
         assert "metadata" in data["kubernetes"]
     
     def test_read_problem_description(self):
-        """Test reading problem description from scratchpad."""
+        """Test reading problem description from scratchpad (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -686,7 +690,218 @@ class TestScratchpadIntegration:
         )
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        agent.execute(sources=["kubernetes"])
+        agent.execute(sources=["kubernetes"], use_sk=False)
         
         # Should read problem description
         scratchpad.read_section.assert_called_with(ScratchpadSection.PROBLEM_DESCRIPTION)
+
+
+class TestSKIntegration:
+    """Test Semantic Kernel integration and SK-based execution."""
+    
+    def test_register_plugins(self):
+        """Test plugin registration with SK kernel."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
+            "data_sources": {
+                "kubernetes": {"context": "test-context"},
+                "prometheus": {"endpoint": "http://localhost:9090"}
+            }
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Register plugins
+        agent._register_plugins()
+        
+        assert agent._plugins_registered is True
+        # Verify plugins are registered with kernel
+        assert hasattr(agent.kernel, 'plugins')
+    
+    def test_build_sk_prompt(self):
+        """Test building SK prompt for data collection."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["kubernetes"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {
+            "description": "API errors in payments service",
+            "affected_services": ["payments-svc"]
+        }
+        
+        prompt = agent._build_sk_prompt(sources, time_range, problem, pod="test-pod")
+        
+        assert "Collect observability data" in prompt
+        assert "API errors" in prompt
+        assert "payments-svc" in prompt
+        assert "kubernetes" in prompt
+        assert "test-pod" in prompt
+    
+    def test_parse_sk_response_json(self):
+        """Test parsing SK response with JSON data."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        response = '''Based on the logs collected:
+{
+    "kubernetes": {
+        "count": 150,
+        "summary": "150 logs collected, 45 errors found",
+        "metadata": {"pod": "test-pod"}
+    }
+}
+'''
+        
+        data = agent._parse_sk_response(response, ["kubernetes"])
+        
+        assert "kubernetes" in data
+        assert data["kubernetes"]["count"] == 150
+        assert "summary" in data["kubernetes"]
+    
+    def test_parse_sk_response_no_json(self):
+        """Test parsing SK response without JSON."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        response = "I collected the data successfully but forgot to format it as JSON."
+        
+        data = agent._parse_sk_response(response, ["kubernetes"])
+        
+        # Should create minimal structure
+        assert "kubernetes" in data
+        assert data["kubernetes"]["count"] == 0
+        assert "raw_response" in data["kubernetes"]["metadata"]
+    
+    def test_execute_with_sk_mode(self):
+        """Test execution in SK mode with mocked invoke."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.return_value = {"time_window": "2h"}
+        
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock SK invoke method
+        mock_response = '''{
+    "kubernetes": {
+        "count": 50,
+        "summary": "50 logs with 12 errors",
+        "metadata": {}
+    }
+}'''
+        agent.invoke = Mock(return_value=mock_response)
+        
+        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=True)
+        
+        assert result["success"] is True
+        assert result["sk_used"] is True
+        assert "kubernetes" in result["sources_fetched"]
+        assert result["total_data_points"] == 50
+        agent.invoke.assert_called_once()
+        scratchpad.write_section.assert_called_once()
+    
+    def test_execute_sk_fallback_to_direct(self):
+        """Test SK mode falls back to direct mode on error."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.return_value = {}
+        
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock SK invoke to raise exception
+        agent.invoke = Mock(side_effect=Exception("SK failed"))
+        
+        # Mock fetcher for fallback
+        mock_fetcher = Mock()
+        mock_fetcher.config = {}
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[],
+            summary="0 logs",
+            count=0,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=True)
+        
+        # Should fall back to direct mode
+        assert result["success"] is True
+        assert result["sk_used"] is False
+        mock_fetcher.fetch.assert_called()
+    
+    def test_sk_mode_with_prometheus(self):
+        """Test SK mode with Prometheus plugin."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
+            "data_sources": {"prometheus": {"endpoint": "http://localhost:9090"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.return_value = {}
+        
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock SK invoke method
+        mock_response = '''{
+    "prometheus": {
+        "count": 120,
+        "summary": "120 metric data points collected",
+        "metadata": {"query": "rate(http_requests_total[5m])"}
+    }
+}'''
+        agent.invoke = Mock(return_value=mock_response)
+        
+        result = agent.execute(
+            sources=["prometheus"],
+            query="rate(http_requests_total[5m])",
+            use_sk=True
+        )
+        
+        assert result["success"] is True
+        assert result["sk_used"] is True
+        assert "prometheus" in result["sources_fetched"]
+        assert result["total_data_points"] == 120
+    
+    def test_sk_prompt_includes_prometheus_params(self):
+        """Test SK prompt includes Prometheus-specific parameters."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"prometheus": {"endpoint": "http://localhost:9090"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["prometheus"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {"description": "High latency"}
+        
+        prompt = agent._build_sk_prompt(
+            sources,
+            time_range,
+            problem,
+            query="rate(http_requests_total[5m])",
+            template="error_rate"
+        )
+        
+        assert "Prometheus" in prompt
+        assert "rate(http_requests_total[5m])" in prompt
+        assert "error_rate" in prompt
