@@ -489,15 +489,15 @@
   - [x] Support system and user prompts
   - **Acceptance**: ✅ Prompts are well-structured
 
-- [ ] **3.2.3** Create SK-based agent foundation (NEW - SK REQUIRED)
-  - [ ] Create `aletheia/agents/sk_base.py` with Semantic Kernel integration
-  - [ ] Use SK's `ChatCompletionAgent` as base (`from semantic_kernel.agents import ChatCompletionAgent`)
-  - [ ] Initialize SK `Kernel` instance per agent
-  - [ ] Configure `FunctionChoiceBehavior.Auto()` for automatic plugin invocation
-  - [ ] Integrate scratchpad operations with SK agent pattern
-  - [ ] Maintain `read_scratchpad()` and `write_scratchpad()` compatibility
-  - [ ] Add unit tests for SK agent base
-  - **Acceptance**: Base agent uses Semantic Kernel ChatCompletionAgent framework
+- [x] **3.2.3** Create SK-based agent foundation (NEW - SK REQUIRED)
+  - [x] Create `aletheia/agents/sk_base.py` with Semantic Kernel integration
+  - [x] Use SK's `ChatCompletionAgent` as base (`from semantic_kernel.agents import ChatCompletionAgent`)
+  - [x] Initialize SK `Kernel` instance per agent
+  - [x] Configure `FunctionChoiceBehavior.Auto()` for automatic plugin invocation
+  - [x] Integrate scratchpad operations with SK agent pattern
+  - [x] Maintain `read_scratchpad()` and `write_scratchpad()` compatibility
+  - [x] Add unit tests for SK agent base
+  - **Acceptance**: ✅ Base agent uses Semantic Kernel ChatCompletionAgent framework (24/24 tests, 91.58% coverage)
 
 ### 3.3 Orchestrator Agent
 
