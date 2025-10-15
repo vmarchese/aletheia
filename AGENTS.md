@@ -67,7 +67,7 @@ At the beginning of every development session, you **MUST**:
    uv pip install -r requirements-dev.txt  # if applicable
    ```
 - Create a new virtual environment in the worktree `worktrees/feat/<task-id>-<feat-name>` with `uv venv --python 3.12`
-- activate the virtual environment with `source .venv/bin/activate``
+- activate the virtual environment with `source .venv/bin/activate`
 - install the required dependencies with `uv pip install --prerelease=allow -r requirements.txt -r requirements-dev.txt`
 
 ### 2. Development Phase
@@ -113,7 +113,7 @@ Before considering the session complete, you **MUST**:
    - Confirm all tests passed
    - Note the branch name and worktree location
    - summarize the key points and write them to the memory file.
-   - Use the following exampletemplate for the memory file start:
+   - Use the following example template for the memory file start:
 ```
 ## Session Update - 2025-10-14 (Prometheus Fetcher Implementation)
 
