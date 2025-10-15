@@ -462,14 +462,14 @@
   - [x] Test error handling
   - **Coverage Target**: ✅ 94.87% (exceeds >80% target, 49/49 tests passing)
 
-- [ ] **3.1.5** Migrate to Semantic Kernel LLM services (NEW - SK REQUIRED)
-  - [ ] Replace custom `OpenAIProvider` with SK's `OpenAIChatCompletion`
-  - [ ] Update `LLMFactory` to create SK services (`from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion`)
-  - [ ] Configure SK kernel with LLM service
-  - [ ] Update all agent LLM calls to use SK service pattern
-  - [ ] Add unit tests for SK service integration
-  - [ ] Maintain backward compatibility during migration (feature flag)
-  - **Acceptance**: All LLM calls go through Semantic Kernel services
+- [x] **3.1.5** Migrate to Semantic Kernel LLM services (NEW - SK REQUIRED)
+  - [x] Replace custom `OpenAIProvider` with SK's `OpenAIChatCompletion`
+  - [x] Update `LLMFactory` to create SK services (`from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion`)
+  - [x] Configure SK kernel with LLM service
+  - [x] Update all agent LLM calls to use SK service pattern
+  - [x] Add unit tests for SK service integration
+  - [x] Maintain backward compatibility during migration (feature flag)
+  - **Acceptance**: ✅ All LLM calls go through Semantic Kernel services (opt-in via feature flag)
 
 ### 3.2 Base Agent Framework
 
