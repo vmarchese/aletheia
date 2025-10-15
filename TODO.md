@@ -607,17 +607,17 @@
   - [x] Unit tests with mocked kubectl operations
   - **Acceptance**: ✅ Kubernetes operations exposed as SK kernel functions (24/24 tests, 100% coverage, Completed: 2025-10-15)
 
-- [ ] **3.4.6** Create Prometheus Plugin (NEW - SK REQUIRED)
-  - [ ] Create `aletheia/plugins/prometheus_plugin.py`
-  - [ ] Convert `PrometheusFetcher` methods to `@kernel_function` decorated methods
-  - [ ] Implement functions:
-    - [ ] `fetch_prometheus_metrics(query: Annotated[str, "PromQL query"], start: Annotated[str, "Start time"], ...)`
-    - [ ] `execute_promql_query(query: Annotated[str, "PromQL query string"])`
-    - [ ] `build_promql_from_template(template: Annotated[str, "Template name"], params: Annotated[dict, "Template parameters"])`
-  - [ ] Use `Annotated` type hints for parameter descriptions
-  - [ ] Register plugin with kernel using `kernel.add_plugin(PrometheusPlugin(), plugin_name="prometheus")`
-  - [ ] Unit tests with mocked HTTP API calls
-  - **Acceptance**: Prometheus operations exposed as SK kernel functions
+- [x] **3.4.6** Create Prometheus Plugin (NEW - SK REQUIRED)
+  - [x] Create `aletheia/plugins/prometheus_plugin.py`
+  - [x] Convert `PrometheusFetcher` methods to `@kernel_function` decorated methods
+  - [x] Implement functions:
+    - [x] `fetch_prometheus_metrics(query: Annotated[str, "PromQL query"], start: Annotated[str, "Start time"], ...)`
+    - [x] `execute_promql_query(query: Annotated[str, "PromQL query string"])`
+    - [x] `build_promql_from_template(template: Annotated[str, "Template name"], params: Annotated[dict, "Template parameters"])`
+  - [x] Use `Annotated` type hints for parameter descriptions
+  - [x] Register plugin with kernel using `kernel.add_plugin(PrometheusPlugin(), plugin_name="prometheus")`
+  - [x] Unit tests with mocked HTTP API calls
+  - **Acceptance**: ✅ Prometheus operations exposed as SK kernel functions (32/32 tests, 100% coverage, Completed: 2025-10-15)
 
 - [ ] **3.4.7** Create Git Plugin (NEW - SK REQUIRED)
   - [ ] Create `aletheia/plugins/git_plugin.py`
