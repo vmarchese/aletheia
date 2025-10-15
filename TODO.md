@@ -630,14 +630,15 @@
   - [x] Unit tests with mocked git subprocess calls
   - **Acceptance**: ✅ Git operations exposed as SK kernel functions (34/34 tests, 92.13% coverage, Completed: 2025-10-15)
 
-- [ ] **3.4.8** Convert Data Fetcher to SK Agent (NEW - SK REQUIRED)
-  - [ ] Migrate `DataFetcherAgent` to inherit from SK `ChatCompletionAgent`
-  - [ ] Add `KubernetesPlugin` and `PrometheusPlugin` to agent's kernel
-  - [ ] Configure `FunctionChoiceBehavior.Auto()` for automatic plugin invocation
-  - [ ] Update `execute()` method to use SK invoke pattern
-  - [ ] Maintain scratchpad write operations
-  - [ ] Update all unit tests to use SK agent pattern (mock kernel, plugins)
-  - **Acceptance**: Data Fetcher is SK agent using plugins for external calls
+- [x] **3.4.8** Convert Data Fetcher to SK Agent (NEW - SK REQUIRED)
+  - [x] Migrate `DataFetcherAgent` to inherit from SK `ChatCompletionAgent` (via SKBaseAgent)
+  - [x] Add `KubernetesPlugin` and `PrometheusPlugin` to agent's kernel
+  - [x] Configure `FunctionChoiceBehavior.Auto()` for automatic plugin invocation
+  - [x] Update `execute()` method to use SK invoke pattern (dual mode: SK + direct)
+  - [x] Maintain scratchpad write operations
+  - [x] Update all unit tests to use SK agent pattern (36/36 tests passing)
+  - [x] Add backward compatibility with `use_sk=False` parameter
+  - **Acceptance**: ✅ Data Fetcher is SK agent using plugins for external calls (92.08% coverage, Completed: 2025-10-15)
 
 ### 3.5 Pattern Analyzer Agent
 
