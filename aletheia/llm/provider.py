@@ -3,6 +3,8 @@ LLM Provider abstraction layer.
 
 This module provides a unified interface for interacting with various LLM providers
 (OpenAI, etc.) with support for retries, rate limiting, and error handling.
+
+Supports both direct OpenAI API calls and Semantic Kernel integration.
 """
 
 import os
@@ -343,10 +345,244 @@ class OpenAIProvider(LLMProvider):
         return False
 
 
+class SemanticKernelProvider(LLMProvider):
+    """Semantic Kernel-based LLM provider implementation.
+    
+    Uses Semantic Kernel's OpenAIChatCompletion service for LLM interactions.
+    This provider wraps SK's chat completion service to maintain compatibility
+    with the LLMProvider interface.
+    
+    Attributes:
+        api_key: OpenAI API key
+        model: Default model to use
+        base_url: Optional custom base URL
+        service: SK OpenAIChatCompletion service instance
+    """
+    
+    # Supported models (same as OpenAI)
+    SUPPORTED_MODELS = OpenAIProvider.SUPPORTED_MODELS
+    
+    # Default timeout in seconds
+    DEFAULT_TIMEOUT = 60
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o",
+        base_url: Optional[str] = None,
+        timeout: int = DEFAULT_TIMEOUT
+    ):
+        """Initialize Semantic Kernel provider.
+        
+        Args:
+            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
+            model: Default model to use
+            base_url: Optional custom base URL (not used by SK service)
+            timeout: Default timeout in seconds
+            
+        Raises:
+            LLMAuthenticationError: If API key is not provided
+            ImportError: If semantic_kernel is not installed
+        """
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise LLMAuthenticationError(
+                "OpenAI API key not provided. Set OPENAI_API_KEY environment variable "
+                "or pass api_key parameter."
+            )
+        
+        self.model = model
+        self.base_url = base_url
+        self.default_timeout = timeout
+        
+        # Initialize SK service
+        self._service = None
+        self._kernel = None
+    
+    @property
+    def service(self):
+        """Lazy initialization of Semantic Kernel service."""
+        if self._service is None:
+            try:
+                from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+            except ImportError:
+                raise ImportError(
+                    "semantic_kernel package not installed. "
+                    "Install with: pip install semantic-kernel"
+                )
+            
+            self._service = OpenAIChatCompletion(
+                service_id="default",
+                ai_model_id=self.model,
+                api_key=self.api_key
+            )
+        
+        return self._service
+    
+    @property
+    def kernel(self):
+        """Get or create Semantic Kernel instance."""
+        if self._kernel is None:
+            try:
+                from semantic_kernel import Kernel
+            except ImportError:
+                raise ImportError(
+                    "semantic_kernel package not installed. "
+                    "Install with: pip install semantic-kernel"
+                )
+            
+            self._kernel = Kernel()
+            self._kernel.add_service(self.service)
+        
+        return self._kernel
+    
+    async def _complete_async(
+        self,
+        messages: List[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """Async completion using Semantic Kernel.
+        
+        Args:
+            messages: List of LLMMessage objects
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            **kwargs: Additional parameters
+            
+        Returns:
+            LLMResponse with generated content
+        """
+        try:
+            from semantic_kernel.contents import ChatHistory
+            from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+        except ImportError:
+            raise ImportError(
+                "semantic_kernel package not installed. "
+                "Install with: pip install semantic-kernel"
+            )
+        
+        # Convert messages to SK ChatHistory
+        chat_history = ChatHistory()
+        for msg in messages:
+            if msg.role == LLMRole.SYSTEM:
+                chat_history.add_system_message(msg.content)
+            elif msg.role == LLMRole.USER:
+                chat_history.add_user_message(msg.content)
+            elif msg.role == LLMRole.ASSISTANT:
+                chat_history.add_assistant_message(msg.content)
+        
+        # Configure execution settings
+        execution_settings = OpenAIChatPromptExecutionSettings(
+            service_id="default",
+            ai_model_id=self.model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        
+        # Get chat completion
+        response = await self.service.get_chat_message_contents(
+            chat_history=chat_history,
+            settings=execution_settings,
+            kernel=self.kernel,
+        )
+        
+        # Extract first response
+        if not response:
+            raise LLMError("No response from Semantic Kernel service")
+        
+        first_response = response[0]
+        
+        # Build LLMResponse
+        return LLMResponse(
+            content=str(first_response.content) if first_response.content else "",
+            model=self.model,
+            usage=first_response.metadata.get("usage", {}) if first_response.metadata else {},
+            finish_reason=first_response.finish_reason.name if first_response.finish_reason else None,
+            metadata=first_response.metadata or {}
+        )
+    
+    def complete(
+        self,
+        messages: Union[str, List[LLMMessage]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[int] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """Generate a completion using Semantic Kernel.
+        
+        Args:
+            messages: Either a string or list of LLMMessage objects
+            temperature: Sampling temperature (0.0 to 2.0)
+            max_tokens: Maximum tokens to generate
+            timeout: Request timeout in seconds (not used by SK)
+            **kwargs: Additional SK parameters
+            
+        Returns:
+            LLMResponse with generated content and metadata
+            
+        Raises:
+            LLMError: For SK service errors
+        """
+        import asyncio
+        
+        normalized_messages = self._normalize_messages(messages)
+        
+        # Run async completion synchronously
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(
+                self._complete_async(
+                    normalized_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs
+                )
+            )
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Map to appropriate error types
+            if "rate_limit" in error_msg or "rate limit" in error_msg:
+                raise LLMRateLimitError(f"Rate limit exceeded: {e}")
+            elif "authentication" in error_msg or "api_key" in error_msg:
+                raise LLMAuthenticationError(f"Authentication failed: {e}")
+            elif "timeout" in error_msg:
+                raise LLMTimeoutError(f"Request timed out: {e}")
+            else:
+                raise LLMError(f"Semantic Kernel error: {e}")
+    
+    def supports_model(self, model: str) -> bool:
+        """Check if the model is supported.
+        
+        Args:
+            model: Model name to check
+            
+        Returns:
+            True if supported, False otherwise
+        """
+        if model in self.SUPPORTED_MODELS:
+            return True
+        
+        for supported in self.SUPPORTED_MODELS:
+            if model.startswith(supported):
+                return True
+        
+        return False
+
+
 class LLMFactory:
     """Factory for creating LLM provider instances.
     
     Supports caching of provider instances for performance.
+    Supports feature flag to switch between direct OpenAI and Semantic Kernel.
     """
     
     _cache: Dict[str, LLMProvider] = {}
@@ -355,7 +591,8 @@ class LLMFactory:
     def create_provider(
         cls,
         config: Dict[str, Any],
-        use_cache: bool = True
+        use_cache: bool = True,
+        use_semantic_kernel: Optional[bool] = None
     ) -> LLMProvider:
         """Create an LLM provider from configuration.
         
@@ -366,7 +603,10 @@ class LLMFactory:
                 - api_key_env: Environment variable name for API key (optional)
                 - base_url: Custom base URL (optional)
                 - timeout: Request timeout in seconds (optional)
+                - use_semantic_kernel: Use SK provider (optional, overrides env var)
             use_cache: Whether to use cached provider instances
+            use_semantic_kernel: Whether to use Semantic Kernel provider
+                (overrides config and env var if provided)
             
         Returns:
             Configured LLMProvider instance
@@ -378,11 +618,21 @@ class LLMFactory:
             >>> config = {"model": "gpt-4o", "timeout": 30}
             >>> provider = LLMFactory.create_provider(config)
             >>> response = provider.complete("Hello, world!")
+            
+            >>> # Use Semantic Kernel
+            >>> provider = LLMFactory.create_provider(config, use_semantic_kernel=True)
         """
         model = config.get("model", "gpt-4o")
         
-        # Create cache key
-        cache_key = f"{model}:{config.get('api_key_env', 'OPENAI_API_KEY')}"
+        # Determine whether to use Semantic Kernel
+        # Priority: function parameter > config > environment variable > default (False)
+        if use_semantic_kernel is None:
+            use_semantic_kernel = config.get("use_semantic_kernel")
+            if use_semantic_kernel is None:
+                use_semantic_kernel = os.getenv("USE_SEMANTIC_KERNEL", "false").lower() in ("true", "1", "yes")
+        
+        # Create cache key (include SK flag)
+        cache_key = f"{model}:{config.get('api_key_env', 'OPENAI_API_KEY')}:sk={use_semantic_kernel}"
         
         # Check cache
         if use_cache and cache_key in cls._cache:
@@ -395,12 +645,21 @@ class LLMFactory:
             if not api_key and "api_key_env" in config:
                 api_key = os.getenv(config["api_key_env"])
             
-            provider = OpenAIProvider(
-                api_key=api_key,
-                model=model,
-                base_url=config.get("base_url"),
-                timeout=config.get("timeout", OpenAIProvider.DEFAULT_TIMEOUT)
-            )
+            # Choose provider implementation
+            if use_semantic_kernel:
+                provider = SemanticKernelProvider(
+                    api_key=api_key,
+                    model=model,
+                    base_url=config.get("base_url"),
+                    timeout=config.get("timeout", SemanticKernelProvider.DEFAULT_TIMEOUT)
+                )
+            else:
+                provider = OpenAIProvider(
+                    api_key=api_key,
+                    model=model,
+                    base_url=config.get("base_url"),
+                    timeout=config.get("timeout", OpenAIProvider.DEFAULT_TIMEOUT)
+                )
             
             # Cache the provider
             if use_cache:
