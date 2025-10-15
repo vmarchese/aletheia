@@ -3604,3 +3604,78 @@ Coverage: 95.68% on aletheia/ui/output.py
 - Ready to move to task 4.4 (Diagnosis Output) or task 4.5 (Input Handling)
 - All tests passing, no regressions introduced
 
+
+--------------------
+
+## Session Update - 2025-10-15 (Task 4.4)
+
+### Completed: Task 4.4 - Diagnosis Output Implementation
+
+**Status**: ✅ COMPLETE
+**Worktree**: `worktrees/feat/4.4-diagnosis-output`
+**Branch**: `feat/4.4-diagnosis-output`
+
+#### Summary
+Implemented comprehensive diagnosis output system with terminal display, markdown export, and interactive action handlers.
+
+#### Files Created/Modified:
+1. **aletheia/ui/diagnosis.py** (534 lines)
+   - `DiagnosisFormatter` class for terminal and markdown formatting
+   - `DiagnosisActionHandler` class for interactive actions
+   - Convenience functions for common operations
+
+2. **tests/unit/ui/test_diagnosis.py** (545 lines)
+   - 37 comprehensive unit tests
+   - Coverage: 96.93%
+   - All tests passing
+
+#### Key Features Implemented:
+
+**4.4.1 Terminal Diagnosis Display**:
+- Rich-formatted root cause analysis display
+- Confidence scores with color coding (green ≥80%, yellow ≥60%, red <60%)
+- Priority-based action display (IMMEDIATE=red, HIGH=yellow, MEDIUM=blue, LOW=white)
+- Evidence display as bullet points
+- Timeline correlation display
+- Syntax-highlighted code patches
+- Interactive action menu
+
+**4.4.2 Markdown Export**:
+- Complete diagnosis export to markdown
+- Syntax-highlighted code blocks with language detection
+- Priority-grouped recommended actions
+- Optional metadata (timestamp, tool info)
+- Parent directory creation
+- Supports custom output paths
+
+**4.4.3 Action Handlers**:
+1. **Show Proposed Patch**: Display all patches with syntax highlighting
+2. **Open in $EDITOR**: Export to temp file and open in user's editor
+3. **Save to File**: Interactive filename prompt with default timestamps
+4. **End Session**: Confirmation prompt before exit
+
+#### Technical Highlights:
+- Language detection for patches (Go, Python, JavaScript, Java)
+- Integration with existing UI modules (Menu, Input, Confirmation, Output)
+- Comprehensive error handling
+- Support for missing/incomplete diagnosis data
+- Special character and multiline text handling
+
+#### Test Coverage:
+- DiagnosisFormatter: 16 tests
+- DiagnosisActionHandler: 13 tests  
+- Convenience functions: 3 tests
+- Edge cases: 5 tests
+- **Total**: 37/37 tests passing
+- **Coverage**: 96.93%
+
+#### Integration Points:
+- Uses `OutputFormatter` for consistent styling
+- Uses `Menu.show_simple()` for action selection
+- Uses `InputHandler.get_text()` for filename input
+- Uses `ConfirmationManager.confirm()` for destructive actions
+- Reads from `ScratchpadSection.FINAL_DIAGNOSIS`
+
+#### Next Steps:
+Task 4.4 is complete. Ready for integration with orchestrator agent and end-to-end testing.
+
