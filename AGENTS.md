@@ -226,7 +226,7 @@ uv pip install -r requirements.txt -r requirements-dev.txt
 - [ ] Implemented feature/fix
 - [ ] Written/updated tests
 - [ ] Committed changes with clear messages
-- [ ] Ran all tests successfully
+- [ ] Ran all unit tests successfully (skip the integration tests in `tests/integration` unless otherwise requested)
 - [ ] All tests passing
 - [ ] Provided session summary
 - [ ] Updated TODO.md file
