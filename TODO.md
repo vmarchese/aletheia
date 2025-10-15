@@ -595,17 +595,17 @@
   - [x] Test error handling
   - **Coverage Target**: ✅ 91.67% (exceeds >85% target)
 
-- [ ] **3.4.5** Create Kubernetes Plugin (NEW - SK REQUIRED)
-  - [ ] Create `aletheia/plugins/kubernetes_plugin.py`
-  - [ ] Convert `KubernetesFetcher` methods to `@kernel_function` decorated methods
-  - [ ] Implement functions:
-    - [ ] `fetch_kubernetes_logs(pod: Annotated[str, "Pod name"], namespace: Annotated[str, "Namespace"], ...)`
-    - [ ] `list_kubernetes_pods(namespace: Annotated[str, "Namespace"], selector: Annotated[str, "Label selector"])`
-    - [ ] `get_pod_status(pod: Annotated[str, "Pod name"], namespace: Annotated[str, "Namespace"])`
-  - [ ] Use `Annotated` type hints for parameter descriptions (SK documentation)
-  - [ ] Register plugin with kernel using `kernel.add_plugin(KubernetesPlugin(), plugin_name="kubernetes")`
-  - [ ] Unit tests with mocked kubectl operations
-  - **Acceptance**: Kubernetes operations exposed as SK kernel functions
+- [x] **3.4.5** Create Kubernetes Plugin (NEW - SK REQUIRED)
+  - [x] Create `aletheia/plugins/kubernetes_plugin.py`
+  - [x] Convert `KubernetesFetcher` methods to `@kernel_function` decorated methods
+  - [x] Implement functions:
+    - [x] `fetch_kubernetes_logs(pod: Annotated[str, "Pod name"], namespace: Annotated[str, "Namespace"], ...)`
+    - [x] `list_kubernetes_pods(namespace: Annotated[str, "Namespace"], selector: Annotated[str, "Label selector"])`
+    - [x] `get_pod_status(pod: Annotated[str, "Pod name"], namespace: Annotated[str, "Namespace"])`
+  - [x] Use `Annotated` type hints for parameter descriptions (SK documentation)
+  - [x] Register plugin with kernel using `kernel.add_plugin(KubernetesPlugin(), plugin_name="kubernetes")`
+  - [x] Unit tests with mocked kubectl operations
+  - **Acceptance**: ✅ Kubernetes operations exposed as SK kernel functions (24/24 tests, 100% coverage, Completed: 2025-10-15)
 
 - [ ] **3.4.6** Create Prometheus Plugin (NEW - SK REQUIRED)
   - [ ] Create `aletheia/plugins/prometheus_plugin.py`
