@@ -619,16 +619,16 @@
   - [x] Unit tests with mocked HTTP API calls
   - **Acceptance**: ✅ Prometheus operations exposed as SK kernel functions (32/32 tests, 100% coverage, Completed: 2025-10-15)
 
-- [ ] **3.4.7** Create Git Plugin (NEW - SK REQUIRED)
-  - [ ] Create `aletheia/plugins/git_plugin.py`
-  - [ ] Expose git operations as `@kernel_function` decorated methods:
-    - [ ] `git_blame(file_path: Annotated[str, "File path"], line_number: Annotated[int, "Line number"], repo: Annotated[str, "Repository path"])`
-    - [ ] `find_file_in_repo(filename: Annotated[str, "File name"], repo: Annotated[str, "Repository path"])`
-    - [ ] `extract_code_context(file_path: Annotated[str, "File path"], line_number: Annotated[int, "Line"], context_lines: Annotated[int, "Context lines"])`
-  - [ ] Use `Annotated` type hints for parameter descriptions
-  - [ ] Register plugin with kernel
-  - [ ] Unit tests with mocked git subprocess calls
-  - **Acceptance**: Git operations exposed as SK kernel functions
+- [x] **3.4.7** Create Git Plugin (NEW - SK REQUIRED)
+  - [x] Create `aletheia/plugins/git_plugin.py`
+  - [x] Expose git operations as `@kernel_function` decorated methods:
+    - [x] `git_blame(file_path: Annotated[str, "File path"], line_number: Annotated[int, "Line number"], repo: Annotated[str, "Repository path"])`
+    - [x] `find_file_in_repo(filename: Annotated[str, "File name"], repo: Annotated[str, "Repository path"])`
+    - [x] `extract_code_context(file_path: Annotated[str, "File path"], line_number: Annotated[int, "Line"], context_lines: Annotated[int, "Context lines"])`
+  - [x] Use `Annotated` type hints for parameter descriptions
+  - [x] Register plugin with kernel
+  - [x] Unit tests with mocked git subprocess calls
+  - **Acceptance**: ✅ Git operations exposed as SK kernel functions (34/34 tests, 92.13% coverage, Completed: 2025-10-15)
 
 - [ ] **3.4.8** Convert Data Fetcher to SK Agent (NEW - SK REQUIRED)
   - [ ] Migrate `DataFetcherAgent` to inherit from SK `ChatCompletionAgent`
