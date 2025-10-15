@@ -6,6 +6,9 @@ This agent is responsible for:
 - Clustering similar error messages
 - Building incident timelines
 - Writing results to the scratchpad's PATTERN_ANALYSIS section
+
+This is the SK-based version that uses Semantic Kernel's ChatCompletionAgent
+for pattern analysis with maintained analytical methods.
 """
 
 from datetime import datetime
@@ -13,13 +16,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import Counter, defaultdict
 import re
 
-from aletheia.agents.base import BaseAgent
+from aletheia.agents.sk_base import SKBaseAgent
 from aletheia.llm.prompts import compose_messages, get_system_prompt, get_user_prompt_template
 from aletheia.scratchpad import ScratchpadSection
 
 
-class PatternAnalyzerAgent(BaseAgent):
-    """Agent responsible for analyzing patterns in collected data.
+class PatternAnalyzerAgent(SKBaseAgent):
+    """SK-based agent responsible for analyzing patterns in collected data.
+    
+    This agent uses Semantic Kernel's ChatCompletionAgent with analytical
+    helper functions for pattern detection and analysis.
     
     The Pattern Analyzer Agent:
     1. Reads the DATA_COLLECTED section from the scratchpad
@@ -32,22 +38,30 @@ class PatternAnalyzerAgent(BaseAgent):
     Attributes:
         config: Agent configuration including analysis settings
         scratchpad: Scratchpad for reading data and writing analysis
+        use_sk: Whether to use SK agent for analysis (default: False for compatibility)
     """
     
-    def __init__(self, config: Dict[str, Any], scratchpad: Any):
-        """Initialize the Pattern Analyzer Agent.
+    def __init__(self, config: Dict[str, Any], scratchpad: Any, use_sk: bool = False):
+        """Initialize the SK-based Pattern Analyzer Agent.
         
         Args:
             config: Configuration dictionary with analysis settings and llm sections
             scratchpad: Scratchpad instance for agent communication
+            use_sk: Whether to use SK agent for pattern analysis (default: False)
         """
         super().__init__(config, scratchpad, agent_name="pattern_analyzer")
+        self.use_sk = use_sk
     
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute the pattern analysis process.
         
+        Supports both SK-based and direct analysis modes. SK mode uses the
+        ChatCompletionAgent for analysis (future), while direct mode uses
+        the analytical helper methods (current default).
+        
         Args:
             **kwargs: Additional parameters for analysis
+                - use_sk: Optional override for SK mode
         
         Returns:
             Dictionary with execution results:
@@ -56,6 +70,29 @@ class PatternAnalyzerAgent(BaseAgent):
                 - error_clusters_found: int - Number of error clusters
                 - timeline_events: int - Number of timeline events
                 - correlation_count: int - Number of correlations found
+        
+        Raises:
+            ValueError: If DATA_COLLECTED section is missing or empty
+        """
+        # Allow per-call override of SK mode
+        use_sk = kwargs.get("use_sk", self.use_sk)
+        
+        if use_sk:
+            return self._execute_with_sk(**kwargs)
+        else:
+            return self._execute_direct(**kwargs)
+    
+    def _execute_direct(self, **kwargs) -> Dict[str, Any]:
+        """Execute pattern analysis using direct analytical methods (original implementation).
+        
+        This is the original implementation that uses helper methods for analysis.
+        Maintains full backward compatibility.
+        
+        Args:
+            **kwargs: Additional parameters for analysis
+        
+        Returns:
+            Dictionary with execution results
         
         Raises:
             ValueError: If DATA_COLLECTED section is missing or empty
@@ -375,6 +412,192 @@ class PatternAnalyzerAgent(BaseAgent):
                 correlations.append(correlation)
         
         return correlations
+    
+    def _execute_with_sk(self, **kwargs) -> Dict[str, Any]:
+        """Execute pattern analysis using SK ChatCompletionAgent.
+        
+        This method uses the SK agent to perform pattern analysis. It builds
+        a comprehensive prompt with the collected data and asks the SK agent
+        to perform the analysis, then parses the structured response.
+        
+        Falls back to direct mode if SK fails.
+        
+        Args:
+            **kwargs: Additional parameters for analysis
+        
+        Returns:
+            Dictionary with execution results
+        
+        Raises:
+            ValueError: If DATA_COLLECTED section is missing or empty
+        """
+        try:
+            # Read collected data from scratchpad
+            collected_data = self.read_scratchpad(ScratchpadSection.DATA_COLLECTED)
+            if not collected_data:
+                raise ValueError("No data collected. Run Data Fetcher Agent first.")
+            
+            # Read problem description for context
+            problem = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
+            
+            # Build SK prompt for pattern analysis
+            prompt = self._build_sk_analysis_prompt(collected_data, problem)
+            
+            # Invoke SK agent
+            response = self.invoke(prompt)
+            
+            # Parse SK response
+            analysis = self._parse_sk_analysis_response(response)
+            
+            # Write analysis to scratchpad
+            self.write_scratchpad(ScratchpadSection.PATTERN_ANALYSIS, analysis)
+            
+            # Return execution results
+            return {
+                "success": True,
+                "anomalies_found": len(analysis.get("anomalies", [])),
+                "error_clusters_found": len(analysis.get("error_clusters", [])),
+                "timeline_events": len(analysis.get("timeline", [])),
+                "correlation_count": len(analysis.get("correlations", []))
+            }
+        
+        except Exception as e:
+            # Fall back to direct mode on SK failure
+            print(f"SK analysis failed ({str(e)}), falling back to direct mode")
+            return self._execute_direct(**kwargs)
+    
+    def _build_sk_analysis_prompt(
+        self,
+        collected_data: Dict[str, Any],
+        problem: Dict[str, Any]
+    ) -> str:
+        """Build comprehensive prompt for SK agent pattern analysis.
+        
+        Args:
+            collected_data: Collected data from DATA_COLLECTED section
+            problem: Problem description from PROBLEM_DESCRIPTION section
+        
+        Returns:
+            Formatted prompt string for SK agent
+        """
+        import json
+        
+        prompt = f"""Analyze the following collected data and identify patterns, anomalies, and correlations.
+
+Problem Context:
+{json.dumps(problem, indent=2)}
+
+Collected Data:
+{json.dumps(collected_data, indent=2)}
+
+Please perform the following analysis:
+
+1. **Anomaly Detection**: Identify any anomalies in metrics and logs:
+   - Metric spikes/drops (>20% deviation)
+   - Error rate spikes (>20% error rate)
+   - Assign severity levels (moderate/high/critical)
+
+2. **Error Clustering**: Group similar error messages:
+   - Normalize error messages (remove UUIDs, numbers, paths)
+   - Extract stack traces
+   - Count occurrences
+
+3. **Timeline Building**: Create chronological event timeline:
+   - Order events by timestamp
+   - Include data collection windows
+   - Include anomalies
+
+4. **Correlation Analysis**: Cross-correlate events:
+   - Temporal alignment (events within 5 minutes)
+   - Deployment correlations
+   - Assign confidence scores
+
+Return your analysis as a JSON object with this structure:
+{{
+    "anomalies": [
+        {{
+            "type": "metric_spike|metric_drop|error_rate_spike",
+            "timestamp": "ISO timestamp",
+            "severity": "moderate|high|critical",
+            "description": "description",
+            "source": "source name"
+        }}
+    ],
+    "error_clusters": [
+        {{
+            "pattern": "normalized error pattern",
+            "count": number,
+            "examples": ["example1", "example2"],
+            "sources": ["source1"],
+            "stack_trace": "optional stack trace"
+        }}
+    ],
+    "timeline": [
+        {{
+            "time": "ISO timestamp",
+            "event": "event description",
+            "type": "context|anomaly",
+            "severity": "optional severity"
+        }}
+    ],
+    "correlations": [
+        {{
+            "type": "temporal_alignment|deployment_correlation",
+            "description": "description",
+            "confidence": 0.0-1.0,
+            "events": [anomaly objects]
+        }}
+    ]
+}}
+
+Provide ONLY the JSON object, no additional commentary."""
+        
+        return prompt
+    
+    def _parse_sk_analysis_response(self, response: str) -> Dict[str, Any]:
+        """Parse SK agent response into analysis structure.
+        
+        Args:
+            response: SK agent response string
+        
+        Returns:
+            Parsed analysis dictionary
+        
+        Raises:
+            ValueError: If response cannot be parsed
+        """
+        import json
+        
+        # Try to extract JSON from response
+        json_start = response.find('{')
+        json_end = response.rfind('}') + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_str = response[json_start:json_end]
+            try:
+                analysis = json.loads(json_str)
+                
+                # Validate structure
+                if not isinstance(analysis, dict):
+                    raise ValueError("Analysis must be a dictionary")
+                
+                # Ensure all required keys exist with defaults
+                analysis.setdefault("anomalies", [])
+                analysis.setdefault("error_clusters", [])
+                analysis.setdefault("timeline", [])
+                analysis.setdefault("correlations", [])
+                
+                return analysis
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Failed to parse JSON: {e}")
+        
+        # If no JSON found, return empty analysis
+        return {
+            "anomalies": [],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": []
+        }
     
     # Helper methods
     

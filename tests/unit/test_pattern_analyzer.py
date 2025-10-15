@@ -731,3 +731,215 @@ class TestHelperMethods:
         # Should return a valid timestamp
         assert isinstance(start_time, str)
         assert len(start_time) > 0
+
+
+class TestSKIntegration:
+    """Test Semantic Kernel integration for Pattern Analyzer."""
+    
+    def test_initialization_with_sk_mode(self):
+        """Test initialization with SK mode enabled."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key": "test-key"}}
+        scratchpad = Mock(spec=Scratchpad)
+        
+        agent = PatternAnalyzerAgent(config, scratchpad, use_sk=True)
+        
+        assert agent.use_sk is True
+        assert agent.agent_name == "pattern_analyzer"
+    
+    def test_build_sk_analysis_prompt(self):
+        """Test building SK analysis prompt."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        collected_data = {
+            "kubernetes": {
+                "source": "kubernetes",
+                "count": 100,
+                "summary": "100 logs (30 ERROR)"
+            }
+        }
+        problem = {"description": "Service failing"}
+        
+        prompt = agent._build_sk_analysis_prompt(collected_data, problem)
+        
+        assert "Analyze the following collected data" in prompt
+        assert "Service failing" in prompt
+        assert "kubernetes" in prompt
+        assert "JSON object" in prompt
+        assert "anomalies" in prompt
+        assert "error_clusters" in prompt
+        assert "timeline" in prompt
+        assert "correlations" in prompt
+    
+    def test_parse_sk_analysis_response_valid_json(self):
+        """Test parsing valid SK analysis response."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        response = """{
+            "anomalies": [
+                {
+                    "type": "metric_spike",
+                    "timestamp": "2025-10-14T10:05:00",
+                    "severity": "critical",
+                    "description": "Error rate spike",
+                    "source": "prometheus"
+                }
+            ],
+            "error_clusters": [
+                {
+                    "pattern": "NullPointerException",
+                    "count": 45,
+                    "examples": ["NPE at line 1"],
+                    "sources": ["kubernetes"]
+                }
+            ],
+            "timeline": [],
+            "correlations": []
+        }"""
+        
+        analysis = agent._parse_sk_analysis_response(response)
+        
+        assert "anomalies" in analysis
+        assert "error_clusters" in analysis
+        assert "timeline" in analysis
+        assert "correlations" in analysis
+        assert len(analysis["anomalies"]) == 1
+        assert len(analysis["error_clusters"]) == 1
+        assert analysis["anomalies"][0]["type"] == "metric_spike"
+    
+    def test_parse_sk_analysis_response_with_text(self):
+        """Test parsing SK response with surrounding text."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        response = """Here is my analysis:
+        
+        {
+            "anomalies": [],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": []
+        }
+        
+        This analysis shows no issues."""
+        
+        analysis = agent._parse_sk_analysis_response(response)
+        
+        assert isinstance(analysis, dict)
+        assert "anomalies" in analysis
+        assert len(analysis["anomalies"]) == 0
+    
+    def test_parse_sk_analysis_response_no_json(self):
+        """Test parsing SK response without JSON."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        response = "I could not analyze the data."
+        
+        analysis = agent._parse_sk_analysis_response(response)
+        
+        assert isinstance(analysis, dict)
+        assert "anomalies" in analysis
+        assert len(analysis["anomalies"]) == 0
+        assert len(analysis["error_clusters"]) == 0
+    
+    def test_parse_sk_analysis_response_invalid_json(self):
+        """Test parsing SK response with invalid JSON."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        response = '{"anomalies": [invalid json}'
+        
+        with pytest.raises(ValueError, match="Failed to parse JSON"):
+            agent._parse_sk_analysis_response(response)
+    
+    @patch.object(PatternAnalyzerAgent, 'invoke')
+    def test_execute_with_sk_mode(self, mock_invoke):
+        """Test execute with SK mode enabled."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key": "test-key"}}
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.DATA_COLLECTED: {
+                "kubernetes": {"source": "kubernetes", "count": 100, "summary": "100 logs"}
+            },
+            ScratchpadSection.PROBLEM_DESCRIPTION: {"description": "Test problem"}
+        }.get(section, {})
+        
+        agent = PatternAnalyzerAgent(config, scratchpad, use_sk=True)
+        
+        # Mock SK response
+        mock_invoke.return_value = """{
+            "anomalies": [{"type": "metric_spike", "timestamp": "2025-10-14T10:05:00", "severity": "critical", "description": "Spike", "source": "test"}],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": []
+        }"""
+        
+        result = agent.execute()
+        
+        assert result["success"] is True
+        assert result["anomalies_found"] == 1
+        mock_invoke.assert_called_once()
+        scratchpad.write_section.assert_called_once()
+    
+    @patch.object(PatternAnalyzerAgent, 'invoke')
+    def test_execute_sk_fallback_to_direct(self, mock_invoke):
+        """Test execute falls back to direct mode on SK failure."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key": "test-key"}}
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.DATA_COLLECTED: {
+                "kubernetes": {
+                    "source": "kubernetes",
+                    "count": 100,
+                    "summary": "100 logs (50 ERROR, 50 INFO)",
+                    "time_range": "2025-10-14T08:00:00 - 2025-10-14T10:00:00"
+                }
+            },
+            ScratchpadSection.PROBLEM_DESCRIPTION: {"description": "Test problem"}
+        }.get(section, {})
+        
+        agent = PatternAnalyzerAgent(config, scratchpad, use_sk=True)
+        
+        # Mock SK failure
+        mock_invoke.side_effect = Exception("SK connection failed")
+        
+        result = agent.execute()
+        
+        assert result["success"] is True
+        # Should have found error rate spike (50% errors) via direct mode
+        assert result["anomalies_found"] >= 1
+        mock_invoke.assert_called_once()
+        scratchpad.write_section.assert_called()
+    
+    def test_execute_with_use_sk_parameter(self):
+        """Test execute with use_sk parameter override."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.DATA_COLLECTED: {
+                "kubernetes": {
+                    "source": "kubernetes",
+                    "count": 100,
+                    "summary": "100 logs (30 ERROR)",
+                    "time_range": "2025-10-14T08:00:00 - 2025-10-14T10:00:00"
+                }
+            },
+            ScratchpadSection.PROBLEM_DESCRIPTION: {}
+        }.get(section, {})
+        
+        # Agent created without SK mode
+        agent = PatternAnalyzerAgent(config, scratchpad, use_sk=False)
+        
+        # Execute with use_sk=False (direct mode)
+        result = agent.execute(use_sk=False)
+        
+        assert result["success"] is True
+        assert "anomalies_found" in result
+
