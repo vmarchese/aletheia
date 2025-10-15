@@ -522,3 +522,248 @@ class TestCodeInspectorAgent:
         
         assert result["success"] is True
         assert result["repositories_searched"] == 1
+
+
+class TestCodeInspectorAgentSKMode:
+    """Test suite for Code Inspector Agent SK mode."""
+    
+    def test_sk_mode_initialization(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test SK agent initialization with GitPlugin."""
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo)]
+        )
+        
+        # Check that git plugin is initialized
+        assert agent._git_plugin is not None
+        assert agent._plugins_registered is False
+    
+    def test_sk_mode_plugin_registration(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test that GitPlugin is registered with kernel."""
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo)]
+        )
+        
+        # Mock the kernel to avoid API key requirement
+        mock_kernel = MagicMock()
+        mock_kernel.plugins = []
+        
+        with patch.object(agent, '_kernel', mock_kernel):
+            # Register plugins
+            agent._register_plugins()
+        
+        assert agent._plugins_registered is True
+        # Check that plugin was added
+        mock_kernel.add_plugin.assert_called_once()
+    
+    def test_execute_sk_mode_with_mock_response(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test execute in SK mode with mocked SK response."""
+        pattern_analysis = {
+            "error_clusters": [
+                {
+                    "pattern": "nil pointer at features.go:8",
+                    "stack_trace": "features.go:8"
+                }
+            ]
+        }
+        
+        mock_scratchpad.read_section.return_value = pattern_analysis
+        
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo)]
+        )
+        
+        # Mock the kernel to avoid API key requirement
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        # Mock the SK invoke method
+        mock_sk_response = f"""
+{{
+    "suspect_files": [
+        {{
+            "file": "src/features.go",
+            "line": 8,
+            "function": "IsEnabled",
+            "repository": "{str(temp_git_repo)}",
+            "snippet": "return *f.Enabled",
+            "analysis": "Potential nil pointer dereference",
+            "git_blame": {{
+                "commit": "abc123",
+                "author": "Test User",
+                "date": "2025-10-14",
+                "message": "Add feature"
+            }}
+        }}
+    ],
+    "related_code": []
+}}
+"""
+        
+        with patch.object(agent, 'invoke', return_value=mock_sk_response):
+            result = agent.execute(use_sk=True)
+        
+        assert result["success"] is True
+        assert result["sk_used"] is True
+        assert result["suspect_files_found"] == 1
+        assert result["git_blame_executed"] == 1
+        
+        # Verify scratchpad was written
+        mock_scratchpad.write_section.assert_called_once()
+        call_args = mock_scratchpad.write_section.call_args
+        assert call_args[0][0] == ScratchpadSection.CODE_INSPECTION
+        inspection = call_args[0][1]
+        assert len(inspection["suspect_files"]) == 1
+        assert inspection["suspect_files"][0]["function"] == "IsEnabled"
+    
+    def test_execute_sk_mode_no_stack_traces(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test SK mode with no stack traces found."""
+        pattern_analysis = {
+            "error_clusters": [],
+            "anomalies": []
+        }
+        
+        mock_scratchpad.read_section.return_value = pattern_analysis
+        
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo)]
+        )
+        
+        # Mock the kernel to avoid API key requirement
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        result = agent.execute(use_sk=True)
+        
+        assert result["success"] is True
+        assert result["sk_used"] is True
+        assert result["suspect_files_found"] == 0
+        
+        # Verify scratchpad was written with empty result
+        mock_scratchpad.write_section.assert_called_once()
+        call_args = mock_scratchpad.write_section.call_args
+        inspection = call_args[0][1]
+        assert len(inspection["suspect_files"]) == 0
+        assert "note" in inspection
+    
+    def test_execute_sk_mode_with_invalid_json_response(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test SK mode with non-JSON response (fallback)."""
+        pattern_analysis = {
+            "error_clusters": [
+                {
+                    "pattern": "error at features.go:8",
+                    "stack_trace": "features.go:8"
+                }
+            ]
+        }
+        
+        mock_scratchpad.read_section.return_value = pattern_analysis
+        
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo)]
+        )
+        
+        # Mock the kernel to avoid API key requirement
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        # Mock SK response with plain text (no JSON)
+        mock_sk_response = "I analyzed the code and found potential issues in features.go"
+        
+        with patch.object(agent, 'invoke', return_value=mock_sk_response):
+            result = agent.execute(use_sk=True)
+        
+        assert result["success"] is True
+        assert result["sk_used"] is True
+        assert result["suspect_files_found"] == 0  # No structured data
+        
+        # Verify scratchpad has analysis_text
+        call_args = mock_scratchpad.write_section.call_args
+        inspection = call_args[0][1]
+        assert "analysis_text" in inspection
+        assert inspection["analysis_text"] == mock_sk_response
+    
+    def test_execute_direct_mode_returns_sk_used_false(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test that direct mode (default) returns sk_used=False."""
+        pattern_analysis = {"error_clusters": []}
+        mock_scratchpad.read_section.return_value = pattern_analysis
+        
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo)]
+        )
+        
+        result = agent.execute(use_sk=False)
+        
+        assert result["success"] is True
+        assert result["sk_used"] is False
+    
+    def test_sk_mode_with_multiple_repositories(self, mock_config, mock_scratchpad, temp_git_repo, tmp_path):
+        """Test SK mode with multiple repositories."""
+        # Create second repo
+        repo2 = tmp_path / "repo2"
+        repo2.mkdir()
+        os.system(f"cd {repo2} && git init")
+        (repo2 / ".git").mkdir(exist_ok=True)
+        
+        pattern_analysis = {
+            "error_clusters": [
+                {"stack_trace": "file.go:10"}
+            ]
+        }
+        
+        mock_scratchpad.read_section.return_value = pattern_analysis
+        
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad,
+            repositories=[str(temp_git_repo), str(repo2)]
+        )
+        
+        mock_sk_response = '{"suspect_files": [], "related_code": []}'
+        
+        # Mock the kernel to avoid API key requirement
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        with patch.object(agent, 'invoke', return_value=mock_sk_response):
+            result = agent.execute(use_sk=True)
+        
+        assert result["success"] is True
+        assert result["repositories_searched"] == 2
+        assert result["sk_used"] is True
+    
+    def test_git_plugin_repositories_updated(self, mock_config, mock_scratchpad, temp_git_repo):
+        """Test that git plugin repositories are updated when execute is called."""
+        agent = CodeInspectorAgent(
+            mock_config,
+            mock_scratchpad
+        )
+        
+        # Initially no repositories
+        assert len(agent.repositories) == 0
+        
+        pattern_analysis = {"error_clusters": []}
+        mock_scratchpad.read_section.return_value = pattern_analysis
+        
+        # Mock the kernel to avoid API key requirement
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        # Execute with repositories parameter
+        result = agent.execute(repositories=[str(temp_git_repo)], use_sk=True)
+        
+        # Git plugin should be updated
+        assert len(agent._git_plugin.repositories) == 1
+        assert str(agent._git_plugin.repositories[0]) == str(temp_git_repo)
+        assert result["sk_used"] is True

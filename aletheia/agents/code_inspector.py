@@ -7,8 +7,12 @@ This agent is responsible for:
 - Running git blame on suspect lines
 - Analyzing caller relationships
 - Writing results to the scratchpad's CODE_INSPECTION section
+
+This is the SK-based version that uses Semantic Kernel's ChatCompletionAgent
+with GitPlugin for automatic function calling.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -16,21 +20,26 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from aletheia.agents.base import BaseAgent
+from aletheia.agents.sk_base import SKBaseAgent
 from aletheia.llm.prompts import compose_messages, get_system_prompt, get_user_prompt_template
+from aletheia.plugins.git_plugin import GitPlugin
 from aletheia.scratchpad import ScratchpadSection
 from aletheia.utils.validation import validate_git_repository
 
 
-class CodeInspectorAgent(BaseAgent):
-    """Agent responsible for inspecting source code related to errors.
+class CodeInspectorAgent(SKBaseAgent):
+    """SK-based agent responsible for inspecting source code related to errors.
+    
+    This agent uses Semantic Kernel's ChatCompletionAgent with GitPlugin for
+    git operations. The LLM can automatically invoke plugin functions via
+    FunctionChoiceBehavior.Auto().
     
     The Code Inspector Agent:
     1. Reads the PATTERN_ANALYSIS section from the scratchpad
     2. Extracts stack traces from error clusters
     3. Maps stack traces to source files in user-provided repositories
     4. Extracts suspect functions and surrounding context
-    5. Runs git blame on suspect lines
+    5. Runs git blame on suspect lines (via GitPlugin)
     6. Analyzes caller relationships (configurable depth)
     7. Writes results to the CODE_INSPECTION section
     
@@ -39,6 +48,8 @@ class CodeInspectorAgent(BaseAgent):
         scratchpad: Scratchpad for reading data and writing inspection results
         repositories: List of repository paths to search for files
         analysis_depth: Depth of analysis (minimal, standard, deep)
+        _git_plugin: GitPlugin instance for git operations
+        _plugins_registered: Whether SK plugins have been registered
     """
     
     def __init__(self, config: Dict[str, Any], scratchpad: Any, repositories: Optional[List[str]] = None):
@@ -52,12 +63,38 @@ class CodeInspectorAgent(BaseAgent):
         super().__init__(config, scratchpad, agent_name="code_inspector")
         self.repositories = repositories or []
         self.analysis_depth = config.get("code_inspection", {}).get("depth", "standard")
+        
+        # Initialize git plugin (not registered with kernel yet)
+        self._git_plugin = GitPlugin(self.repositories)
+        self._plugins_registered = False
     
-    def execute(self, repositories: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def _register_plugins(self) -> None:
+        """Register SK plugins with the kernel for automatic function calling.
+        
+        This registers the GitPlugin so the SK agent can automatically invoke
+        git operations via FunctionChoiceBehavior.Auto().
+        """
+        if self._plugins_registered:
+            return
+        
+        # Update git plugin with current repositories
+        self._git_plugin.set_repositories(self.repositories)
+        
+        # Register with kernel
+        self.kernel.add_plugin(self._git_plugin, plugin_name="git")
+        
+        self._plugins_registered = True
+    
+    def execute(self, repositories: Optional[List[str]] = None, use_sk: bool = False, **kwargs) -> Dict[str, Any]:
         """Execute the code inspection process.
+        
+        This method can operate in two modes:
+        1. SK mode: Uses SK agent with automatic function calling via GitPlugin
+        2. Direct mode (default): Directly calls git operations (maintains backward compatibility)
         
         Args:
             repositories: Optional list of repository paths to search
+            use_sk: If True, uses SK agent with GitPlugin. If False, uses direct git calls.
             **kwargs: Additional parameters for inspection
         
         Returns:
@@ -66,6 +103,7 @@ class CodeInspectorAgent(BaseAgent):
                 - suspect_files_found: int - Number of suspect files identified
                 - git_blame_executed: int - Number of git blame operations
                 - repositories_searched: int - Number of repositories searched
+                - sk_used: bool - Whether SK mode was used
         
         Raises:
             ValueError: If PATTERN_ANALYSIS section is missing
@@ -93,11 +131,133 @@ class CodeInspectorAgent(BaseAgent):
         
         self.repositories = validated_repos
         
+        # Update git plugin with validated repos
+        self._git_plugin.set_repositories([str(repo) for repo in self.repositories])
+        
         # Read pattern analysis from scratchpad
         pattern_analysis = self.read_scratchpad(ScratchpadSection.PATTERN_ANALYSIS)
         if not pattern_analysis:
             raise ValueError("No pattern analysis found. Run Pattern Analyzer Agent first.")
         
+        # If SK mode requested, register plugins and use SK agent
+        if use_sk:
+            self._register_plugins()
+            return self._execute_with_sk(pattern_analysis)
+        
+        # Otherwise, use direct mode (backward compatibility)
+        return self._execute_direct(pattern_analysis)
+    
+    def _execute_with_sk(self, pattern_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute code inspection using SK agent with GitPlugin.
+        
+        This mode uses the SK ChatCompletionAgent which can automatically
+        invoke GitPlugin functions for git operations.
+        
+        Args:
+            pattern_analysis: Pattern analysis data from scratchpad
+        
+        Returns:
+            Dictionary with execution results
+        """
+        # Prepare context for SK agent
+        stack_traces = self._extract_stack_traces(pattern_analysis)
+        
+        if not stack_traces:
+            # No stack traces found, write empty result
+            inspection = {
+                "suspect_files": [],
+                "related_code": [],
+                "note": "No stack traces found in pattern analysis"
+            }
+            self.write_scratchpad(ScratchpadSection.CODE_INSPECTION, inspection)
+            return {
+                "success": True,
+                "suspect_files_found": 0,
+                "git_blame_executed": 0,
+                "repositories_searched": len(self.repositories),
+                "sk_used": True
+            }
+        
+        # Create a detailed prompt for the SK agent
+        user_message = f"""
+Analyze the following stack traces and perform code inspection:
+
+Stack Traces:
+{json.dumps(stack_traces, indent=2)}
+
+Repositories to search:
+{json.dumps([str(repo) for repo in self.repositories], indent=2)}
+
+For each stack trace:
+1. Map file references to actual files in the repositories using find_file_in_repo
+2. Extract code context using extract_code_context
+3. Run git blame on suspect lines using git_blame
+4. Analyze the code and git blame information
+
+Provide your analysis in JSON format with this structure:
+{{
+    "suspect_files": [
+        {{
+            "file": "path/to/file",
+            "line": 123,
+            "function": "function_name",
+            "repository": "/path/to/repo",
+            "snippet": "code snippet",
+            "analysis": "your analysis",
+            "git_blame": {{ git blame info }}
+        }}
+    ],
+    "related_code": []
+}}
+"""
+        
+        # Invoke SK agent
+        response = self.invoke(user_message, settings={"temperature": 0.3, "max_tokens": 2000})
+        
+        # Parse response to extract inspection results
+        try:
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                inspection = json.loads(json_match.group(0))
+            else:
+                # Fallback: create inspection from response text
+                inspection = {
+                    "suspect_files": [],
+                    "related_code": [],
+                    "analysis_text": response
+                }
+        except json.JSONDecodeError:
+            # Fallback if JSON parsing fails
+            inspection = {
+                "suspect_files": [],
+                "related_code": [],
+                "analysis_text": response
+            }
+        
+        # Write inspection results to scratchpad
+        self.write_scratchpad(ScratchpadSection.CODE_INSPECTION, inspection)
+        
+        return {
+            "success": True,
+            "suspect_files_found": len(inspection.get("suspect_files", [])),
+            "git_blame_executed": sum(1 for sf in inspection.get("suspect_files", []) if sf.get("git_blame")),
+            "repositories_searched": len(self.repositories),
+            "sk_used": True
+        }
+    
+    def _execute_direct(self, pattern_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute code inspection using direct git operations (backward compatibility).
+        
+        This mode directly calls git operations via subprocess, maintaining
+        backward compatibility with existing code.
+        
+        Args:
+            pattern_analysis: Pattern analysis data from scratchpad
+        
+        Returns:
+            Dictionary with execution results
+        """
         # Initialize inspection results
         inspection = {
             "suspect_files": [],
@@ -163,7 +323,8 @@ class CodeInspectorAgent(BaseAgent):
             "success": True,
             "suspect_files_found": len(inspection["suspect_files"]),
             "git_blame_executed": sum(1 for sf in inspection["suspect_files"] if sf.get("git_blame")),
-            "repositories_searched": len(self.repositories)
+            "repositories_searched": len(self.repositories),
+            "sk_used": False
         }
     
     def _extract_stack_traces(self, pattern_analysis: Dict[str, Any]) -> List[str]:
