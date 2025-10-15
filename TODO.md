@@ -745,14 +745,14 @@
   - [x] Test analysis depth configuration (2 tests)
   - **Coverage Target**: ✅ 89.49% (exceeds >85% target, 34/34 tests passing)
 
-- [ ] **3.6.7** Convert Code Inspector to SK Agent (NEW - SK REQUIRED)
-  - [ ] Migrate `CodeInspectorAgent` to inherit from SK `ChatCompletionAgent`
-  - [ ] Add `GitPlugin` to agent's kernel for git operations
-  - [ ] Configure `FunctionChoiceBehavior.Auto()` for plugin invocation
-  - [ ] Update git operations to use GitPlugin functions instead of direct subprocess
-  - [ ] Maintain existing analysis methods (file mapping, code extraction, caller analysis)
-  - [ ] Update unit tests to use SK agent pattern
-  - **Acceptance**: Code Inspector is SK agent using GitPlugin for git operations
+- [x] **3.6.7** Convert Code Inspector to SK Agent (NEW - SK REQUIRED)
+  - [x] Migrate `CodeInspectorAgent` to inherit from SK `ChatCompletionAgent` (via SKBaseAgent)
+  - [x] Add `GitPlugin` to agent's kernel for git operations
+  - [x] Configure `FunctionChoiceBehavior.Auto()` for plugin invocation
+  - [x] Update git operations to use GitPlugin functions instead of direct subprocess
+  - [x] Maintain existing analysis methods (file mapping, code extraction, caller analysis)
+  - [x] Update unit tests to use SK agent pattern (42/42 tests passing, 89.60% coverage)
+  - **Acceptance**: ✅ Code Inspector is SK agent using GitPlugin for git operations (Completed: 2025-10-15)
 
 ### 3.7 Root Cause Analyst Agent
 
