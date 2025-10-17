@@ -371,6 +371,10 @@ Provide your analysis in JSON format with this structure:
         """
         file_mappings = []
         
+        # Handle None or empty stack trace
+        if not stack_trace:
+            return file_mappings
+        
         # Parse stack trace to extract file:line pairs
         # Support multiple formats: "file.go:123", "file.go:123 → file2.go:456"
         patterns = [

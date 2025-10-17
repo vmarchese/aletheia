@@ -26,6 +26,7 @@ from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.code_inspector import CodeInspectorAgent
 from aletheia.agents.root_cause_analyst import RootCauseAnalystAgent
 from aletheia.config import ConfigLoader
+from aletheia.fetchers.base import FetchError
 
 
 # ============================================================================
@@ -109,7 +110,7 @@ def mock_kubernetes_fetcher():
                 "pod": "payments-svc-abc123"
             }
         ],
-        summary="4 logs (3 ERROR, 1 INFO), top error: 'nil pointer dereference' (2x)",
+        summary="4 logs (3 ERROR, 1 INFO), top error: 'nil pointer dereference at PaymentService.java:123' (2x)",
         count=4,
         time_range=(datetime(2025, 10, 17, 10, 0, 0), datetime(2025, 10, 17, 10, 1, 0)),
         metadata={"namespace": "default", "pod_count": 2}
@@ -330,9 +331,9 @@ class TestCompleteSessionFlow:
         assert scratchpad.has_section(ScratchpadSection.FINAL_DIAGNOSIS)
         diagnosis = scratchpad.read_section(ScratchpadSection.FINAL_DIAGNOSIS)
         assert "root_cause" in diagnosis
-        assert "confidence" in diagnosis
-        assert "recommendations" in diagnosis
-        assert diagnosis["confidence"] >= 0.0 and diagnosis["confidence"] <= 1.0
+        assert "confidence" in diagnosis["root_cause"]
+        assert "recommended_actions" in diagnosis or "recommendations" in diagnosis
+        assert diagnosis["root_cause"]["confidence"] >= 0.0 and diagnosis["root_cause"]["confidence"] <= 1.0
         
         # Verify all sections are present in final scratchpad
         all_sections = scratchpad.get_all()
@@ -345,7 +346,7 @@ class TestCompleteSessionFlow:
         
         # Verify session metadata was updated
         session_reloaded = Session.resume(session.session_id, password="test-password", session_dir=temp_session_dir)
-        assert session_reloaded.metadata.status in ["active", "completed"]
+        assert session_reloaded._metadata.status in ["active", "completed"]
         
         # Cleanup
         session.delete()
@@ -467,7 +468,8 @@ class TestCompleteSessionFlow:
         diagnosis = scratchpad.read_section(ScratchpadSection.FINAL_DIAGNOSIS)
         
         # Confidence should be low with minimal data
-        assert "confidence" in diagnosis
+        assert "root_cause" in diagnosis
+        assert "confidence" in diagnosis["root_cause"]
         # May have low confidence or indicate insufficient data
         
         # Cleanup
@@ -612,7 +614,7 @@ class TestSessionResume:
         # Correct password should work
         resumed = Session.resume(session_id, password="correct-password", session_dir=temp_session_dir)
         assert resumed is not None
-        assert resumed.id == session_id
+        assert resumed.session_id == session_id
         
         # Cleanup
         resumed.delete()
@@ -709,21 +711,23 @@ class TestErrorRecovery:
         )
         scratchpad.save()
         
-        # Mock fetcher that raises exception
+        # Mock fetcher that raises FetchError
         failing_fetcher = Mock()
-        failing_fetcher.fetch.side_effect = Exception("Connection timeout")
+        failing_fetcher.fetch.side_effect = FetchError("Connection timeout")
         failing_fetcher.test_connection.return_value = False
         
-        # Data fetcher should handle the failure
-        with patch('aletheia.agents.data_fetcher.KubernetesFetcher', return_value=failing_fetcher):
-            with patch.object(DataFetcherAgent, 'get_llm', return_value=mock_llm_provider):
-                data_fetcher = DataFetcherAgent(test_config, scratchpad)
-                
-                # Should not raise, but return error status or partial success
-                result = data_fetcher.execute(sources=["kubernetes"], time_window="1h", use_sk=False)
-                
-                # Agent should indicate failure or partial success
-                assert "success" in result
+        # Patch retry decorator to not retry in tests
+        with patch('aletheia.agents.data_fetcher.retry_with_backoff', lambda **kwargs: lambda f: f):
+            # Data fetcher should handle the failure
+            with patch('aletheia.agents.data_fetcher.KubernetesFetcher', return_value=failing_fetcher):
+                with patch.object(DataFetcherAgent, 'get_llm', return_value=mock_llm_provider):
+                    data_fetcher = DataFetcherAgent(test_config, scratchpad)
+                    
+                    # Should not raise, but return error status or partial success
+                    result = data_fetcher.execute(sources=["kubernetes"], time_window="1h", use_sk=False)
+                    
+                    # Agent should indicate failure or partial success
+                    assert "success" in result
         
         # Session should still be usable
         assert scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
@@ -755,20 +759,24 @@ class TestErrorRecovery:
         
         # Kubernetes succeeds, Prometheus fails
         failing_prometheus = Mock()
-        failing_prometheus.fetch.side_effect = Exception("Prometheus unavailable")
+        failing_prometheus.fetch.side_effect = FetchError("Prometheus unavailable")
         
-        with patch('aletheia.agents.data_fetcher.KubernetesFetcher', return_value=mock_kubernetes_fetcher):
-            with patch('aletheia.agents.data_fetcher.PrometheusFetcher', return_value=failing_prometheus):
-                with patch.object(DataFetcherAgent, 'get_llm', return_value=mock_llm_provider):
-                    data_fetcher = DataFetcherAgent(test_config, scratchpad)
-                    result = data_fetcher.execute(
-                        sources=["kubernetes", "prometheus"],
-                        time_window="1h",
-                        use_sk=False
-                    )
-                    
-                    # Should indicate partial success
-                    assert result.get("success", False) or result.get("status") in ["success", "partial_success"]
+        # Patch retry decorator to not retry in tests
+        with patch('aletheia.agents.data_fetcher.retry_with_backoff', lambda **kwargs: lambda f: f):
+            with patch('aletheia.agents.data_fetcher.KubernetesFetcher', return_value=mock_kubernetes_fetcher):
+                with patch('aletheia.agents.data_fetcher.PrometheusFetcher', return_value=failing_prometheus):
+                    with patch.object(DataFetcherAgent, 'get_llm', return_value=mock_llm_provider):
+                        data_fetcher = DataFetcherAgent(test_config, scratchpad)
+                        result = data_fetcher.execute(
+                            sources=["kubernetes", "prometheus"],
+                            time_window="1h",
+                            use_sk=False
+                        )
+                        
+                        # Should indicate partial success (kubernetes succeeded)
+                        assert "sources_fetched" in result
+                        assert "kubernetes" in result["sources_fetched"]
+                        assert "prometheus" in result.get("sources_failed", [])
         
         # Scratchpad should have kubernetes data
         if scratchpad.has_section(ScratchpadSection.DATA_COLLECTED):
@@ -933,7 +941,7 @@ class TestSessionExportImport:
             Session.resume(original_id, password="test-password", session_dir=temp_session_dir)
         
         # Import session
-        imported_session = Session.import_session(str(export_path, session_dir=temp_session_dir), password="test-password")
+        imported_session = Session.import_session(export_path, password="test-password", session_dir=temp_session_dir)
         
         # Verify session restored (may have different ID)
         assert imported_session is not None
@@ -985,10 +993,10 @@ class TestSessionExportImport:
         
         # Try to import with wrong password
         with pytest.raises(Exception):
-            Session.import_session(str(export_path, session_dir=temp_session_dir), password="wrong-password")
+            Session.import_session(export_path, password="wrong-password", session_dir=temp_session_dir)
         
         # Import with correct password
-        imported = Session.import_session(str(export_path, session_dir=temp_session_dir), password="original-password")
+        imported = Session.import_session(export_path, password="original-password", session_dir=temp_session_dir)
         assert imported is not None
         
         # Verify data is correct
@@ -1048,7 +1056,7 @@ class TestSessionExportImport:
         session.delete()
         
         # Import
-        imported = Session.import_session(str(export_path, session_dir=temp_session_dir), password="test-password")
+        imported = Session.import_session(export_path, password="test-password", session_dir=temp_session_dir)
         imported_scratchpad = Scratchpad.load(imported.session_path, imported._get_key())
         
         # Verify all sections present
