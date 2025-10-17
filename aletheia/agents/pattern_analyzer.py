@@ -420,10 +420,13 @@ class PatternAnalyzerAgent(SKBaseAgent):
         a comprehensive prompt with the collected data and asks the SK agent
         to perform the analysis, then parses the structured response.
         
+        Detects conversational mode by checking for CONVERSATION_HISTORY section.
+        
         Falls back to direct mode if SK fails.
         
         Args:
             **kwargs: Additional parameters for analysis
+                - conversational_mode: Optional override for conversational mode detection
         
         Returns:
             Dictionary with execution results
@@ -440,8 +443,15 @@ class PatternAnalyzerAgent(SKBaseAgent):
             # Read problem description for context
             problem = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
             
+            # Detect conversational mode
+            conversational_mode = kwargs.get("conversational_mode", False)
+            if not conversational_mode:
+                # Auto-detect: check if CONVERSATION_HISTORY exists
+                conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY)
+                conversational_mode = conversation_history is not None and len(conversation_history) > 0
+            
             # Build SK prompt for pattern analysis
-            prompt = self._build_sk_analysis_prompt(collected_data, problem)
+            prompt = self._build_sk_analysis_prompt(collected_data, problem, conversational_mode)
             
             # Invoke SK agent
             response = self.invoke(prompt)
@@ -458,7 +468,8 @@ class PatternAnalyzerAgent(SKBaseAgent):
                 "anomalies_found": len(analysis.get("anomalies", [])),
                 "error_clusters_found": len(analysis.get("error_clusters", [])),
                 "timeline_events": len(analysis.get("timeline", [])),
-                "correlation_count": len(analysis.get("correlations", []))
+                "correlation_count": len(analysis.get("correlations", [])),
+                "conversational_mode": conversational_mode
             }
         
         except Exception as e:
@@ -469,20 +480,48 @@ class PatternAnalyzerAgent(SKBaseAgent):
     def _build_sk_analysis_prompt(
         self,
         collected_data: Dict[str, Any],
-        problem: Dict[str, Any]
+        problem: Dict[str, Any],
+        conversational_mode: bool = False
     ) -> str:
         """Build comprehensive prompt for SK agent pattern analysis.
+        
+        Supports both guided mode (structured data only) and conversational mode
+        (includes conversation history and agent notes).
         
         Args:
             collected_data: Collected data from DATA_COLLECTED section
             problem: Problem description from PROBLEM_DESCRIPTION section
+            conversational_mode: Whether to use conversational prompt format
         
         Returns:
             Formatted prompt string for SK agent
         """
         import json
         
-        prompt = f"""Analyze the following collected data and identify patterns, anomalies, and correlations.
+        if conversational_mode:
+            # Read entire scratchpad for conversational mode
+            conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY) or {}
+            agent_notes = self.read_scratchpad("AGENT_NOTES") or {}
+            
+            # Format conversation history
+            conv_history_str = self._format_conversation_history(conversation_history)
+            
+            # Format agent notes
+            agent_notes_str = self._format_agent_notes(agent_notes)
+            
+            # Use conversational prompt template
+            from aletheia.llm.prompts import get_user_prompt_template
+            template = get_user_prompt_template("pattern_analyzer_conversational")
+            
+            return template.format(
+                problem_description=json.dumps(problem, indent=2),
+                conversation_history=conv_history_str,
+                collected_data=json.dumps(collected_data, indent=2),
+                agent_notes=agent_notes_str
+            )
+        else:
+            # Guided mode: use original prompt format
+            prompt = f"""Analyze the following collected data and identify patterns, anomalies, and correlations.
 
 Problem Context:
 {json.dumps(problem, indent=2)}
@@ -551,11 +590,14 @@ Return your analysis as a JSON object with this structure:
 }}
 
 Provide ONLY the JSON object, no additional commentary."""
-        
-        return prompt
+            
+            return prompt
     
     def _parse_sk_analysis_response(self, response: str) -> Dict[str, Any]:
         """Parse SK agent response into analysis structure.
+        
+        Handles both guided mode and conversational mode response formats.
+        Conversational mode includes a conversational_summary field.
         
         Args:
             response: SK agent response string
@@ -587,6 +629,11 @@ Provide ONLY the JSON object, no additional commentary."""
                 analysis.setdefault("timeline", [])
                 analysis.setdefault("correlations", [])
                 
+                # Conversational mode fields (optional)
+                analysis.setdefault("conversational_summary", None)
+                analysis.setdefault("confidence", None)
+                analysis.setdefault("reasoning", None)
+                
                 return analysis
             except json.JSONDecodeError as e:
                 raise ValueError(f"Failed to parse JSON: {e}")
@@ -596,8 +643,67 @@ Provide ONLY the JSON object, no additional commentary."""
             "anomalies": [],
             "error_clusters": [],
             "timeline": [],
-            "correlations": []
+            "correlations": [],
+            "conversational_summary": None,
+            "confidence": None,
+            "reasoning": None
         }
+    
+    # Conversational mode helper methods
+    
+    def _format_conversation_history(self, conversation_history: Dict[str, Any]) -> str:
+        """Format conversation history for prompt inclusion.
+        
+        Args:
+            conversation_history: Conversation history from scratchpad
+        
+        Returns:
+            Formatted string representation of conversation history
+        """
+        if not conversation_history:
+            return "(No conversation history available)"
+        
+        # Handle different conversation history formats
+        if isinstance(conversation_history, list):
+            # List of messages
+            formatted_messages = []
+            for msg in conversation_history:
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                timestamp = msg.get("timestamp", "")
+                formatted_messages.append(f"[{timestamp}] {role}: {content}")
+            return "\n".join(formatted_messages)
+        elif isinstance(conversation_history, dict):
+            # Dictionary format - convert to readable text
+            import json
+            return json.dumps(conversation_history, indent=2)
+        else:
+            # Fallback: convert to string
+            return str(conversation_history)
+    
+    def _format_agent_notes(self, agent_notes: Dict[str, Any]) -> str:
+        """Format agent notes for prompt inclusion.
+        
+        Args:
+            agent_notes: Agent notes from scratchpad
+        
+        Returns:
+            Formatted string representation of agent notes
+        """
+        if not agent_notes:
+            return "(No agent notes available)"
+        
+        # Format agent notes as readable text
+        import json
+        if isinstance(agent_notes, dict):
+            formatted_notes = []
+            for agent_name, notes in agent_notes.items():
+                formatted_notes.append(f"=== {agent_name} ===")
+                formatted_notes.append(json.dumps(notes, indent=2))
+            return "\n\n".join(formatted_notes)
+        else:
+            # Fallback: convert to string
+            return str(agent_notes)
     
     # Helper methods
     

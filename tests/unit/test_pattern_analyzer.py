@@ -943,3 +943,234 @@ class TestSKIntegration:
         assert result["success"] is True
         assert "anomalies_found" in result
 
+
+class TestConversationalMode:
+    """Test Pattern Analyzer Agent conversational mode functionality."""
+    
+    def test_format_conversation_history_list(self):
+        """Test formatting conversation history from list format."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        conversation_history = [
+            {"role": "user", "content": "Check the payments service", "timestamp": "2025-10-14T10:00:00"},
+            {"role": "assistant", "content": "I'll fetch the logs", "timestamp": "2025-10-14T10:00:01"},
+            {"role": "user", "content": "It started after the deployment", "timestamp": "2025-10-14T10:00:30"}
+        ]
+        
+        formatted = agent._format_conversation_history(conversation_history)
+        
+        assert "[2025-10-14T10:00:00] user: Check the payments service" in formatted
+        assert "[2025-10-14T10:00:01] assistant: I'll fetch the logs" in formatted
+        assert "[2025-10-14T10:00:30] user: It started after the deployment" in formatted
+    
+    def test_format_conversation_history_dict(self):
+        """Test formatting conversation history from dict format."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        conversation_history = {
+            "messages": ["msg1", "msg2"],
+            "context": "some context"
+        }
+        
+        formatted = agent._format_conversation_history(conversation_history)
+        
+        # Should contain JSON representation
+        assert "messages" in formatted
+        assert "context" in formatted
+    
+    def test_format_conversation_history_empty(self):
+        """Test formatting empty conversation history."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        formatted = agent._format_conversation_history({})
+        
+        assert "No conversation history" in formatted
+    
+    def test_format_agent_notes_dict(self):
+        """Test formatting agent notes from dict format."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        agent_notes = {
+            "data_fetcher": {"status": "complete", "logs_collected": 200},
+            "orchestrator": {"phase": "analysis"}
+        }
+        
+        formatted = agent._format_agent_notes(agent_notes)
+        
+        assert "=== data_fetcher ===" in formatted
+        assert "status" in formatted
+        assert "logs_collected" in formatted
+        assert "=== orchestrator ===" in formatted
+    
+    def test_format_agent_notes_empty(self):
+        """Test formatting empty agent notes."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        formatted = agent._format_agent_notes({})
+        
+        assert "No agent notes" in formatted
+    
+    @patch('aletheia.agents.pattern_analyzer.PatternAnalyzerAgent.invoke')
+    def test_build_sk_prompt_conversational_mode(self, mock_invoke):
+        """Test building SK prompt in conversational mode."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.CONVERSATION_HISTORY: [
+                {"role": "user", "content": "Payments service is failing", "timestamp": "2025-10-14T10:00:00"}
+            ],
+            "AGENT_NOTES": {
+                "data_fetcher": {"logs_collected": 150}
+            }
+        }.get(section, None)
+        
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        collected_data = {"kubernetes": {"count": 150}}
+        problem = {"description": "Payment failures"}
+        
+        prompt = agent._build_sk_analysis_prompt(collected_data, problem, conversational_mode=True)
+        
+        # Verify conversational elements in prompt
+        assert "CONVERSATION HISTORY" in prompt
+        assert "AGENT NOTES" in prompt
+        assert "Payments service is failing" in prompt
+        assert "logs_collected" in prompt
+    
+    @patch('aletheia.agents.pattern_analyzer.PatternAnalyzerAgent.invoke')
+    def test_build_sk_prompt_guided_mode(self, mock_invoke):
+        """Test building SK prompt in guided mode (no conversational elements)."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        collected_data = {"kubernetes": {"count": 150}}
+        problem = {"description": "Payment failures"}
+        
+        prompt = agent._build_sk_analysis_prompt(collected_data, problem, conversational_mode=False)
+        
+        # Verify guided mode format
+        assert "Problem Context:" in prompt
+        assert "Collected Data:" in prompt
+        assert "Anomaly Detection" in prompt
+        assert "Error Clustering" in prompt
+        # Should NOT have conversational elements
+        assert "CONVERSATION HISTORY" not in prompt
+        assert "AGENT NOTES" not in prompt
+    
+    @patch('aletheia.agents.pattern_analyzer.PatternAnalyzerAgent.invoke')
+    def test_execute_with_sk_auto_detect_conversational_mode(self, mock_invoke):
+        """Test SK execution auto-detects conversational mode."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        
+        # Set up scratchpad with conversation history
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.DATA_COLLECTED: {"kubernetes": {"count": 100}},
+            ScratchpadSection.PROBLEM_DESCRIPTION: {"description": "Test"},
+            ScratchpadSection.CONVERSATION_HISTORY: [{"role": "user", "content": "Test"}]
+        }.get(section, None)
+        
+        agent = PatternAnalyzerAgent(config, scratchpad, use_sk=True)
+        
+        # Mock SK response with conversational format
+        mock_invoke.return_value = '''{
+            "conversational_summary": "Found error rate spike",
+            "anomalies": [{"type": "error_rate_spike", "severity": "high"}],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": [],
+            "confidence": 0.85,
+            "reasoning": "High error rate indicates issue"
+        }'''
+        
+        result = agent.execute()
+        
+        assert result["success"] is True
+        assert result["conversational_mode"] is True
+        mock_invoke.assert_called_once()
+    
+    @patch('aletheia.agents.pattern_analyzer.PatternAnalyzerAgent.invoke')
+    def test_execute_with_sk_guided_mode_no_conversation(self, mock_invoke):
+        """Test SK execution in guided mode (no conversation history)."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        
+        # Set up scratchpad without conversation history
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.DATA_COLLECTED: {"kubernetes": {"count": 100}},
+            ScratchpadSection.PROBLEM_DESCRIPTION: {"description": "Test"},
+            ScratchpadSection.CONVERSATION_HISTORY: None
+        }.get(section, None)
+        
+        agent = PatternAnalyzerAgent(config, scratchpad, use_sk=True)
+        
+        # Mock SK response with guided format
+        mock_invoke.return_value = '''{
+            "anomalies": [{"type": "metric_spike", "severity": "critical"}],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": []
+        }'''
+        
+        result = agent.execute()
+        
+        assert result["success"] is True
+        assert result["conversational_mode"] is False
+        mock_invoke.assert_called_once()
+    
+    def test_parse_sk_response_with_conversational_fields(self):
+        """Test parsing SK response with conversational fields."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        response = '''{
+            "conversational_summary": "The payments service experienced a sudden spike in errors",
+            "anomalies": [{"type": "error_rate_spike"}],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": [],
+            "confidence": 0.9,
+            "reasoning": "Clear temporal correlation between deployment and errors"
+        }'''
+        
+        analysis = agent._parse_sk_analysis_response(response)
+        
+        assert analysis["conversational_summary"] == "The payments service experienced a sudden spike in errors"
+        assert analysis["confidence"] == 0.9
+        assert analysis["reasoning"] == "Clear temporal correlation between deployment and errors"
+        assert len(analysis["anomalies"]) == 1
+    
+    def test_parse_sk_response_without_conversational_fields(self):
+        """Test parsing SK response without conversational fields (guided mode)."""
+        config = {"llm": {"default_model": "gpt-4o"}}
+        scratchpad = Mock(spec=Scratchpad)
+        agent = PatternAnalyzerAgent(config, scratchpad)
+        
+        response = '''{
+            "anomalies": [{"type": "metric_spike"}],
+            "error_clusters": [],
+            "timeline": [],
+            "correlations": []
+        }'''
+        
+        analysis = agent._parse_sk_analysis_response(response)
+        
+        # Should have None for conversational fields
+        assert analysis["conversational_summary"] is None
+        assert analysis["confidence"] is None
+        assert analysis["reasoning"] is None
+        # Standard fields should still work
+        assert len(analysis["anomalies"]) == 1
+
