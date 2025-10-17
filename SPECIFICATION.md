@@ -152,39 +152,48 @@ FINAL_DIAGNOSIS:
 #### Orchestrator Agent
 - Manages user interaction (guided or conversational mode)
 - Creates and initializes scratchpad
-- Routes between specialist agents
+- Routes between specialist agents (custom or SK HandoffOrchestration)
 - Presents findings to user
 - Handles error recovery and retry logic
+- **SK Integration**: Optionally uses HandoffOrchestration for agent coordination
 
-#### Data Fetcher Agent
-- Executes CLI tools (kubectl, curl, promtool, etc.)
-- Constructs queries (Elasticsearch DSL, PromQL) using templates + LLM fallback
+#### Data Fetcher Agent (SK ChatCompletionAgent)
+- **Plugins**: KubernetesPlugin, PrometheusPlugin
+- **Capabilities via Function Calling**:
+  - Fetches logs via `fetch_kubernetes_logs(pod, namespace, ...)`
+  - Queries metrics via `fetch_prometheus_metrics(query, start, end, ...)`
+  - Constructs PromQL queries via `build_promql_from_template(template, params)`
 - Samples data intelligently (all errors + random sample of others)
 - Writes summaries + file references to scratchpad
-- 3 retries with exponential backoff on failures
+- 3 retries with exponential backoff on failures (via SK + custom retry)
+- **LLM Model**: Uses FunctionChoiceBehavior.Auto() to automatically invoke plugins
 
-#### Pattern Analyzer Agent
+#### Pattern Analyzer Agent (SK ChatCompletionAgent)
 - Reads DATA_COLLECTED section from scratchpad
-- Identifies anomalies (spikes, drops, outliers)
+- Identifies anomalies (spikes, drops, outliers) using LLM analysis
 - Correlates across logs, metrics, traces
-- Clusters error messages
+- Clusters error messages using normalization algorithms
 - Builds incident timeline
 - Writes PATTERN_ANALYSIS to scratchpad
+- **LLM Model**: Direct analysis methods (no plugins required)
 
-#### Code Inspector Agent
-- Reads PATTERN_ANALYSIS section
-- Maps stack traces to source files in user-provided repositories
-- Extracts suspect functions and context
-- Runs `git blame` on suspect lines
+#### Code Inspector Agent (SK ChatCompletionAgent)
+- **Plugins**: GitPlugin
+- **Capabilities via Function Calling**:
+  - Maps stack traces to files via `find_file_in_repo(filename, repo)`
+  - Extracts code context via `extract_code_context(file_path, line, context_lines)`
+  - Runs git blame via `git_blame(file_path, line_number, repo)`
 - Analyzes caller relationships (configurable depth)
 - Writes CODE_INSPECTION to scratchpad
+- **LLM Model**: Uses FunctionChoiceBehavior.Auto() to automatically invoke Git operations
 
-#### Root Cause Analyst Agent
+#### Root Cause Analyst Agent (SK ChatCompletionAgent)
 - Reads entire scratchpad + code files
-- Synthesizes findings into root cause hypothesis
-- Assigns confidence score
-- Generates actionable recommendations
+- Synthesizes findings into root cause hypothesis using LLM reasoning
+- Assigns confidence score based on evidence strength
+- Generates actionable recommendations with priorities
 - Writes FINAL_DIAGNOSIS to scratchpad
+- **LLM Model**: Deep reasoning model (e.g., o1) for comprehensive synthesis
 
 ### 2.4 Agent Execution Model
 
@@ -218,7 +227,168 @@ llm:
       model: "o1"               # Deep reasoning
 ```
 
-**Custom Abstraction Layer**: Aletheia implements its own LLM provider abstraction for full control and minimal dependencies.
+**LLM Integration**: Aletheia uses **Semantic Kernel** for LLM integration, providing:
+- Unified interface across multiple LLM providers
+- Automatic function calling via plugins
+- Built-in retry and error handling
+- Multi-agent orchestration support
+
+**Migration Note**: The custom `LLMProvider` abstraction is deprecated in favor of Semantic Kernel's `OpenAIChatCompletion` service. Both patterns are currently supported via feature flags for backward compatibility during the transition.
+
+### 2.6 Semantic Kernel Architecture
+
+Aletheia leverages **Microsoft Semantic Kernel** as its AI orchestration framework, providing a robust foundation for multi-agent systems with automatic function calling and orchestration.
+
+#### 2.6.1 Agent Framework
+
+All specialist agents inherit from `SKBaseAgent`, which wraps Semantic Kernel's `ChatCompletionAgent`:
+
+```python
+from aletheia.agents.sk_base import SKBaseAgent
+
+class DataFetcherAgent(SKBaseAgent):
+    """Data fetching agent using SK ChatCompletionAgent."""
+    
+    def __init__(self, config, scratchpad):
+        super().__init__(config, scratchpad, agent_name="data_fetcher")
+        # Register plugins with kernel
+        self.kernel.add_plugin(KubernetesPlugin(config), plugin_name="kubernetes")
+        self.kernel.add_plugin(PrometheusPlugin(config), plugin_name="prometheus")
+```
+
+**Key Features**:
+- **Lazy Initialization**: Kernel and agent created on-demand
+- **Plugin Support**: Automatic registration of kernel function plugins
+- **Scratchpad Integration**: Built-in read/write methods for shared state
+- **Configurable Models**: Per-agent model selection via config
+
+#### 2.6.2 Plugin Architecture
+
+External tool integrations are implemented as **Semantic Kernel plugins** with `@kernel_function` decorators:
+
+```python
+from semantic_kernel.functions import kernel_function
+from typing import Annotated
+
+class KubernetesPlugin:
+    @kernel_function(
+        name="fetch_kubernetes_logs",
+        description="Fetch logs from a Kubernetes pod with sampling"
+    )
+    def fetch_logs(
+        self,
+        pod: Annotated[str, "The name of the pod to fetch logs from"],
+        namespace: Annotated[str, "The Kubernetes namespace"] = "default",
+        sample_size: Annotated[int, "Target number of log entries"] = 200
+    ) -> Annotated[str, "JSON string containing logs and metadata"]:
+        # Implementation calls KubernetesFetcher
+        ...
+```
+
+**Available Plugins**:
+- **KubernetesPlugin**: Pod logs, pod listing, status checks
+- **PrometheusPlugin**: Metric queries, PromQL execution, template-based queries
+- **GitPlugin**: git blame, file search, code context extraction
+
+**Plugin Benefits**:
+- **Automatic Invocation**: LLM automatically calls functions as needed via `FunctionChoiceBehavior.Auto()`
+- **Type Safety**: Annotated type hints provide parameter descriptions to the LLM
+- **Composability**: Agents can register multiple plugins for complex capabilities
+- **Testability**: Plugins can be mocked independently in unit tests
+
+#### 2.6.3 Function Calling Pattern
+
+Semantic Kernel's `FunctionChoiceBehavior.Auto()` enables automatic function calling:
+
+1. Agent receives a task (e.g., "Fetch logs from payments-svc pod")
+2. LLM determines which kernel function to call based on descriptions
+3. SK automatically invokes the function with appropriate parameters
+4. Function result is returned to LLM for further processing
+5. LLM synthesizes results and updates scratchpad
+
+**Configuration Example**:
+```python
+execution_settings = OpenAIChatPromptExecutionSettings(
+    function_choice_behavior=FunctionChoiceBehavior.Auto()
+)
+```
+
+#### 2.6.4 Orchestration Pattern
+
+Agent coordination uses **HandoffOrchestration** from Semantic Kernel:
+
+```python
+from semantic_kernel.agents import HandoffOrchestration, OrchestrationHandoffs
+
+# Define handoff rules (routing topology)
+handoffs = OrchestrationHandoffs(
+    # data_fetcher → pattern_analyzer (after data collection)
+    # pattern_analyzer → code_inspector (after analysis)
+    # code_inspector → root_cause_analyst (after code inspection)
+)
+
+# Create orchestration
+orchestration = HandoffOrchestration(
+    members=[data_fetcher_agent, pattern_analyzer_agent, ...],
+    handoffs=handoffs,
+    agent_response_callback=update_scratchpad,
+    human_response_function=prompt_user
+)
+```
+
+**Handoff Rules**:
+- **data_fetcher** → **pattern_analyzer**: After data collection completes
+- **pattern_analyzer** → **code_inspector**: After pattern analysis completes
+- **code_inspector** → **root_cause_analyst**: After code inspection completes
+- **pattern_analyzer** → **root_cause_analyst**: Skip code inspection option
+
+**Orchestration Features**:
+- **Callback Support**: `agent_response_callback` for scratchpad updates
+- **Human-in-the-Loop**: `human_response_function` for guided mode interaction
+- **Termination Conditions**: Each agent signals completion/failure/skip
+- **Runtime Management**: `InProcessRuntime` for local multi-agent execution
+
+#### 2.6.5 Feature Flag Configuration
+
+Semantic Kernel integration is opt-in via configuration:
+
+```yaml
+agents:
+  use_sk_orchestration: false  # Default: false (use custom orchestration)
+```
+
+**Precedence** (highest to lowest):
+1. Environment variable: `ALETHEIA_USE_SK_ORCHESTRATION=true`
+2. Config file: `agents.use_sk_orchestration: true`
+3. Default: `false`
+
+**Backward Compatibility**: Both custom and SK orchestration patterns are maintained during the transition period. Custom implementations will be deprecated in a future release.
+
+#### 2.6.6 SK Service Configuration
+
+Semantic Kernel services are configured per-agent:
+
+```python
+# Create OpenAI chat completion service
+service = OpenAIChatCompletion(
+    service_id="openai-chat",
+    ai_model_id=model,
+    api_key=api_key
+)
+
+# Add service to kernel
+kernel.add_service(service)
+
+# Configure execution settings
+settings = kernel.get_prompt_execution_settings_from_service_id("openai-chat")
+settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
+```
+
+**Service Benefits**:
+- **Consistent Interface**: Same pattern across all LLM providers
+- **Built-in Retry**: Automatic retry logic for transient failures
+- **Token Management**: Automatic token counting and limits
+- **Streaming Support**: Optional streaming responses (future enhancement)
 
 ---
 

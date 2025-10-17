@@ -1,8 +1,26 @@
 """
 LLM Provider abstraction layer.
 
+DEPRECATION WARNING:
+    This custom LLM provider abstraction is deprecated and maintained only as a
+    backup during the Semantic Kernel migration. New code should use Semantic
+    Kernel's OpenAIChatCompletion service directly.
+    
+    Migration Guide: See MIGRATION_SK.md for detailed migration instructions.
+    
+    Timeline:
+    - v1.0 (current): Both patterns supported via feature flags
+    - v1.1 (planned): SK becomes default, custom provider kept as backup
+    - v2.0 (future): Evaluate removal based on SK stability
+
 This module provides a unified interface for interacting with various LLM providers
 (OpenAI, etc.) with support for retries, rate limiting, and error handling.
+
+For new development, use Semantic Kernel services which provide:
+- Consistent interface across multiple LLM providers
+- Automatic function calling via FunctionChoiceBehavior.Auto()
+- Built-in retry and error handling
+- Better integration with multi-agent orchestration
 
 Supports both direct OpenAI API calls and Semantic Kernel integration.
 """

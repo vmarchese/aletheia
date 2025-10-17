@@ -193,8 +193,310 @@ project/
 ├── requirements.txt      # Production dependencies
 ├── requirements-dev.txt  # Development dependencies
 ├── pyproject.toml        # Project configuration
-└── AGENTS.md            # This file
+├── AGENTS.md            # This file
+├── SPECIFICATION.md     # Product requirements and architecture
+└── MIGRATION_SK.md      # Semantic Kernel migration guide
 ```
+
+## Semantic Kernel Development Patterns
+
+### Overview
+
+Aletheia uses **Microsoft Semantic Kernel** as its AI orchestration framework. All new agent implementations should use the SK-based patterns described below.
+
+### Creating SK-Based Agents
+
+#### 1. Agent Base Class
+
+All specialist agents inherit from `SKBaseAgent`:
+
+```python
+from aletheia.agents.sk_base import SKBaseAgent
+from aletheia.scratchpad import Scratchpad
+
+class MyAgent(SKBaseAgent):
+    """My specialist agent using Semantic Kernel."""
+    
+    def __init__(self, config: Dict[str, Any], scratchpad: Scratchpad):
+        # Agent name used for config lookup (config.llm.agents.my_agent)
+        super().__init__(config, scratchpad, agent_name="my_agent")
+        
+        # Register plugins
+        from aletheia.plugins.my_plugin import MyPlugin
+        self.kernel.add_plugin(MyPlugin(config), plugin_name="my_tool")
+    
+    async def execute(self) -> Dict[str, Any]:
+        """Main execution method."""
+        # Read from scratchpad
+        problem = self.read_scratchpad("PROBLEM_DESCRIPTION")
+        
+        # Invoke SK agent with task
+        task = f"Analyze the problem: {problem}"
+        response = await self.invoke(task)
+        
+        # Write results to scratchpad
+        self.write_scratchpad("MY_SECTION", {
+            "analysis": response,
+            "confidence": 0.85
+        })
+        
+        return {"status": "success"}
+```
+
+**Key Points**:
+- Inherit from `SKBaseAgent` (not the deprecated `BaseAgent`)
+- Use `agent_name` parameter for config lookup
+- Register plugins in `__init__` via `self.kernel.add_plugin()`
+- Use `await self.invoke(task)` for LLM interactions
+- Maintain scratchpad read/write for state sharing
+
+#### 2. Creating Plugins
+
+Plugins expose external tools as kernel functions:
+
+```python
+from semantic_kernel.functions import kernel_function
+from typing import Annotated
+
+class MyPlugin:
+    """Semantic Kernel plugin for my tool."""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        # Initialize your tool/client here
+    
+    @kernel_function(
+        name="my_operation",
+        description="Performs my operation with the specified parameters"
+    )
+    def my_operation(
+        self,
+        param1: Annotated[str, "Description of param1 for the LLM"],
+        param2: Annotated[int, "Description of param2"] = 10,
+    ) -> Annotated[str, "Description of return value"]:
+        """Detailed docstring for developers.
+        
+        The LLM uses the @kernel_function decorator's description
+        and Annotated type hints to understand how to call this function.
+        
+        Args:
+            param1: Parameter description for developers
+            param2: Parameter description for developers
+            
+        Returns:
+            Result description for developers
+        """
+        # Implement your operation
+        result = self._do_operation(param1, param2)
+        
+        # Return as JSON string for complex results
+        import json
+        return json.dumps({
+            "success": True,
+            "result": result,
+            "metadata": {...}
+        })
+```
+
+**Key Points**:
+- Use `@kernel_function` decorator with `name` and `description`
+- Use `Annotated[type, "description"]` for all parameters
+- Return JSON strings for complex results
+- Keep functions focused and composable
+
+#### 3. Function Choice Behavior
+
+The LLM automatically calls plugin functions via `FunctionChoiceBehavior.Auto()`:
+
+```python
+from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
+
+# This is set automatically in SKBaseAgent, but can be customized:
+execution_settings = OpenAIChatPromptExecutionSettings(
+    function_choice_behavior=FunctionChoiceBehavior.Auto()
+)
+```
+
+**Execution Flow**:
+1. Agent receives task: "Fetch logs from pod payments-svc"
+2. LLM determines to call `fetch_kubernetes_logs`
+3. SK invokes function with parameters: `pod="payments-svc", namespace="default"`
+4. Function returns results to LLM
+5. LLM synthesizes results and continues reasoning
+
+#### 4. Testing SK Agents
+
+Test SK agents by mocking plugins and kernel services:
+
+```python
+import pytest
+from unittest.mock import Mock, AsyncMock, patch
+from aletheia.agents.my_agent import MyAgent
+from aletheia.scratchpad import Scratchpad
+
+@pytest.fixture
+def mock_kernel():
+    """Mock SK kernel."""
+    kernel = Mock()
+    kernel.add_plugin = Mock()
+    return kernel
+
+@pytest.fixture
+def mock_agent():
+    """Mock SK ChatCompletionAgent."""
+    agent = AsyncMock()
+    agent.invoke = AsyncMock(return_value="Mocked response")
+    return agent
+
+@pytest.mark.asyncio
+async def test_my_agent_execution(mock_kernel, mock_agent, tmp_path):
+    """Test agent execution with mocked SK components."""
+    config = {
+        "llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"},
+        "my_config": "value"
+    }
+    scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+    
+    agent = MyAgent(config, scratchpad)
+    
+    # Mock kernel and agent
+    with patch.object(agent, '_kernel', mock_kernel), \
+         patch.object(agent, '_agent', mock_agent):
+        
+        result = await agent.execute()
+        
+        assert result["status"] == "success"
+        mock_agent.invoke.assert_called_once()
+```
+
+**Testing Best Practices**:
+- Mock the kernel and SK agent for unit tests
+- Mock plugin operations to isolate agent logic
+- Test plugin implementations separately with their own mocks
+- Use `pytest-asyncio` for async agent tests
+- Verify scratchpad writes with assertions
+
+#### 5. Dual-Mode Support
+
+During migration, agents support both SK and custom patterns:
+
+```python
+class MyAgent(SKBaseAgent):
+    async def execute(self, use_sk: bool = True) -> Dict[str, Any]:
+        """Execute with optional SK usage."""
+        if use_sk:
+            # SK-based execution
+            response = await self.invoke(task)
+        else:
+            # Legacy execution
+            response = self._legacy_execute()
+        
+        self.write_scratchpad("MY_SECTION", response)
+        return {"status": "success"}
+```
+
+**Feature Flag Configuration**:
+```yaml
+agents:
+  use_sk_agents: true  # Use SK-based agents (default: true)
+```
+
+### Plugin Examples
+
+#### Kubernetes Plugin
+```python
+from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
+
+# In agent __init__:
+self.kernel.add_plugin(
+    KubernetesPlugin(self.config),
+    plugin_name="kubernetes"
+)
+
+# LLM can now call:
+# - fetch_kubernetes_logs(pod, namespace, ...)
+# - list_kubernetes_pods(namespace, selector)
+# - get_pod_status(pod, namespace)
+```
+
+#### Prometheus Plugin
+```python
+from aletheia.plugins.prometheus_plugin import PrometheusPlugin
+
+# In agent __init__:
+self.kernel.add_plugin(
+    PrometheusPlugin(self.config),
+    plugin_name="prometheus"
+)
+
+# LLM can now call:
+# - fetch_prometheus_metrics(query, start, end, ...)
+# - execute_promql_query(query)
+# - build_promql_from_template(template, params)
+```
+
+#### Git Plugin
+```python
+from aletheia.plugins.git_plugin import GitPlugin
+
+# In agent __init__:
+git_plugin = GitPlugin(repositories=self.config.get("repositories", []))
+self.kernel.add_plugin(git_plugin, plugin_name="git")
+
+# LLM can now call:
+# - git_blame(file_path, line_number, repo)
+# - find_file_in_repo(filename, repo)
+# - extract_code_context(file_path, line_number, context_lines)
+```
+
+### Orchestration with SK
+
+For multi-agent coordination, use `AletheiaHandoffOrchestration`:
+
+```python
+from aletheia.agents.orchestration_sk import AletheiaHandoffOrchestration
+from semantic_kernel.agents import OrchestrationHandoffs
+
+# Define handoff rules
+handoffs = OrchestrationHandoffs(
+    # Define routing: agent_name -> [next_agent1, next_agent2, ...]
+)
+
+# Create orchestration
+orchestration = AletheiaHandoffOrchestration(
+    agents=[data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst],
+    handoffs=handoffs,
+    scratchpad=scratchpad,
+    console=console
+)
+
+# Execute orchestration
+await orchestration.execute(initial_agent=data_fetcher)
+```
+
+**Handoff Configuration**:
+```yaml
+agents:
+  use_sk_orchestration: true  # Use SK HandoffOrchestration (default: false)
+```
+
+### Migration Guidance
+
+**Deprecated Patterns**:
+- ❌ Custom `BaseAgent` class → Use `SKBaseAgent`
+- ❌ Custom `LLMProvider` abstraction → Use SK `OpenAIChatCompletion` service
+- ❌ Direct subprocess calls in agents → Use plugins with `@kernel_function`
+
+**Migration Steps**:
+1. Convert agent to inherit from `SKBaseAgent`
+2. Create plugins for external tools (kubectl, git, HTTP APIs)
+3. Register plugins in agent `__init__`
+4. Use `await self.invoke(task)` for LLM interactions
+5. Update tests to mock SK components
+
+**See**: `MIGRATION_SK.md` for detailed migration guide
+
+
 
 ## Common Issues & Solutions
 
