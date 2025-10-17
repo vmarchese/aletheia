@@ -84,6 +84,53 @@ class InputValidator:
         except (ValueError, OSError):
             return False
 
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """
+        Validate URL format.
+
+        Args:
+            url: URL string to validate
+
+        Returns:
+            True if valid URL, False otherwise
+        """
+        # Basic URL validation pattern
+        pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+        return bool(re.match(pattern, url, re.IGNORECASE))
+
+    @staticmethod
+    def validate_port(port_str: str) -> bool:
+        """
+        Validate port number (1-65535).
+
+        Args:
+            port_str: Port number string
+
+        Returns:
+            True if valid port, False otherwise
+        """
+        try:
+            port = int(port_str)
+            return 1 <= port <= 65535
+        except ValueError:
+            return False
+
+    @staticmethod
+    def validate_namespace(namespace: str) -> bool:
+        """
+        Validate Kubernetes namespace format.
+
+        Args:
+            namespace: Namespace to validate
+
+        Returns:
+            True if valid namespace, False otherwise
+        """
+        # K8s namespace: lowercase alphanumeric, hyphens, max 63 chars
+        pattern = r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+        return bool(re.match(pattern, namespace)) and len(namespace) <= 63
+
 
 class InputHandler:
     """Handles user input with validation and formatting."""
@@ -279,6 +326,100 @@ class InputHandler:
             raise
 
         return "\n".join(lines)
+
+    def get_url(
+        self,
+        prompt: str = "Enter URL",
+        default: Optional[str] = None
+    ) -> str:
+        """
+        Get validated URL.
+
+        Args:
+            prompt: Prompt message to display
+            default: Default URL
+
+        Returns:
+            Validated URL string
+        """
+        return self.get_text(
+            prompt,
+            default=default,
+            validator=self.validator.validate_url,
+            error_message="Invalid URL format. Please enter a valid http:// or https:// URL."
+        )
+
+    def get_port(
+        self,
+        prompt: str = "Enter port number",
+        default: Optional[str] = None
+    ) -> int:
+        """
+        Get validated port number.
+
+        Args:
+            prompt: Prompt message to display
+            default: Default port number
+
+        Returns:
+            Validated port number
+        """
+        port_str = self.get_text(
+            prompt,
+            default=default,
+            validator=self.validator.validate_port,
+            error_message="Invalid port number. Please enter a number between 1 and 65535."
+        )
+        return int(port_str)
+
+    def get_namespace(
+        self,
+        prompt: str = "Enter Kubernetes namespace",
+        default: str = "default"
+    ) -> str:
+        """
+        Get validated Kubernetes namespace.
+
+        Args:
+            prompt: Prompt message to display
+            default: Default namespace
+
+        Returns:
+            Validated namespace string
+        """
+        return self.get_text(
+            prompt,
+            default=default,
+            validator=self.validator.validate_namespace,
+            error_message="Invalid namespace format. Use lowercase alphanumeric and hyphens only."
+        )
+
+    def confirm(
+        self,
+        prompt: str,
+        default: bool = True
+    ) -> bool:
+        """
+        Get yes/no confirmation from user.
+
+        Args:
+            prompt: Question to ask
+            default: Default answer
+
+        Returns:
+            True for yes, False for no
+        """
+        default_str = "Y/n" if default else "y/N"
+        self.console.print(f"[bold cyan][Aletheia][/bold cyan] {prompt} [{default_str}]")
+
+        try:
+            response = input().strip().lower()
+            if not response:
+                return default
+            return response in ('y', 'yes')
+        except KeyboardInterrupt:
+            self.console.print("\n[yellow]Operation cancelled[/yellow]")
+            raise
 
 
 class TimeWindowParser:
