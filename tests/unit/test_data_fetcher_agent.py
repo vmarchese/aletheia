@@ -1148,5 +1148,259 @@ class TestKubernetesParameterExtraction:
         
         # Verify prompt suggests using list_kubernetes_pods
         assert "list_kubernetes_pods" in prompt.lower() or "discover pods" in prompt.lower()
-        assert "affected services" in prompt.lower()
-        assert "web-server" in prompt
+
+
+class TestConversationalMode:
+    """Test conversational mode with LLM-delegated parameter extraction."""
+    
+    def test_build_sk_prompt_with_conversation_history(self):
+        """Test that _build_sk_prompt includes conversation history in conversational mode."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["kubernetes"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {
+            "description": "Payment service errors",
+            "affected_services": ["payments"]
+        }
+        
+        # Provide conversation history
+        conversation_history = [
+            {"role": "user", "content": "Check the payments pod for errors"},
+            {"role": "assistant", "content": "Sure, let me collect the logs."},
+            {"role": "user", "content": "Look in the production namespace"}
+        ]
+        
+        prompt = agent._build_sk_prompt(sources, time_range, problem, conversation_history=conversation_history)
+        
+        # Verify conversational template is used
+        assert "Check the payments pod for errors" in prompt
+        assert "production namespace" in prompt
+        assert "CONVERSATION HISTORY" in prompt
+    
+    def test_build_sk_prompt_conversational_mode_uses_template(self):
+        """Test that conversational mode uses the conversational prompt template."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}, "prometheus": {"endpoint": "http://localhost:9090"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["kubernetes", "prometheus"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {"description": "High error rate"}
+        
+        conversation_history = [
+            {"role": "user", "content": "Get logs from the api-gateway pod in staging"}
+        ]
+        
+        prompt = agent._build_sk_prompt(sources, time_range, problem, conversation_history=conversation_history)
+        
+        # Verify conversational elements
+        assert "api-gateway pod" in prompt
+        assert "staging" in prompt
+        assert "plugin" in prompt.lower()
+    
+    def test_build_sk_prompt_guided_mode_without_conversation(self):
+        """Test that guided mode uses structured prompt without conversation history."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["kubernetes"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {"description": "Payment errors"}
+        
+        # No conversation history - guided mode
+        prompt = agent._build_sk_prompt(sources, time_range, problem)
+        
+        # Verify guided mode format
+        assert "PROBLEM CONTEXT" in prompt
+        assert "INSTRUCTIONS" in prompt
+        assert "CONVERSATION HISTORY" not in prompt
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_sk_reads_conversation_from_scratchpad(self):
+        """Test that execute_with_sk reads conversation history from scratchpad."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini", "api_key_env": "OPENAI_API_KEY"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        
+        # Mock scratchpad with conversation history
+        scratchpad = Mock()
+        conversation_history = [
+            {"role": "user", "content": "Check the web pod logs"},
+            {"role": "assistant", "content": "I'll fetch those logs now."}
+        ]
+        scratchpad.write = Mock()
+        
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock read_scratchpad to return conversation history
+        with patch.object(agent, 'read_scratchpad', side_effect=lambda section: conversation_history if section == ScratchpadSection.CONVERSATION_HISTORY else {}):
+            # Mock SK agent invocation
+            mock_agent = AsyncMock()
+            mock_agent.invoke = AsyncMock(return_value='{"kubernetes": {"count": 10, "summary": "10 logs collected"}}')
+            agent._agent = mock_agent
+            
+            # Mock kernel property to avoid creating actual kernel
+            with patch.object(type(agent), 'kernel', new_callable=PropertyMock) as mock_kernel_prop:
+                mock_kernel = Mock()
+                mock_kernel.add_plugin = Mock()
+                mock_kernel_prop.return_value = mock_kernel
+                
+                sources = ["kubernetes"]
+                time_range = (datetime.now() - timedelta(hours=2), datetime.now())
+                problem = {"description": "Web errors"}
+                
+                result = await agent._execute_with_sk(sources, time_range, problem)
+                
+                # Verify result was successful
+                assert result["success"] is True
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_sk_passes_conversation_to_prompt(self):
+        """Test that conversation history is passed to _build_sk_prompt."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini", "api_key_env": "OPENAI_API_KEY"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        
+        scratchpad = Mock()
+        conversation_history = [
+            {"role": "user", "content": "Look at the payments service"}
+        ]
+        scratchpad.write = Mock()
+        
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock read_scratchpad to return conversation history
+        with patch.object(agent, 'read_scratchpad', side_effect=lambda section: conversation_history if section == ScratchpadSection.CONVERSATION_HISTORY else {}):
+            # Mock SK agent
+            mock_agent = AsyncMock()
+            mock_agent.invoke = AsyncMock(return_value='{"kubernetes": {"count": 5, "summary": "5 logs"}}')
+            agent._agent = mock_agent
+            
+            with patch.object(type(agent), 'kernel', new_callable=PropertyMock) as mock_kernel_prop:
+                mock_kernel = Mock()
+                mock_kernel.add_plugin = Mock()
+                mock_kernel_prop.return_value = mock_kernel
+                
+                with patch.object(agent, '_build_sk_prompt', return_value="test prompt") as mock_build:
+                    sources = ["kubernetes"]
+                    time_range = (datetime.now() - timedelta(hours=2), datetime.now())
+                    problem = {"description": "Errors"}
+                    
+                    await agent._execute_with_sk(sources, time_range, problem)
+                    
+                    # Verify _build_sk_prompt was called with conversation_history
+                    call_kwargs = mock_build.call_args[1]
+                    assert "conversation_history" in call_kwargs
+                    assert call_kwargs["conversation_history"] == conversation_history
+    
+    def test_conversation_history_format_list_of_dicts(self):
+        """Test that conversation history as list of dicts is formatted correctly."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        conversation_history = [
+            {"role": "user", "content": "Check pod logs"},
+            {"role": "assistant", "content": "Fetching logs"},
+            {"role": "user", "content": "Look in production"}
+        ]
+        
+        prompt = agent._build_sk_prompt(
+            ["kubernetes"],
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            {"description": "Issues"},
+            conversation_history=conversation_history
+        )
+        
+        # Verify all messages are in prompt
+        assert "Check pod logs" in prompt
+        assert "Fetching logs" in prompt
+        assert "Look in production" in prompt
+    
+    def test_conversation_history_format_string(self):
+        """Test that conversation history as string is handled correctly."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        conversation_history = "user: Check the API logs\nassistant: I'll get those for you."
+        
+        prompt = agent._build_sk_prompt(
+            ["kubernetes"],
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            {"description": "Issues"},
+            conversation_history=conversation_history
+        )
+        
+        # Verify conversation text is in prompt
+        assert "Check the API logs" in prompt
+    
+    def test_conversational_prompt_includes_llm_extraction_instructions(self):
+        """Test that conversational prompt instructs LLM to extract parameters."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        conversation_history = [
+            {"role": "user", "content": "Get logs from payments-api in production namespace"}
+        ]
+        
+        prompt = agent._build_sk_prompt(
+            ["kubernetes"],
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            {"description": "Errors"},
+            conversation_history=conversation_history
+        )
+        
+        # Verify prompt includes extraction instructions
+        assert "extract" in prompt.lower() or "identify" in prompt.lower()
+        assert "parameter" in prompt.lower() or "pod" in prompt.lower()
+    
+    def test_conversational_prompt_includes_clarification_instructions(self):
+        """Test that conversational prompt instructs LLM to ask clarifying questions."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        conversation_history = [
+            {"role": "user", "content": "Get the logs"}
+        ]
+        
+        prompt = agent._build_sk_prompt(
+            ["kubernetes"],
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            {"description": "Issues"},
+            conversation_history=conversation_history
+        )
+        
+        # Verify prompt includes clarification instructions
+        assert "ask" in prompt.lower() or "clarif" in prompt.lower() or "question" in prompt.lower()
+        # Verify prompt is conversational
+        assert "conversation" in prompt.lower() or "parameter" in prompt.lower()

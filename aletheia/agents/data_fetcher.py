@@ -173,11 +173,14 @@ class DataFetcherAgent(SKBaseAgent):
         call plugin functions (fetch_kubernetes_logs, fetch_prometheus_metrics, etc.)
         based on the user's request.
         
+        In conversational mode, it reads conversation history from scratchpad and
+        delegates ALL parameter extraction to the LLM.
+        
         Args:
             sources: List of data sources to fetch from
             time_range: Time range tuple (start, end)
             problem: Problem description from scratchpad
-            **kwargs: Additional parameters
+            **kwargs: Additional parameters (may include conversation_history)
         
         Returns:
             Dictionary with execution results
@@ -185,7 +188,13 @@ class DataFetcherAgent(SKBaseAgent):
         # Register plugins with kernel
         self._register_plugins()
         
-        # Build prompt for SK agent
+        # Read conversation history from scratchpad if not provided
+        if "conversation_history" not in kwargs:
+            conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY)
+            if conversation_history:
+                kwargs["conversation_history"] = conversation_history
+        
+        # Build prompt for SK agent (includes conversation history if available)
         prompt = self._build_sk_prompt(sources, time_range, problem, **kwargs)
         
         # Invoke SK agent - it will automatically call plugin functions
@@ -297,15 +306,61 @@ class DataFetcherAgent(SKBaseAgent):
     ) -> str:
         """Build a prompt for the SK agent to collect data.
         
+        This method supports both guided and conversational modes:
+        - Guided mode: Uses structured parameters
+        - Conversational mode: Includes conversation history for LLM to extract parameters
+        
         Args:
             sources: Data sources to use
             time_range: Time range for data collection
             problem: Problem description
-            **kwargs: Additional parameters
+            **kwargs: Additional parameters (may include conversation_history)
         
         Returns:
             Prompt string for SK agent
         """
+        # Check if this is conversational mode (has conversation history)
+        conversation_history = kwargs.get("conversation_history", [])
+        use_conversational = bool(conversation_history)
+        
+        if use_conversational:
+            # Use conversational template with LLM-delegated parameter extraction
+            from aletheia.llm.prompts import get_user_prompt_template
+            
+            template = get_user_prompt_template("data_fetcher_conversational")
+            
+            # Format problem description
+            description = problem.get("description", "No description provided")
+            affected_services = problem.get("affected_services", [])
+            if affected_services:
+                description += f"\nAffected services: {', '.join(affected_services)}"
+            
+            # Format conversation history
+            if isinstance(conversation_history, list):
+                # List of message dicts
+                conv_text = "\n".join([
+                    f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                    for msg in conversation_history[-5:]  # Last 5 messages
+                ])
+            else:
+                # Already formatted string
+                conv_text = str(conversation_history)
+            
+            # Format data sources
+            data_sources_text = "\n".join([
+                f"- {source.upper()}: Available via {source} plugin"
+                for source in sources
+            ])
+            
+            prompt = template.format(
+                problem_description=description,
+                conversation_history=conv_text if conv_text else "No prior conversation",
+                data_sources=data_sources_text
+            )
+            
+            return prompt
+        
+        # Guided mode: Use structured prompt with explicit parameters
         start_time = time_range[0].isoformat()
         end_time = time_range[1].isoformat()
         
