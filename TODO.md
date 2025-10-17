@@ -493,20 +493,20 @@ llm:
       base_url: "https://my-custom-endpoint.com/v1"  # Override for specific agent
 ```      
 
-- [ ] **3.1.7** Add Azure OpenAI Services support (NEW - SK AZURE)
-  - [ ] Add Azure OpenAI configuration fields to config schema:
-    - [ ] `azure_deployment` - Azure deployment name
-    - [ ] `azure_endpoint` - Azure resource endpoint URL
-    - [ ] `azure_api_version` - API version (optional, default: latest)
-    - [ ] `use_azure` - Boolean flag to enable Azure OpenAI
-  - [ ] Update `SKBaseAgent` to support Azure OpenAI initialization
-  - [ ] Use SK's `AzureChatCompletion` service when `use_azure=true`
-  - [ ] Support both OpenAI and Azure OpenAI at agent-specific level
-  - [ ] Add unit tests for Azure configuration and initialization
-  - [ ] Update documentation with Azure OpenAI configuration examples
-  - [ ] Validate Azure configuration (deployment, endpoint, API key)
+- [x] **3.1.7** Add Azure OpenAI Services support (NEW - SK AZURE)
+  - [x] Add Azure OpenAI configuration fields to config schema:
+    - [x] `azure_deployment` - Azure deployment name
+    - [x] `azure_endpoint` - Azure resource endpoint URL
+    - [x] `azure_api_version` - API version (optional, default: latest)
+    - [x] `use_azure` - Boolean flag to enable Azure OpenAI
+  - [x] Update `SKBaseAgent` to support Azure OpenAI initialization
+  - [x] Use SK's `AzureChatCompletion` service when `use_azure=true`
+  - [x] Support both OpenAI and Azure OpenAI at agent-specific level
+  - [x] Add unit tests for Azure configuration and initialization
+  - [x] Update documentation with Azure OpenAI configuration examples
+  - [x] Validate Azure configuration (deployment, endpoint, API key)
   - **Reference**: [SK AzureChatCompletion](https://learn.microsoft.com/en-us/python/api/semantic-kernel/semantic_kernel.connectors.ai.open_ai.azurechatcompletion?view=semantic-kernel-python)
-  - **Acceptance**: Azure OpenAI is supported as an alternative to OpenAI API
+  - **Acceptance**: ✅ Azure OpenAI is supported as an alternative to OpenAI API (Completed: 2025-10-17, Commit: f57aa30)
 
 **Azure OpenAI Configuration Example**:
 ```yaml
