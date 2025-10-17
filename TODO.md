@@ -472,14 +472,14 @@
   - **Acceptance**: ✅ All LLM calls go through Semantic Kernel services (opt-in via feature flag)
 
 
-- [ ] **3.1.6** Make LLM endpoint configurable (NEW - SK BASE_URL SUPPORT)
-  - [ ] Add `base_url` field to default LLM configuration in config schema
-  - [ ] Update SK `OpenAIChatCompletion` initialization to accept `base_url` parameter
-  - [ ] Support `base_url` override at agent-specific level (precedence: agent > default)
-  - [ ] Update configuration documentation with endpoint examples (Azure OpenAI, custom endpoints)
-  - [ ] Add unit tests for base_url configuration (default + agent override)
-  - [ ] Update `SKBaseAgent.kernel` property to pass `base_url` to `OpenAIChatCompletion`
-  - **Acceptance**: LLM endpoint is configurable globally and per-agent, supports OpenAI-compatible APIs
+- [x] **3.1.6** Make LLM endpoint configurable (NEW - SK BASE_URL SUPPORT)
+  - [x] Add `base_url` field to default LLM configuration in config schema
+  - [x] Update SK `OpenAIChatCompletion` initialization to accept `base_url` parameter
+  - [x] Support `base_url` override at agent-specific level (precedence: agent > default)
+  - [x] Update configuration documentation with endpoint examples (Azure OpenAI, custom endpoints)
+  - [x] Add unit tests for base_url configuration (default + agent override)
+  - [x] Update `SKBaseAgent.kernel` property to pass `base_url` to `OpenAIChatCompletion`
+  - **Acceptance**: ✅ LLM endpoint is configurable globally and per-agent, supports OpenAI-compatible APIs (Completed: 2025-10-17, Commit: fc13414)
 
 **Configuration Example**:
 ```yaml
