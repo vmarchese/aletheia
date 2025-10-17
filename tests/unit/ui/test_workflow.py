@@ -38,15 +38,15 @@ class TestInvestigationWorkflow:
         workflow = InvestigationWorkflow(verbose=True)
         assert workflow.output.verbose is True
 
-    @patch.object(InvestigationWorkflow, 'menu')
-    def test_select_interaction_mode(self, mock_menu, workflow):
+    def test_select_interaction_mode(self, workflow):
         """Test selecting interaction mode."""
-        mock_menu.show = Mock(return_value="guided")
+        workflow.menu = Mock()
+        workflow.menu.show = Mock(return_value="guided")
 
         result = workflow.select_interaction_mode()
 
         assert result == "guided"
-        mock_menu.show.assert_called_once()
+        workflow.menu.show.assert_called_once()
 
     @patch.object(InvestigationWorkflow, 'input')
     def test_get_problem_description(self, mock_input, workflow):
