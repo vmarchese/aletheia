@@ -692,17 +692,17 @@ llm:
   - [x] Add backward compatibility with `use_sk=False` parameter
   - **Acceptance**: ✅ Data Fetcher is SK agent using plugins for external calls (92.08% coverage, Completed: 2025-10-15)
 
-- [ ] **3.4.9** Enhance Data Fetcher Kubernetes Integration (BUG FIX)
-  - [ ] Update `_fetch_kubernetes()` to extract namespace from problem description
-  - [ ] Update `_fetch_kubernetes()` to extract pod name from problem description
-  - [ ] Parse problem description for "pod:<pod_name>" pattern
-  - [ ] Parse problem description for "namespace:<namespace>" pattern
-  - [ ] Update `_build_sk_prompt()` to better guide LLM on extracting K8s params from problem
-  - [ ] Verify kubectl commands are printed in verbose mode (-vv flag)
-  - [ ] Add trace logging for all kubectl operations in KubernetesPlugin
-  - [ ] Update unit tests to verify parameter extraction from problem description
+- [x] **3.4.9** Enhance Data Fetcher Kubernetes Integration (BUG FIX)
+  - [x] Update `_fetch_kubernetes()` to extract namespace from problem description
+  - [x] Update `_fetch_kubernetes()` to extract pod name from problem description
+  - [x] Parse problem description for "pod:<pod_name>" pattern
+  - [x] Parse problem description for "namespace:<namespace>" pattern
+  - [x] Update `_build_sk_prompt()` to better guide LLM on extracting K8s params from problem
+  - [x] Verify kubectl commands are printed in verbose mode (-vv flag)
+  - [x] Add trace logging for all kubectl operations in KubernetesPlugin
+  - [x] Update unit tests to verify parameter extraction from problem description
   - **Issue**: Data fetcher doesn't extract namespace and pod from problem description; kubectl commands not visible in verbose mode
-  - **Acceptance**: Data fetcher correctly extracts K8s parameters from problem description, all kubectl commands visible with -vv flag
+  - **Acceptance**: ✅ Data fetcher correctly extracts K8s parameters from problem description, all kubectl commands visible with -vv flag (92.98% coverage, 44/44 tests passing, Completed: 2025-10-17, Commit: 78aa8b7)
 
 ### 3.5 Pattern Analyzer Agent
 
