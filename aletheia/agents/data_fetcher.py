@@ -12,6 +12,7 @@ with Kubernetes and Prometheus plugins for automatic function calling.
 """
 
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -328,12 +329,29 @@ Additional parameters:
             namespace = kwargs.get("namespace", "default")
             container = kwargs.get("container")
             
+            # Extract from problem description if available
+            if not pod and description:
+                pod_match = re.search(r'pod:([a-zA-Z0-9][-a-zA-Z0-9]*)', description)
+                if not pod_match:
+                    pod_match = re.search(r'pod\s+([a-zA-Z0-9][-a-zA-Z0-9]*)', description, re.IGNORECASE)
+                if pod_match:
+                    pod = pod_match.group(1)
+            
+            if not namespace or namespace == "default":
+                if description:
+                    ns_match = re.search(r'namespace:([a-zA-Z0-9][-a-zA-Z0-9]*)', description)
+                    if not ns_match:
+                        ns_match = re.search(r'namespace\s+([a-zA-Z0-9][-a-zA-Z0-9]*)', description, re.IGNORECASE)
+                    if ns_match:
+                        namespace = ns_match.group(1)
+            
             prompt += f"""
 For Kubernetes:
-- Pod: {pod if pod else 'auto-discover from affected services'}
-- Namespace: {namespace}
+- Pod: {pod if pod else 'IMPORTANT: Extract pod name from problem description using patterns like "pod:name" or "pod name", or auto-discover from affected services'}
+- Namespace: {namespace if namespace and namespace != "default" else 'IMPORTANT: Extract namespace from problem description using patterns like "namespace:name" or "namespace name", or use "default"'}
 - Container: {container if container else 'default'}
 - Fetch logs with priority levels: ERROR, FATAL, CRITICAL
+- Look for pod and namespace information in the problem description text
 """
         
         if "prometheus" in sources:
@@ -508,10 +526,41 @@ Format your response as JSON with this structure:
         Returns:
             FetchResult with Kubernetes logs
         """
-        # Extract parameters
+        # Extract parameters from kwargs first
         pod = kwargs.get("pod")
-        namespace = kwargs.get("namespace") or fetcher.config.get("namespace")
+        namespace = kwargs.get("namespace")
         container = kwargs.get("container")
+        
+        # Try to extract from problem description if not provided
+        description = problem.get("description", "")
+        
+        # Extract pod name using patterns: "pod:<name>" or "pod <name>"
+        if not pod and description:
+            # Pattern 1: pod:<pod_name>
+            pod_match = re.search(r'pod:([a-zA-Z0-9][-a-zA-Z0-9]*)', description)
+            if pod_match:
+                pod = pod_match.group(1)
+            else:
+                # Pattern 2: pod <pod_name> (word boundary)
+                pod_match = re.search(r'pod\s+([a-zA-Z0-9][-a-zA-Z0-9]*)', description, re.IGNORECASE)
+                if pod_match:
+                    pod = pod_match.group(1)
+        
+        # Extract namespace using patterns: "namespace:<name>" or "namespace <name>"
+        if not namespace and description:
+            # Pattern 1: namespace:<namespace_name>
+            ns_match = re.search(r'namespace:([a-zA-Z0-9][-a-zA-Z0-9]*)', description)
+            if ns_match:
+                namespace = ns_match.group(1)
+            else:
+                # Pattern 2: namespace <namespace_name> (word boundary)
+                ns_match = re.search(r'namespace\s+([a-zA-Z0-9][-a-zA-Z0-9]*)', description, re.IGNORECASE)
+                if ns_match:
+                    namespace = ns_match.group(1)
+        
+        # Fall back to config or default
+        if not namespace:
+            namespace = fetcher.config.get("namespace", "default")
         
         # Get sample size from config
         sample_size = self.config.get("sampling", {}).get("logs", {}).get(

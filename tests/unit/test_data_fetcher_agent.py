@@ -905,3 +905,283 @@ class TestSKIntegration:
         assert "Prometheus" in prompt
         assert "rate(http_requests_total[5m])" in prompt
         assert "error_rate" in prompt
+
+
+class TestKubernetesParameterExtraction:
+    """Test extraction of Kubernetes parameters from problem description."""
+    
+    def test_extract_pod_from_problem_with_colon_pattern(self):
+        """Test extracting pod name using pod:name pattern."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock fetcher
+        mock_fetcher = Mock()
+        mock_fetcher.config = {"namespace": "default"}
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[{"message": "test", "level": "ERROR"}],
+            summary="1 log",
+            count=1,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={"pod": "payments-svc-abc123"}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        problem = {
+            "description": "The pod:payments-svc-abc123 is crashing repeatedly",
+            "affected_services": ["payments-svc"]
+        }
+        
+        result = agent._fetch_kubernetes(
+            mock_fetcher,
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            problem
+        )
+        
+        # Verify fetcher was called with extracted pod name
+        call_kwargs = mock_fetcher.fetch.call_args[1]
+        assert call_kwargs["pod"] == "payments-svc-abc123"
+    
+    def test_extract_pod_from_problem_with_space_pattern(self):
+        """Test extracting pod name using 'pod name' pattern."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock fetcher
+        mock_fetcher = Mock()
+        mock_fetcher.config = {"namespace": "default"}
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[{"message": "test", "level": "ERROR"}],
+            summary="1 log",
+            count=1,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={"pod": "auth-service-xyz789"}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        problem = {
+            "description": "Pod auth-service-xyz789 has high memory usage",
+            "affected_services": ["auth-service"]
+        }
+        
+        result = agent._fetch_kubernetes(
+            mock_fetcher,
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            problem
+        )
+        
+        # Verify fetcher was called with extracted pod name
+        call_kwargs = mock_fetcher.fetch.call_args[1]
+        assert call_kwargs["pod"] == "auth-service-xyz789"
+    
+    def test_extract_namespace_from_problem_with_colon_pattern(self):
+        """Test extracting namespace using namespace:name pattern."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock fetcher
+        mock_fetcher = Mock()
+        mock_fetcher.config = {}
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[{"message": "test", "level": "ERROR"}],
+            summary="1 log",
+            count=1,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={"namespace": "production"}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        problem = {
+            "description": "Issue in namespace:production with pod:api-gateway-123",
+            "affected_services": ["api-gateway"]
+        }
+        
+        result = agent._fetch_kubernetes(
+            mock_fetcher,
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            problem
+        )
+        
+        # Verify fetcher was called with extracted namespace
+        call_kwargs = mock_fetcher.fetch.call_args[1]
+        assert call_kwargs["namespace"] == "production"
+        assert call_kwargs["pod"] == "api-gateway-123"
+    
+    def test_extract_namespace_from_problem_with_space_pattern(self):
+        """Test extracting namespace using 'namespace name' pattern."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock fetcher
+        mock_fetcher = Mock()
+        mock_fetcher.config = {}
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[{"message": "test", "level": "ERROR"}],
+            summary="1 log",
+            count=1,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={"namespace": "staging"}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        problem = {
+            "description": "Namespace staging has errors in pod api-server-456",
+            "affected_services": ["api-server"]
+        }
+        
+        result = agent._fetch_kubernetes(
+            mock_fetcher,
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            problem
+        )
+        
+        # Verify fetcher was called with extracted namespace
+        call_kwargs = mock_fetcher.fetch.call_args[1]
+        assert call_kwargs["namespace"] == "staging"
+        assert call_kwargs["pod"] == "api-server-456"
+    
+    def test_no_extraction_falls_back_to_defaults(self):
+        """Test that when no pod/namespace in description, it uses defaults."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test", "namespace": "my-namespace"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock fetcher
+        mock_fetcher = Mock()
+        mock_fetcher.config = {"namespace": "my-namespace"}
+        mock_fetcher.list_pods.return_value = ["default-pod-123"]
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[{"message": "test", "level": "ERROR"}],
+            summary="1 log",
+            count=1,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        problem = {
+            "description": "Generic error occurred somewhere",
+            "affected_services": ["some-service"]
+        }
+        
+        result = agent._fetch_kubernetes(
+            mock_fetcher,
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            problem
+        )
+        
+        # Verify namespace falls back to config
+        call_kwargs = mock_fetcher.fetch.call_args[1]
+        assert call_kwargs["namespace"] == "my-namespace"
+    
+    def test_explicit_kwargs_override_extraction(self):
+        """Test that explicitly provided kwargs override extraction from problem."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        # Mock fetcher
+        mock_fetcher = Mock()
+        mock_fetcher.config = {}
+        mock_fetcher.fetch.return_value = FetchResult(
+            source="kubernetes",
+            data=[{"message": "test", "level": "ERROR"}],
+            summary="1 log",
+            count=1,
+            time_range=(datetime.now() - timedelta(hours=2), datetime.now()),
+            metadata={}
+        )
+        agent.fetchers["kubernetes"] = mock_fetcher
+        
+        problem = {
+            "description": "Issue in namespace:production with pod:wrong-pod-123",
+            "affected_services": []
+        }
+        
+        # Provide explicit kwargs
+        result = agent._fetch_kubernetes(
+            mock_fetcher,
+            (datetime.now() - timedelta(hours=2), datetime.now()),
+            problem,
+            pod="correct-pod-456",
+            namespace="testing"
+        )
+        
+        # Verify explicit kwargs take precedence
+        call_kwargs = mock_fetcher.fetch.call_args[1]
+        assert call_kwargs["pod"] == "correct-pod-456"
+        assert call_kwargs["namespace"] == "testing"
+    
+    def test_sk_prompt_includes_extracted_params(self):
+        """Test that _build_sk_prompt extracts and includes K8s parameters."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["kubernetes"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {
+            "description": "The pod:web-server-789 in namespace:production is crashing",
+            "affected_services": ["web-server"]
+        }
+        
+        prompt = agent._build_sk_prompt(sources, time_range, problem)
+        
+        # Verify extracted params are in prompt
+        assert "web-server-789" in prompt
+        assert "production" in prompt
+        assert "Kubernetes" in prompt
+    
+    def test_sk_prompt_guides_llm_on_extraction(self):
+        """Test that SK prompt includes guidance for LLM to extract params."""
+        config = {
+            "llm": {"default_model": "gpt-4o-mini"},
+            "data_sources": {"kubernetes": {"context": "test"}}
+        }
+        scratchpad = Mock(spec=Scratchpad)
+        agent = DataFetcherAgent(config, scratchpad)
+        
+        sources = ["kubernetes"]
+        time_range = (datetime(2025, 10, 15, 10, 0, 0), datetime(2025, 10, 15, 12, 0, 0))
+        problem = {
+            "description": "Generic issue with no specific pod mentioned",
+            "affected_services": []
+        }
+        
+        prompt = agent._build_sk_prompt(sources, time_range, problem)
+        
+        # Verify prompt guides LLM on parameter extraction
+        assert "IMPORTANT" in prompt or "Extract" in prompt or "extract" in prompt
+        assert "problem description" in prompt
+        assert "pod" in prompt.lower()
+        assert "namespace" in prompt.lower()
