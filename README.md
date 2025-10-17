@@ -95,8 +95,11 @@ pytest
 ### 1. Set Up Your Environment
 
 ```bash
-# Set your OpenAI API key
+# Set your OpenAI API key (for standard OpenAI)
 export OPENAI_API_KEY="sk-..."
+
+# OR: Set your Azure OpenAI credentials (for Azure OpenAI Services)
+export AZURE_OPENAI_API_KEY="your-azure-key"
 
 # Optional: Configure kubectl context for Kubernetes logs
 kubectl config use-context your-cluster
@@ -113,6 +116,13 @@ Create `.aletheia/config.yaml` in your project directory or `~/.aletheia/config.
 llm:
   default_model: "gpt-4o"
   api_key_env: "OPENAI_API_KEY"
+  
+  # OR: Use Azure OpenAI Services
+  # use_azure: true
+  # azure_deployment: "gpt-4o"
+  # azure_endpoint: "https://my-resource.openai.azure.com/"
+  # azure_api_version: "2024-02-15-preview"  # Optional
+  # api_key_env: "AZURE_OPENAI_API_KEY"
   
 data_sources:
   kubernetes:
@@ -179,6 +189,13 @@ llm:
   reasoning_model: "o1"                # Deep reasoning model for root cause analysis
   temperature: 0.2                     # LLM temperature (0.0-1.0)
   max_tokens: 4000                     # Maximum tokens per completion
+  
+  # Azure OpenAI Services (alternative to standard OpenAI)
+  # use_azure: true                    # Enable Azure OpenAI
+  # azure_deployment: "gpt-4o"         # Azure deployment name
+  # azure_endpoint: "https://my-resource.openai.azure.com/"  # Azure endpoint
+  # azure_api_version: "2024-02-15-preview"  # Optional: API version
+  # api_key_env: "AZURE_OPENAI_API_KEY"  # Azure API key environment variable
 
 # Agent Configuration
 agents:
@@ -255,9 +272,13 @@ sampling:
 Override any configuration with environment variables:
 
 ```bash
-# LLM Configuration
+# LLM Configuration (Standard OpenAI)
 export OPENAI_API_KEY="sk-..."
 export ALETHEIA_LLM_MODEL="gpt-4o"
+
+# LLM Configuration (Azure OpenAI)
+export AZURE_OPENAI_API_KEY="your-azure-key"
+# Note: Azure configuration must be set in config.yaml (use_azure, azure_deployment, azure_endpoint)
 
 # Data Sources
 export PROMETHEUS_URL="http://prometheus.example.com:9090"
@@ -578,6 +599,55 @@ data_sources:
 Set environment variable:
 ```bash
 export OPENAI_API_KEY="sk-..."
+```
+
+### Azure OpenAI Configuration
+
+To use Azure OpenAI Services instead of standard OpenAI:
+
+Create `~/.aletheia/config.yaml`:
+
+```yaml
+llm:
+  use_azure: true
+  azure_deployment: "gpt-4o"
+  azure_endpoint: "https://my-resource.openai.azure.com/"
+  azure_api_version: "2024-02-15-preview"  # Optional
+  api_key_env: "AZURE_OPENAI_API_KEY"
+
+data_sources:
+  kubernetes:
+    enabled: true
+  prometheus:
+    enabled: true
+    url: "http://localhost:9090"
+```
+
+Set environment variable:
+```bash
+export AZURE_OPENAI_API_KEY="your-azure-api-key"
+```
+
+**Per-Agent Azure Configuration**:
+
+You can mix Azure and standard OpenAI for different agents:
+
+```yaml
+llm:
+  # Default: Standard OpenAI
+  default_model: "gpt-4o"
+  api_key_env: "OPENAI_API_KEY"
+  
+  agents:
+    data_fetcher:
+      # This agent uses Azure OpenAI
+      use_azure: true
+      azure_deployment: "gpt-4o"
+      azure_endpoint: "https://my-resource.openai.azure.com/"
+    
+    root_cause_analyst:
+      # This agent uses standard OpenAI
+      model: "o1"
 ```
 
 ### Production Configuration
