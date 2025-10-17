@@ -281,30 +281,43 @@ class OrchestratorAgent(BaseAgent):
                 "timestamp": datetime.now().isoformat()
             })
             
-            # Understand user intent
+            # Understand user intent using LLM
             intent_result = self._understand_user_intent(user_message, conversation_history)
             intent = intent_result.get("intent")
             parameters = intent_result.get("parameters", {})
+            confidence = intent_result.get("confidence", 0.0)
             
-            # Route based on intent
+            # Decide routing using LLM (LLM-First: no hardcoded logic)
+            routing_decision = self._decide_next_agent(
+                intent=intent,
+                parameters=parameters,
+                confidence=confidence,
+                conversation_history=conversation_history
+            )
+            
+            action = routing_decision.get("action")
+            suggested_response = routing_decision.get("suggested_response", "")
+            
+            # Execute based on LLM's routing decision
             response = None
-            if intent == UserIntent.FETCH_DATA.value:
-                response = self._handle_fetch_data_intent(parameters)
-            elif intent == UserIntent.ANALYZE_PATTERNS.value:
-                response = self._handle_analyze_patterns_intent(parameters)
-            elif intent == UserIntent.INSPECT_CODE.value:
-                response = self._handle_inspect_code_intent(parameters)
-            elif intent == UserIntent.DIAGNOSE.value:
-                response = self._handle_diagnose_intent(parameters)
-            elif intent == UserIntent.SHOW_FINDINGS.value:
-                response = self._handle_show_findings_intent()
-                investigation_complete = self._check_if_complete()
-            elif intent == UserIntent.CLARIFY.value:
-                response = self._handle_clarify_intent(user_message, conversation_history)
-            elif intent == UserIntent.MODIFY_SCOPE.value:
-                response = self._handle_modify_scope_intent(parameters)
+            if action == "clarify":
+                # LLM determined we should clarify instead of routing to agent
+                response = suggested_response or self._generate_clarification_response(
+                    user_message, conversation_history, routing_decision.get("reasoning", "")
+                )
+            elif action in self.agent_registry:
+                # LLM determined we should route to a specialist agent
+                response = self._execute_agent_and_generate_response(
+                    agent_name=action,
+                    parameters=parameters,
+                    user_message=user_message
+                )
+                # Check if investigation is complete
+                if action == "root_cause_analyst":
+                    investigation_complete = self._check_if_complete()
             else:
-                response = "I'm not sure I understand. Could you rephrase that?"
+                # Fallback if LLM returns unexpected action
+                response = "I'm not sure how to proceed. Could you clarify your request?"
             
             # Display and record response
             if response:
@@ -388,57 +401,73 @@ class OrchestratorAgent(BaseAgent):
                 "reasoning": "Failed to parse intent"
             }
     
-    def _decide_next_agent(self, intent: str, parameters: Dict[str, Any]) -> Optional[str]:
-        """Decide which specialist agent to route to based on intent.
+    def _decide_next_agent(
+        self,
+        intent: str,
+        parameters: Dict[str, Any],
+        confidence: float,
+        conversation_history: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Decide which specialist agent to route to using LLM.
+        
+        This method delegates ALL routing logic to the LLM. No hardcoded mappings.
         
         Args:
             intent: User intent from intent understanding
             parameters: Extracted parameters from user message
+            confidence: Confidence score of intent classification
+            conversation_history: Recent conversation messages
         
         Returns:
-            Agent name to route to, or None if no routing needed
+            Dictionary with action, reasoning, prerequisites_met, and suggested_response
         """
-        # Map intents to agents
-        intent_to_agent = {
-            UserIntent.FETCH_DATA.value: "data_fetcher",
-            UserIntent.ANALYZE_PATTERNS.value: "pattern_analyzer",
-            UserIntent.INSPECT_CODE.value: "code_inspector",
-            UserIntent.DIAGNOSE.value: "root_cause_analyst"
-        }
+        from aletheia.llm.prompts import get_system_prompt, get_user_prompt_template
         
-        agent_name = intent_to_agent.get(intent)
+        # Get current investigation state summary
+        investigation_state = self._get_investigation_state_summary()
         
-        # Check dependencies before routing
-        if agent_name:
-            can_route = self._check_agent_dependencies(agent_name)
-            if not can_route:
-                return None
+        # Format conversation context (last 3 messages)
+        conversation_context = "\n".join([
+            f"{msg['role'].capitalize()}: {msg['content']}"
+            for msg in conversation_history[-3:]
+        ]) if conversation_history else "No previous conversation"
         
-        return agent_name
-    
-    def _check_agent_dependencies(self, agent_name: str) -> bool:
-        """Check if an agent's dependencies are satisfied.
+        # Build prompt for agent routing decision
+        routing_template = get_user_prompt_template("agent_routing_decision")
+        user_prompt = routing_template.format(
+            intent=intent,
+            confidence=confidence,
+            parameters=json.dumps(parameters, indent=2),
+            investigation_state=investigation_state,
+            conversation_context=conversation_context
+        )
         
-        Args:
-            agent_name: Name of the agent to check
+        # Get LLM decision
+        try:
+            llm = self.get_llm()
+            system_prompt = get_system_prompt("agent_routing")
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            response = llm.complete(messages, temperature=0.3)
+            
+            # Parse JSON response
+            routing_decision = json.loads(response)
+            
+            return routing_decision
         
-        Returns:
-            True if dependencies are satisfied
-        """
-        # Define dependencies
-        dependencies = {
-            "pattern_analyzer": [ScratchpadSection.DATA_COLLECTED],
-            "code_inspector": [ScratchpadSection.PATTERN_ANALYSIS],
-            "root_cause_analyst": [ScratchpadSection.DATA_COLLECTED]  # Can work with just data or patterns
-        }
-        
-        required_sections = dependencies.get(agent_name, [])
-        
-        for section in required_sections:
-            if not self.scratchpad.has_section(section):
-                return False
-        
-        return True
+        except (json.JSONDecodeError, Exception) as e:
+            # Fallback to clarification if parsing fails
+            self.console.print(f"[yellow]Warning: Agent routing failed: {e}[/yellow]")
+            return {
+                "action": "clarify",
+                "reasoning": "Failed to determine routing",
+                "prerequisites_met": False,
+                "suggested_response": "I need more information to proceed. Could you clarify your request?"
+            }
     
     def _process_initial_message(self, initial_message: str) -> None:
         """Process the initial user message to set up the investigation.
@@ -691,6 +720,162 @@ based on the current investigation state. Be helpful, concise, and guide them to
             True if investigation has reached a conclusion
         """
         return self.scratchpad.has_section(ScratchpadSection.FINAL_DIAGNOSIS)
+    
+    def _generate_clarification_response(
+        self,
+        user_message: str,
+        conversation_history: List[Dict[str, Any]],
+        reasoning: str
+    ) -> str:
+        """Generate a clarification response using LLM.
+        
+        This is called when the LLM determines clarification is needed instead of
+        routing to a specialist agent.
+        
+        Args:
+            user_message: The user's message
+            conversation_history: Recent conversation
+            reasoning: LLM's reasoning for why clarification is needed
+        
+        Returns:
+            Clarification response to user
+        """
+        try:
+            llm = self.get_llm()
+            investigation_state = self._get_investigation_state_summary()
+            
+            system_prompt = """You are Aletheia, a helpful troubleshooting assistant.
+Generate a clarifying response to guide the user. Be specific about what information is needed."""
+            
+            context = f"""User message: {user_message}
+
+Investigation state:
+{investigation_state}
+
+Reason for clarification: {reasoning}
+
+Generate a helpful response that:
+1. Acknowledges the user's request
+2. Explains what information is needed or what prerequisite is missing
+3. Provides guidance on next steps"""
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context}
+            ]
+            
+            return llm.complete(messages, temperature=0.7)
+        
+        except Exception as e:
+            self.console.print(f"[yellow]Warning: Clarification generation failed: {e}[/yellow]")
+            return "I need more information to proceed. Could you provide more details?"
+    
+    def _execute_agent_and_generate_response(
+        self,
+        agent_name: str,
+        parameters: Dict[str, Any],
+        user_message: str
+    ) -> str:
+        """Execute a specialist agent and generate a natural language response.
+        
+        This method:
+        1. Updates scratchpad with parameters
+        2. Routes to the specialist agent
+        3. Generates a conversational response about the results
+        
+        Args:
+            agent_name: Name of agent to execute
+            parameters: Extracted parameters
+            user_message: Original user message
+        
+        Returns:
+            Natural language response to user
+        """
+        # Update problem parameters if provided
+        if parameters:
+            self._update_problem_parameters(parameters)
+        
+        # Execute the agent
+        result = self.route_to_agent(agent_name)
+        
+        # Generate conversational response using LLM
+        try:
+            llm = self.get_llm()
+            
+            # Get what the agent found
+            agent_results_summary = self._get_agent_results_summary(agent_name)
+            
+            system_prompt = f"""You are Aletheia, a troubleshooting assistant.
+Generate a concise, conversational response about what the {agent_name.replace('_', ' ')} agent found.
+Be natural, helpful, and suggest logical next steps."""
+            
+            context = f"""User requested: {user_message}
+
+Agent executed: {agent_name}
+Success: {result.get('success', False)}
+
+Agent findings summary:
+{agent_results_summary}
+
+Generate a natural response that:
+1. Summarizes what was found
+2. Highlights key insights (if any)
+3. Suggests next steps in the investigation"""
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context}
+            ]
+            
+            return llm.complete(messages, temperature=0.7)
+        
+        except Exception as e:
+            self.console.print(f"[yellow]Warning: Response generation failed: {e}[/yellow]")
+            # Fallback response
+            if result.get("success"):
+                return f"I've completed the {agent_name.replace('_', ' ')} step. What would you like to do next?"
+            else:
+                return f"I encountered an issue with the {agent_name.replace('_', ' ')} step: {result.get('error', 'Unknown error')}"
+    
+    def _get_agent_results_summary(self, agent_name: str) -> str:
+        """Get a summary of what an agent found in the scratchpad.
+        
+        Args:
+            agent_name: Name of the agent
+        
+        Returns:
+            Summary string of findings
+        """
+        # Map agents to their scratchpad sections
+        agent_section_map = {
+            "data_fetcher": ScratchpadSection.DATA_COLLECTED,
+            "pattern_analyzer": ScratchpadSection.PATTERN_ANALYSIS,
+            "code_inspector": ScratchpadSection.CODE_INSPECTION,
+            "root_cause_analyst": ScratchpadSection.FINAL_DIAGNOSIS
+        }
+        
+        section = agent_section_map.get(agent_name)
+        if not section or not self.scratchpad.has_section(section):
+            return "No results available yet"
+        
+        data = self.read_scratchpad(section)
+        
+        # Create a brief summary (avoid dumping entire scratchpad)
+        if agent_name == "data_fetcher":
+            sources = list(data.keys()) if isinstance(data, dict) else []
+            return f"Collected data from {len(sources)} source(s): {', '.join(sources)}"
+        elif agent_name == "pattern_analyzer":
+            anomaly_count = len(data.get("anomalies", [])) if isinstance(data, dict) else 0
+            return f"Found {anomaly_count} anomalies/patterns"
+        elif agent_name == "code_inspector":
+            findings = data.get("findings", []) if isinstance(data, dict) else []
+            return f"Inspected {len(findings)} code location(s)"
+        elif agent_name == "root_cause_analyst":
+            root_cause = data.get("root_cause", {}) if isinstance(data, dict) else {}
+            confidence = root_cause.get("confidence", 0.0)
+            return f"Generated diagnosis with {confidence:.0%} confidence"
+        
+        return "Analysis complete"
     
     def _display_welcome_conversational(self) -> None:
         """Display welcome message for conversational mode."""

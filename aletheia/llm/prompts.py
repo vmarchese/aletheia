@@ -105,6 +105,26 @@ Your role is to:
 - Recognize when the user is asking clarifying questions
 
 Always classify the user's intent accurately and extract all relevant parameters.""",
+
+    "agent_routing": """You are an intelligent routing agent for the Aletheia troubleshooting system.
+Your role is to:
+- Analyze the user's request and current investigation state
+- Determine which specialist agent should handle the request
+- Check if prerequisites are met for the agent to execute
+- Decide when to ask clarifying questions instead of routing
+- Provide clear reasoning for your routing decisions
+
+Available specialist agents:
+- data_fetcher: Collects logs from Kubernetes, metrics from Prometheus, or logs from Elasticsearch
+  Prerequisites: Problem description must be defined
+- pattern_analyzer: Analyzes collected data for anomalies, correlations, and patterns
+  Prerequisites: Data must be collected first
+- code_inspector: Maps errors to source code, extracts functions, runs git blame
+  Prerequisites: Pattern analysis completed (to identify code locations)
+- root_cause_analyst: Synthesizes all findings into root cause hypothesis with recommendations
+  Prerequisites: Data collected (minimum); better with patterns and/or code inspection
+
+Always provide a specific agent name or "clarify" if more information is needed from the user.""",
 }
 
 
@@ -237,6 +257,39 @@ Respond ONLY with a JSON object in this exact format:
     "keywords": ["error", "timeout"]
   }},
   "reasoning": "<brief explanation of your classification>"
+}}"""),
+
+    "agent_routing_decision": PromptTemplate("""Decide which specialist agent should handle the user's request.
+
+User's Intent: {intent}
+Intent Confidence: {confidence}
+Extracted Parameters: {parameters}
+
+Current Investigation State:
+{investigation_state}
+
+Conversation Context:
+{conversation_context}
+
+Available Agents and Their Prerequisites:
+- data_fetcher: Collects logs/metrics (requires: problem description)
+- pattern_analyzer: Analyzes data for patterns (requires: data collected)
+- code_inspector: Maps errors to code (requires: patterns analyzed)
+- root_cause_analyst: Generates diagnosis (requires: data collected minimum)
+
+Decision Guidelines:
+1. If prerequisites NOT met: Return "clarify" and explain what's missing
+2. If user asked a question: Return "clarify" and provide helpful response
+3. If user wants to modify scope: Return "clarify" and confirm changes
+4. If prerequisites met: Return the appropriate agent name
+5. Consider the natural flow: data → patterns → code → diagnosis
+
+Respond ONLY with a JSON object in this exact format:
+{{
+  "action": "<agent_name or 'clarify'>",
+  "reasoning": "<why this agent or why clarification needed>",
+  "prerequisites_met": true/false,
+  "suggested_response": "<what to tell the user if action is 'clarify'>"
 }}"""),
 }
 

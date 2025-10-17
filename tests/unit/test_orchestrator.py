@@ -537,39 +537,119 @@ class TestConversationalMode:
         assert result["parameters"]["time_window"] == "2h"
     
     def test_decide_next_agent_fetch_data(self, orchestrator):
-        """Test agent routing decision for fetch_data intent."""
-        agent_name = orchestrator._decide_next_agent("fetch_data", {})
-        assert agent_name == "data_fetcher"
+        """Test LLM-based agent routing decision for fetch_data intent."""
+        # Mock LLM response for routing decision
+        mock_llm = Mock()
+        mock_llm.complete = Mock(return_value=json.dumps({
+            "action": "data_fetcher",
+            "reasoning": "User wants to fetch data",
+            "prerequisites_met": True,
+            "suggested_response": ""
+        }))
+        orchestrator.get_llm = Mock(return_value=mock_llm)
+        
+        result = orchestrator._decide_next_agent(
+            "fetch_data", {}, 0.9, []
+        )
+        assert result["action"] == "data_fetcher"
+        assert result["prerequisites_met"] is True
     
     def test_decide_next_agent_analyze_patterns(self, orchestrator, mock_scratchpad):
-        """Test agent routing decision for analyze_patterns intent."""
+        """Test LLM-based agent routing decision for analyze_patterns intent."""
         # Mock that data has been collected
         mock_scratchpad.has_section = Mock(return_value=True)
         
-        agent_name = orchestrator._decide_next_agent("analyze_patterns", {})
-        assert agent_name == "pattern_analyzer"
+        # Mock LLM response for routing decision
+        mock_llm = Mock()
+        mock_llm.complete = Mock(return_value=json.dumps({
+            "action": "pattern_analyzer",
+            "reasoning": "Data collected, ready to analyze patterns",
+            "prerequisites_met": True,
+            "suggested_response": ""
+        }))
+        orchestrator.get_llm = Mock(return_value=mock_llm)
+        
+        result = orchestrator._decide_next_agent(
+            "analyze_patterns", {}, 0.9, []
+        )
+        assert result["action"] == "pattern_analyzer"
+        assert result["prerequisites_met"] is True
     
     def test_decide_next_agent_without_dependencies(self, orchestrator, mock_scratchpad):
-        """Test that agent routing fails without dependencies."""
+        """Test that LLM returns clarify when dependencies not met."""
         # Mock that no data has been collected
         mock_scratchpad.has_section = Mock(return_value=False)
         
-        agent_name = orchestrator._decide_next_agent("analyze_patterns", {})
-        assert agent_name is None
+        # Mock LLM response indicating prerequisites not met
+        mock_llm = Mock()
+        mock_llm.complete = Mock(return_value=json.dumps({
+            "action": "clarify",
+            "reasoning": "Data must be collected first",
+            "prerequisites_met": False,
+            "suggested_response": "I need to collect data before analyzing patterns. Shall I do that?"
+        }))
+        orchestrator.get_llm = Mock(return_value=mock_llm)
+        
+        result = orchestrator._decide_next_agent(
+            "analyze_patterns", {}, 0.9, []
+        )
+        assert result["action"] == "clarify"
+        assert result["prerequisites_met"] is False
     
-    def test_check_agent_dependencies_satisfied(self, orchestrator, mock_scratchpad):
-        """Test dependency check when satisfied."""
+    def test_llm_based_routing_no_hardcoded_logic(self, orchestrator):
+        """Test that routing decisions come from LLM, not hardcoded mappings."""
+        # This test verifies LLM-First design principle
+        # The orchestrator should not contain hardcoded intent-to-agent mappings
+        
+        # Mock LLM to return unexpected agent name (not in old hardcoded mapping)
+        mock_llm = Mock()
+        mock_llm.complete = Mock(return_value=json.dumps({
+            "action": "custom_agent",
+            "reasoning": "LLM decided on custom agent",
+            "prerequisites_met": True,
+            "suggested_response": ""
+        }))
+        orchestrator.get_llm = Mock(return_value=mock_llm)
+        
+        result = orchestrator._decide_next_agent(
+            "some_intent", {}, 0.9, []
+        )
+        # The result should contain whatever LLM decided
+        assert result["action"] == "custom_agent"
+        # Verify the method does not contain hardcoded logic by checking
+        # that it accepts LLM's decision without validation
+    
+    def test_llm_routing_receives_full_context(self, orchestrator, mock_scratchpad):
+        """Test that LLM receives conversation history and investigation state."""
         mock_scratchpad.has_section = Mock(return_value=True)
+        mock_scratchpad.read_section = Mock(return_value={"some": "data"})
         
-        result = orchestrator._check_agent_dependencies("pattern_analyzer")
-        assert result is True
-    
-    def test_check_agent_dependencies_not_satisfied(self, orchestrator, mock_scratchpad):
-        """Test dependency check when not satisfied."""
-        mock_scratchpad.has_section = Mock(return_value=False)
+        mock_llm = Mock()
+        mock_llm.complete = Mock(return_value=json.dumps({
+            "action": "data_fetcher",
+            "reasoning": "Ready to fetch",
+            "prerequisites_met": True,
+            "suggested_response": ""
+        }))
+        orchestrator.get_llm = Mock(return_value=mock_llm)
         
-        result = orchestrator._check_agent_dependencies("pattern_analyzer")
-        assert result is False
+        conversation = [
+            {"role": "user", "content": "Check logs", "timestamp": "2025-10-17T10:00:00"}
+        ]
+        
+        result = orchestrator._decide_next_agent(
+            "fetch_data", {"services": ["api"]}, 0.9, conversation
+        )
+        
+        # Verify LLM was called with context
+        assert mock_llm.complete.called
+        call_args = mock_llm.complete.call_args[0][0]  # messages list
+        user_prompt = call_args[1]["content"]
+        
+        # Verify context is included in prompt
+        assert "fetch_data" in user_prompt  # intent
+        assert "0.9" in user_prompt  # confidence
+        assert "Investigation State" in user_prompt or "investigation_state" in user_prompt
     
     def test_process_initial_message(self, orchestrator, mock_scratchpad):
         """Test processing of initial conversational message."""
