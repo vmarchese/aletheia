@@ -37,11 +37,14 @@ class TestSessionOpenCommand:
         mock_getpass.side_effect = ["test-password", "test-password"]
 
         # Mock session creation
+        mock_metadata = MagicMock()
+        mock_metadata.name = "session-1234"
+        mock_metadata.mode = "guided"
+        
         mock_session = MagicMock()
         mock_session.session_id = "INC-1234"
-        mock_session.name = "session-1234"
-        mock_session.mode = "guided"
         mock_session.session_path = Path("/home/user/.aletheia/sessions/INC-1234")
+        mock_session.get_metadata.return_value = mock_metadata
         mock_create.return_value = mock_session
 
         result = runner.invoke(app, ["session", "open"])
@@ -57,11 +60,14 @@ class TestSessionOpenCommand:
         """Test session creation with name."""
         mock_getpass.side_effect = ["test-password", "test-password"]
 
+        mock_metadata = MagicMock()
+        mock_metadata.name = "production-outage"
+        mock_metadata.mode = "guided"
+        
         mock_session = MagicMock()
         mock_session.session_id = "INC-5678"
-        mock_session.name = "production-outage"
-        mock_session.mode = "guided"
         mock_session.session_path = Path("/home/user/.aletheia/sessions/INC-5678")
+        mock_session.get_metadata.return_value = mock_metadata
         mock_create.return_value = mock_session
 
         result = runner.invoke(
@@ -199,10 +205,13 @@ class TestSessionResumeCommand:
         """Test resuming a session."""
         mock_getpass.return_value = "test-password"
 
+        mock_metadata = MagicMock()
+        mock_metadata.name = "production-outage"
+        mock_metadata.mode = "guided"
+        
         mock_session = MagicMock()
         mock_session.session_id = "INC-1234"
-        mock_session.name = "production-outage"
-        mock_session.mode = "guided"
+        mock_session.get_metadata.return_value = mock_metadata
         mock_resume.return_value = mock_session
 
         result = runner.invoke(app, ["session", "resume", "INC-1234"])

@@ -12,6 +12,10 @@ from rich.table import Table
 import getpass
 
 from aletheia.session import Session
+from aletheia.config import ConfigLoader
+from aletheia.ui.workflow import InvestigationWorkflow
+from aletheia.agents.orchestrator import OrchestratorAgent
+from aletheia.scratchpad import Scratchpad
 
 app = typer.Typer(
     name="aletheia",
@@ -27,6 +31,63 @@ session_app = typer.Typer(
 app.add_typer(session_app, name="session")
 
 console = Console()
+
+
+def _start_investigation(session: Session, console: Console) -> None:
+    """
+    Start the investigation workflow for a session.
+    
+    Args:
+        session: Active session to investigate
+        console: Rich console for output
+    """
+    try:
+        # Load configuration
+        config_loader = ConfigLoader()
+        config_model = config_loader.load()
+        
+        # Convert Pydantic model to dictionary for agents
+        config = config_model.model_dump()
+        
+        # Initialize scratchpad with session directory and encryption key
+        scratchpad = Scratchpad(
+            session_dir=session.session_path,
+            encryption_key=session._get_key()
+        )
+        scratchpad_file = session.scratchpad_file
+        
+        # Load existing scratchpad if it exists
+        if scratchpad_file.exists():
+            scratchpad.load(scratchpad_file)
+        
+        # Get session mode
+        metadata = session.get_metadata()
+        mode = metadata.mode
+        
+        # Initialize orchestrator
+        orchestrator = OrchestratorAgent(
+            config=config,
+            scratchpad=scratchpad
+        )
+        
+        # Start investigation based on mode
+        console.print(f"\n[cyan]Starting {mode} investigation...[/cyan]\n")
+        result = orchestrator.execute(mode=mode)
+        
+        # Display completion message
+        if result.get("status") == "completed":
+            console.print("\n[green]✓ Investigation completed successfully![/green]")
+        else:
+            console.print(f"\n[yellow]Investigation ended with status: {result.get('status')}[/yellow]")
+            
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")
+        # Save scratchpad before exiting
+        scratchpad.save(scratchpad_file)
+    except Exception as e:
+        console.print(f"[red]Error during investigation: {e}[/red]")
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -64,9 +125,14 @@ def session_open(
             password=password,
             mode=mode,
         )
-        console.print(f"[green]Session '{session.name}' created successfully![/green]")
+        metadata = session.get_metadata()
+        console.print(f"[green]Session '{metadata.name}' created successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
-        console.print(f"Mode: {session.mode}")
+        console.print(f"Mode: {metadata.mode}")
+        
+        # Start investigation workflow
+        _start_investigation(session, console)
+        
     except FileExistsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -118,9 +184,14 @@ def session_resume(
     
     try:
         session = Session.resume(session_id=session_id, password=password)
-        console.print(f"[green]Session '{session.name}' resumed successfully![/green]")
+        metadata = session.get_metadata()
+        console.print(f"[green]Session '{metadata.name}' resumed successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
-        console.print(f"Mode: {session.mode}")
+        console.print(f"Mode: {metadata.mode}")
+        
+        # Resume investigation workflow
+        _start_investigation(session, console)
+        
     except FileNotFoundError:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
         raise typer.Exit(1)
@@ -200,9 +271,10 @@ def session_import(
     
     try:
         session = Session.import_session(archive_path=archive_path, password=password)
+        metadata = session.get_metadata()
         console.print(f"[green]Session imported successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
-        console.print(f"Session Name: {session.name}")
+        console.print(f"Session Name: {metadata.name}")
     except FileExistsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
