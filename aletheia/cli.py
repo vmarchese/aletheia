@@ -5,6 +5,7 @@ Main entry point for the Aletheia CLI application.
 """
 import sys
 import typer
+import asyncio
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
@@ -28,7 +29,13 @@ session_app = typer.Typer(
     help="Manage troubleshooting sessions",
 )
 
+demo_app = typer.Typer(
+    name="demo",
+    help="Run demo mode with pre-recorded scenarios",
+)
+
 app.add_typer(session_app, name="session")
+app.add_typer(demo_app, name="demo")
 
 console = Console()
 
@@ -283,6 +290,76 @@ def session_import(
         raise typer.Exit(1)
     except Exception as e:
         typer.echo(f"Error importing session: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@demo_app.command("list")
+def demo_list() -> None:
+    """List available demo scenarios."""
+    from aletheia.demo.scenario import DEMO_SCENARIOS
+    
+    table = Table(title="Available Demo Scenarios")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="green")
+    table.add_column("Description", style="white")
+    
+    for scenario_id, scenario in DEMO_SCENARIOS.items():
+        table.add_row(
+            scenario_id,
+            scenario.name,
+            scenario.description[:80] + "..." if len(scenario.description) > 80 else scenario.description,
+        )
+    
+    console.print(table)
+    console.print("\n[dim]Run a demo with: aletheia demo run <scenario_id>[/dim]")
+
+
+@demo_app.command("run")
+def demo_run(
+    scenario: str = typer.Argument(..., help="Demo scenario ID to run"),
+) -> None:
+    """Run a demo investigation scenario with pre-recorded data."""
+    from aletheia.demo.scenario import DEMO_SCENARIOS
+    from aletheia.demo.orchestrator import run_demo
+    from tempfile import TemporaryDirectory
+    
+    # Validate scenario
+    if scenario not in DEMO_SCENARIOS:
+        available = ", ".join(DEMO_SCENARIOS.keys())
+        typer.echo(f"Error: Unknown scenario '{scenario}'. Available: {available}", err=True)
+        typer.echo("Run 'aletheia demo list' to see all scenarios.", err=True)
+        raise typer.Exit(1)
+    
+    try:
+        # Load configuration
+        config_loader = ConfigLoader()
+        config_model = config_loader.load()
+        config = config_model.model_dump()
+        
+        # Create temporary scratchpad (demo doesn't persist)
+        with TemporaryDirectory() as temp_dir:
+            # Use a simple key for demo mode (no sensitive data)
+            demo_key = b"demo_mode_key_32_bytes_length_"
+            scratchpad = Scratchpad(
+                session_dir=Path(temp_dir),
+                encryption_key=demo_key
+            )
+            
+            # Run demo investigation
+            console.print("[cyan]Starting demo mode...[/cyan]\n")
+            result = asyncio.run(run_demo(scenario, config, scratchpad))
+            
+            # Display completion status
+            if result["status"] == "completed":
+                console.print("\n[green]✓ Demo investigation completed![/green]")
+                console.print("\n[dim]Note: Demo data is not persisted. Run a real session with 'aletheia session open' for actual investigations.[/dim]")
+            elif result["status"] == "cancelled":
+                console.print("\n[yellow]Demo cancelled by user[/yellow]")
+            else:
+                console.print(f"\n[yellow]Demo ended with status: {result['status']}[/yellow]")
+                
+    except Exception as e:
+        typer.echo(f"Error running demo: {e}", err=True)
         raise typer.Exit(1)
 
 
