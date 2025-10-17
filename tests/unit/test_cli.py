@@ -177,16 +177,14 @@ class TestSessionListCommand:
         """Test listing with existing sessions."""
         mock_list.return_value = [
             {
-                "name": "session-1",
-                "session_id": "INC-1234",
-                "mode": "guided",
-                "created_at": "2025-10-14T10:00:00.123456",
+                "id": "INC-1234",
+                "path": "/Users/test/.aletheia/sessions/INC-1234",
+                "created": "2025-10-14T10:00:00.123456",
             },
             {
-                "name": "session-2",
-                "session_id": "INC-5678",
-                "mode": "conversational",
-                "created_at": "2025-10-14T11:00:00.123456",
+                "id": "INC-5678",
+                "path": "/Users/test/.aletheia/sessions/INC-5678",
+                "created": "2025-10-14T11:00:00.123456",
             },
         ]
 

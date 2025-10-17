@@ -65,14 +65,44 @@ class AletheiaHandoffOrchestration:
         Args:
             message: The agent's response message
         """
-        # Display agent activity if verbose
+        # Always display agent activity to make it clear who is operating
         if self.console and message.name:
-            self.console.print(f"[cyan]→[/cyan] {message.name}: {message.content or '(processing)'}")
+            # Format agent name nicely
+            agent_display_name = self._format_agent_name(message.name)
+            
+            # Show which agent is currently active
+            if message.content:
+                # Agent produced content - show it
+                self.console.print(
+                    f"\n[bold cyan]🤖 {agent_display_name}:[/bold cyan]",
+                    end=" "
+                )
+                self.console.print(f"{message.content}")
+            else:
+                # Agent is processing (e.g., calling functions)
+                self.console.print(
+                    f"[dim cyan]   → {agent_display_name} processing...[/dim cyan]"
+                )
         
         # Update scratchpad based on agent and message content
         # This would be expanded as agents are converted to SK
         # For now, this is a placeholder for the pattern
         
+    def _format_agent_name(self, agent_name: str) -> str:
+        """Format agent name for display.
+        
+        Converts agent_name from snake_case to Title Case.
+        
+        Args:
+            agent_name: Agent name in snake_case
+        
+        Returns:
+            Formatted agent name for display
+        """
+        # Convert snake_case to Title Case
+        # e.g., "data_fetcher" -> "Data Fetcher"
+        return " ".join(word.capitalize() for word in agent_name.split("_"))
+    
     def _human_response_function(self) -> ChatMessageContent:
         """Callback for human-in-the-loop interaction.
         
@@ -85,7 +115,7 @@ class AletheiaHandoffOrchestration:
         from rich.prompt import Prompt
         
         # Prompt user for input
-        user_input = Prompt.ask("\n[bold yellow]User input[/bold yellow]")
+        user_input = Prompt.ask("\n[bold yellow]👤 Your input[/bold yellow]")
         
         return ChatMessageContent(
             role=AuthorRole.USER,
@@ -119,6 +149,11 @@ class AletheiaHandoffOrchestration:
         if not self.runtime:
             raise RuntimeError("Runtime not started. Call start_runtime() first.")
         
+        # Display orchestration start
+        if self.console:
+            self.console.print("\n[bold]🔄 Starting Agent Orchestration[/bold]")
+            self.console.print("[dim]Agents will coordinate to investigate the problem...[/dim]\n")
+        
         # Invoke the orchestration
         orchestration_result = await self.orchestration.invoke(
             task=task,
@@ -127,6 +162,10 @@ class AletheiaHandoffOrchestration:
         
         # Wait for results
         value = await orchestration_result.get(timeout=timeout)
+        
+        # Display completion
+        if self.console:
+            self.console.print("\n[bold green]✓ Orchestration Complete[/bold green]\n")
         
         return value
 

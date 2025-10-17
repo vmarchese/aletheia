@@ -65,8 +65,10 @@ class TestAletheiaHandoffOrchestration:
             assert orchestration.runtime is None
             mock_handoff_orch.assert_called_once()
     
-    def test_agent_response_callback_with_content(self, mock_agent, mock_scratchpad, mock_console):
-        """Test agent response callback with message content."""
+    def test_agent_response_callback_displays_agent_name(self, mock_agent, mock_scratchpad, mock_console):
+        """Test that agent response callback displays agent name."""
+        mock_agent.name = "data_fetcher"
+        
         with patch('aletheia.agents.orchestration_sk.HandoffOrchestration'):
             orchestration = AletheiaHandoffOrchestration(
                 agents=[mock_agent],
@@ -75,17 +77,21 @@ class TestAletheiaHandoffOrchestration:
                 console=mock_console
             )
             
+            # Create test message with content
             message = ChatMessageContent(
                 role=AuthorRole.ASSISTANT,
-                content="Test response",
-                name="test_agent"
+                content="Data collection complete",
+                name="data_fetcher"
             )
             
-            # Should not raise
+            # Call callback
             orchestration._agent_response_callback(message)
             
-            # Console should print agent activity
-            mock_console.print.assert_called_once()
+            # Verify console output shows agent name
+            assert mock_console.print.call_count >= 1
+            # Check that the agent name was displayed (either snake_case or Title Case)
+            call_args = [str(call) for call in mock_console.print.call_args_list]
+            assert any("data_fetcher" in str(arg).lower() or "Data Fetcher" in str(arg) for arg in call_args)
     
     def test_agent_response_callback_without_content(self, mock_agent, mock_scratchpad, mock_console):
         """Test agent response callback without message content."""
@@ -108,6 +114,23 @@ class TestAletheiaHandoffOrchestration:
             
             # Console should still print (with processing indicator)
             mock_console.print.assert_called_once()
+    
+    def test_format_agent_name(self, mock_agent, mock_scratchpad, mock_console):
+        """Test agent name formatting from snake_case to Title Case."""
+        with patch('aletheia.agents.orchestration_sk.HandoffOrchestration'):
+            orchestration = AletheiaHandoffOrchestration(
+                agents=[mock_agent],
+                handoffs={},
+                scratchpad=mock_scratchpad,
+                console=mock_console
+            )
+            
+            # Test various agent name formats
+            assert orchestration._format_agent_name("data_fetcher") == "Data Fetcher"
+            assert orchestration._format_agent_name("pattern_analyzer") == "Pattern Analyzer"
+            assert orchestration._format_agent_name("code_inspector") == "Code Inspector"
+            assert orchestration._format_agent_name("root_cause_analyst") == "Root Cause Analyst"
+            assert orchestration._format_agent_name("orchestrator") == "Orchestrator"
     
     def test_human_response_function(self, mock_agent, mock_scratchpad, mock_console):
         """Test human response function."""

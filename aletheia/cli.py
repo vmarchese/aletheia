@@ -16,7 +16,12 @@ from aletheia.session import Session
 from aletheia.config import ConfigLoader
 from aletheia.ui.workflow import InvestigationWorkflow
 from aletheia.agents.orchestrator import OrchestratorAgent
+from aletheia.agents.data_fetcher import DataFetcherAgent
+from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
+from aletheia.agents.code_inspector import CodeInspectorAgent
+from aletheia.agents.root_cause_analyst import RootCauseAnalystAgent
 from aletheia.scratchpad import Scratchpad
+from aletheia.utils import set_verbose_commands
 
 app = typer.Typer(
     name="aletheia",
@@ -57,15 +62,19 @@ def _start_investigation(session: Session, console: Console) -> None:
         config = config_model.model_dump()
         
         # Initialize scratchpad with session directory and encryption key
-        scratchpad = Scratchpad(
-            session_dir=session.session_path,
-            encryption_key=session._get_key()
-        )
         scratchpad_file = session.scratchpad_file
         
-        # Load existing scratchpad if it exists
+        # Load existing scratchpad if it exists, otherwise create new one
         if scratchpad_file.exists():
-            scratchpad.load(scratchpad_file)
+            scratchpad = Scratchpad.load(
+                session_dir=session.session_path,
+                encryption_key=session._get_key()
+            )
+        else:
+            scratchpad = Scratchpad(
+                session_dir=session.session_path,
+                encryption_key=session._get_key()
+            )
         
         # Get session mode
         metadata = session.get_metadata()
@@ -76,6 +85,17 @@ def _start_investigation(session: Session, console: Console) -> None:
             config=config,
             scratchpad=scratchpad
         )
+        
+        # Initialize and register specialist agents
+        data_fetcher = DataFetcherAgent(config=config, scratchpad=scratchpad)
+        pattern_analyzer = PatternAnalyzerAgent(config=config, scratchpad=scratchpad)
+        code_inspector = CodeInspectorAgent(config=config, scratchpad=scratchpad)
+        root_cause_analyst = RootCauseAnalystAgent(config=config, scratchpad=scratchpad)
+        
+        orchestrator.register_agent("data_fetcher", data_fetcher)
+        orchestrator.register_agent("pattern_analyzer", pattern_analyzer)
+        orchestrator.register_agent("code_inspector", code_inspector)
+        orchestrator.register_agent("root_cause_analyst", root_cause_analyst)
         
         # Start investigation based on mode
         console.print(f"\n[cyan]Starting {mode} investigation...[/cyan]\n")
@@ -90,7 +110,7 @@ def _start_investigation(session: Session, console: Console) -> None:
     except KeyboardInterrupt:
         console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")
         # Save scratchpad before exiting
-        scratchpad.save(scratchpad_file)
+        scratchpad.save()
     except Exception as e:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
@@ -108,8 +128,14 @@ def version() -> None:
 def session_open(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Session name"),
     mode: str = typer.Option("guided", "--mode", "-m", help="Session mode (guided or conversational)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
 ) -> None:
     """Open a new troubleshooting session."""
+    # Enable verbose command output if requested
+    if verbose:
+        set_verbose_commands(True)
+        console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
+    
     if mode not in ["guided", "conversational"]:
         typer.echo("Error: Mode must be 'guided' or 'conversational'", err=True)
         raise typer.Exit(1)
@@ -159,17 +185,15 @@ def session_list() -> None:
             return
         
         table = Table(title="Aletheia Sessions")
-        table.add_column("Name", style="cyan")
         table.add_column("Session ID", style="magenta")
-        table.add_column("Mode", style="green")
         table.add_column("Created", style="yellow")
+        table.add_column("Path", style="cyan")
         
         for session_data in sessions:
             table.add_row(
-                session_data["name"],
-                session_data["session_id"],
-                session_data["mode"],
-                session_data["created_at"],
+                session_data["id"],
+                session_data["created"],
+                session_data["path"],
             )
         
         console.print(table)
@@ -181,8 +205,14 @@ def session_list() -> None:
 @session_app.command("resume")
 def session_resume(
     session_id: str = typer.Argument(..., help="Session ID to resume"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
 ) -> None:
     """Resume an existing troubleshooting session."""
+    # Enable verbose command output if requested
+    if verbose:
+        set_verbose_commands(True)
+        console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
+    
     # Get password
     password = getpass.getpass("Enter session password: ")
     if not password:
@@ -290,6 +320,69 @@ def session_import(
         raise typer.Exit(1)
     except Exception as e:
         typer.echo(f"Error importing session: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@session_app.command("view")
+def session_view(
+    session_id: str = typer.Argument(..., help="Session ID to view"),
+    format: str = typer.Option("yaml", "--format", "-f", help="Output format (yaml or json)"),
+) -> None:
+    """View scratchpad contents of a session."""
+    # Get password
+    password = getpass.getpass("Enter session password: ")
+    if not password:
+        typer.echo("Error: Password cannot be empty", err=True)
+        raise typer.Exit(1)
+    
+    try:
+        # Resume session to decrypt
+        session = Session.resume(session_id=session_id, password=password)
+        
+        # Load scratchpad
+        scratchpad_file = session.scratchpad_file
+        if not scratchpad_file.exists():
+            console.print("[yellow]No scratchpad data found for this session[/yellow]")
+            return
+        
+        scratchpad = Scratchpad.load(
+            session_dir=session.session_path,
+            encryption_key=session._get_key()
+        )
+        
+        # Display metadata
+        metadata = session.get_metadata()
+        console.print(f"\n[bold cyan]Session: {metadata.name or session_id}[/bold cyan]")
+        console.print(f"Status: {metadata.status}")
+        console.print(f"Created: {metadata.created}")
+        console.print(f"Updated: {metadata.updated}")
+        console.print(f"Mode: {metadata.mode}")
+        
+        # Display scratchpad contents
+        console.print(f"\n[bold cyan]Scratchpad Contents:[/bold cyan]\n")
+        
+        if format.lower() == "json":
+            import json
+            data = scratchpad.to_dict()
+            console.print(json.dumps(data, indent=2))
+        else:
+            # YAML format (default)
+            yaml_output = scratchpad.to_yaml()
+            console.print(yaml_output)
+        
+        # Summary statistics
+        console.print(f"\n[dim]Sections: {scratchpad.section_count}[/dim]")
+        if scratchpad.updated_at:
+            console.print(f"[dim]Last updated: {scratchpad.updated_at.isoformat()}[/dim]")
+        
+    except FileNotFoundError:
+        typer.echo(f"Error: Session '{session_id}' not found", err=True)
+        raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Error viewing session: {e}", err=True)
         raise typer.Exit(1)
 
 

@@ -24,6 +24,7 @@ from aletheia.agents.sk_base import SKBaseAgent
 from aletheia.llm.prompts import compose_messages, get_system_prompt, get_user_prompt_template
 from aletheia.plugins.git_plugin import GitPlugin
 from aletheia.scratchpad import ScratchpadSection
+from aletheia.utils import run_command
 from aletheia.utils.validation import validate_git_repository
 
 
@@ -520,11 +521,12 @@ Provide your analysis in JSON format with this structure:
             Dictionary with git blame information or None if failed
         """
         try:
-            result = subprocess.run(
+            result = run_command(
                 ["git", "blame", "-L", f"{line_number},{line_number}", file_path],
                 cwd=repository,
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=10
             )
             
@@ -563,11 +565,12 @@ Provide your analysis in JSON format with this structure:
         """
         try:
             # Get commit author, date, and message
-            result = subprocess.run(
+            result = run_command(
                 ["git", "show", "-s", "--format=%an%n%ai%n%s", commit_hash],
                 cwd=repository,
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=10
             )
             
@@ -686,11 +689,12 @@ Provide your analysis in JSON format with this structure:
         # For MVP, use simple grep-based search
         # Future: Use tree-sitter for precise AST-based analysis
         try:
-            result = subprocess.run(
+            result = run_command(
                 ["git", "grep", "-n", function_name],
                 cwd=repository,
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=30
             )
             

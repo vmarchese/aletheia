@@ -150,9 +150,18 @@ class OrchestratorAgent(BaseAgent):
         Returns:
             Dictionary containing investigation results
         """
-        # Start session
-        self._display_welcome()
-        session_info = self.start_session(**kwargs)
+        # Check if resuming an existing session
+        is_resume = self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
+        
+        if is_resume:
+            # Restore phase from scratchpad or determine from completed sections
+            self._restore_phase_from_scratchpad()
+            self.console.print("[cyan]Resuming investigation...[/cyan]")
+            session_info = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
+        else:
+            # Start new session
+            self._display_welcome()
+            session_info = self.start_session(**kwargs)
         
         # Main investigation loop
         continue_investigation = True
@@ -264,13 +273,14 @@ class OrchestratorAgent(BaseAgent):
         
         agent = self.agent_registry[agent_name]
         
-        # Show agent execution (if visibility enabled)
-        if self.agent_visibility:
-            self.console.print(f"[cyan]→[/cyan] Executing {agent.__class__.__name__}")
+        # Always show which agent is executing for transparency
+        agent_display_name = self._format_agent_name(agent_name)
+        self.console.print(f"\n[bold cyan]🤖 {agent_display_name}:[/bold cyan] Starting...")
         
         # Execute agent with error handling
         try:
             result = agent.execute(**kwargs)
+            self.console.print(f"[green]✓[/green] {agent_display_name} completed successfully\n")
             return {"success": True, "result": result}
         except Exception as e:
             return self.handle_error(agent_name, e)
@@ -345,6 +355,34 @@ class OrchestratorAgent(BaseAgent):
             return self._handle_manual_intervention(agent_name)
         else:  # abort
             raise error
+    
+    def _restore_phase_from_scratchpad(self) -> None:
+        """Restore investigation phase from scratchpad state.
+        
+        Determines the current phase based on which sections have been completed
+        in the scratchpad.
+        """
+        # Check which sections exist in the scratchpad
+        has_problem = self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
+        has_data = self.scratchpad.has_section(ScratchpadSection.DATA_COLLECTED)
+        has_patterns = self.scratchpad.has_section(ScratchpadSection.PATTERN_ANALYSIS)
+        has_code = self.scratchpad.has_section(ScratchpadSection.CODE_INSPECTION)
+        has_diagnosis = self.scratchpad.has_section(ScratchpadSection.FINAL_DIAGNOSIS)
+        
+        # Determine phase based on completed sections
+        if has_diagnosis:
+            self.current_phase = InvestigationPhase.COMPLETED
+        elif has_code:
+            self.current_phase = InvestigationPhase.ROOT_CAUSE_ANALYSIS
+        elif has_patterns:
+            self.current_phase = InvestigationPhase.CODE_INSPECTION
+        elif has_data:
+            self.current_phase = InvestigationPhase.PATTERN_ANALYSIS
+        elif has_problem:
+            self.current_phase = InvestigationPhase.DATA_COLLECTION
+        else:
+            # Shouldn't reach here, but default to initialization
+            self.current_phase = InvestigationPhase.INITIALIZATION
     
     def _display_welcome(self) -> None:
         """Display welcome message."""
@@ -572,6 +610,21 @@ class OrchestratorAgent(BaseAgent):
         """
         # For now, always ask user
         return False
+    
+    def _format_agent_name(self, agent_name: str) -> str:
+        """Format agent name for display.
+        
+        Converts agent_name from snake_case to Title Case.
+        
+        Args:
+            agent_name: Agent name in snake_case
+        
+        Returns:
+            Formatted agent name for display
+        """
+        # Convert snake_case to Title Case
+        # e.g., "data_fetcher" -> "Data Fetcher"
+        return " ".join(word.capitalize() for word in agent_name.split("_"))
     
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is retryable.

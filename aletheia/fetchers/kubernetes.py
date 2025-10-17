@@ -1,16 +1,13 @@
-"""Kubernetes data fetcher for logs and pod information.
-
-This module provides a fetcher implementation for collecting logs from Kubernetes
-clusters using kubectl commands. It supports log sampling, time window filtering,
-and automatic retry logic for transient failures.
-"""
+"""Kubernetes data fetcher for pod logs, events, and resource status."""
 
 import json
 import random
 import subprocess
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from aletheia.utils import run_command
 from aletheia.fetchers.base import BaseFetcher, FetchResult, ConnectionError, QueryError
 from aletheia.utils.retry import retry_with_backoff
 
@@ -147,7 +144,7 @@ class KubernetesFetcher(BaseFetcher):
                 cmd.extend(["--since", f"{duration.seconds}s"])
 
         try:
-            result = subprocess.run(
+            result = run_command(
                 cmd,
                 capture_output=True,
                 text=True,
@@ -386,7 +383,7 @@ class KubernetesFetcher(BaseFetcher):
             cmd.extend(["-l", selector])
 
         try:
-            result = subprocess.run(
+            result = run_command(
                 cmd,
                 capture_output=True,
                 text=True,
@@ -424,7 +421,7 @@ class KubernetesFetcher(BaseFetcher):
         ]
 
         try:
-            result = subprocess.run(
+            result = run_command(
                 cmd,
                 capture_output=True,
                 text=True,
@@ -468,7 +465,7 @@ class KubernetesFetcher(BaseFetcher):
         ]
 
         try:
-            result = subprocess.run(
+            result = run_command(
                 cmd,
                 capture_output=True,
                 text=True,
