@@ -1557,12 +1557,12 @@ llm:
 
 ### **REFACTOR**: Conversational Orchestration (Post-MVP v1.1)
 
-- [ ] **REFACTOR-1** Implement intent-based orchestration
-  - [ ] Add `_execute_conversational_mode()` to OrchestratorAgent
-  - [ ] Implement `_understand_user_intent()` with LLM intent parsing
-  - [ ] Implement `_decide_next_agent()` for dynamic routing
-  - [ ] Add conversation history tracking in scratchpad
-  - **Acceptance**: Orchestrator can route based on user intent, not just phases
+- [x] **REFACTOR-1** Implement intent-based orchestration
+  - [x] Add `_execute_conversational_mode()` to OrchestratorAgent
+  - [x] Implement `_understand_user_intent()` with LLM intent parsing
+  - [x] Implement `_decide_next_agent()` for dynamic routing
+  - [x] Add conversation history tracking in scratchpad
+  - **Acceptance**: ✅ Orchestrator can route based on user intent, not just phases (Completed: 2025-10-17, Commit: db30977)
 
 - [ ] **REFACTOR-2** Update Data Fetcher for conversational mode
   - [ ] Add `_extract_kubernetes_params_from_conversation()`
