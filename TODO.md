@@ -1135,6 +1135,8 @@ llm:
 
 - [ ] **5.4.1** Manual testing of guided mode
   - [ ] Test with real user (SRE persona)
+  - [ ] Test with mocks every functions
+  - [ ] Verify evrything works 
   - [ ] Verify workflow is intuitive
   - [ ] Verify prompts are clear
   - [ ] Gather feedback on UX
