@@ -1557,71 +1557,103 @@ llm:
 
 ### **REFACTOR**: Conversational Orchestration (Post-MVP v1.1)
 
-- [x] **REFACTOR-1** Implement intent-based orchestration
-  - [x] Add `_execute_conversational_mode()` to OrchestratorAgent
-  - [x] Implement `_understand_user_intent()` with LLM intent parsing
-  - [x] Implement `_decide_next_agent()` for dynamic routing
-  - [x] Add conversation history tracking in scratchpad
-  - **Acceptance**: ✅ Orchestrator can route based on user intent, not just phases (Completed: 2025-10-17, Commit: db30977)
+**Design Principles for Conversational Mode**:
+- **LLM-First Design**: All parameter extraction, parsing, and decision logic delegated to LLM via SK prompts
+- **Plugin-Only External Calls**: Agents use plugins exclusively for kubectl, git, Prometheus HTTP APIs
+- **Thin Agent Pattern**: Agents orchestrate by building prompts and invoking SK with conversation context
+- **Prompt Engineering**: Focus on enhancing SK prompts to guide LLM behavior, not custom Python logic
+- **No Custom Extraction**: Agents read scratchpad conversation context and pass to LLM; LLM extracts parameters
 
-- [ ] **REFACTOR-2** Update Data Fetcher for conversational mode
-  - [ ] Add `_extract_kubernetes_params_from_conversation()`
-  - [ ] Add `_extract_prometheus_params_from_conversation()`
-  - [ ] Implement `_ask_user_for_missing_params()` for clarification
-  - [ ] Update SK prompts for parameter extraction from conversation
-  - **Acceptance**: Data Fetcher extracts K8s/Prometheus params from problem description
+- [ ] **REFACTOR-1** Implement intent-based orchestration (LLM-Delegated)
+  - [ ] Review existing `_execute_conversational_mode()` in OrchestratorAgent (Commit: db30977)
+  - [ ] Verify `_understand_user_intent()` delegates ALL intent parsing to LLM (no custom intent extraction logic)
+  - [ ] Verify `_decide_next_agent()` uses LLM recommendations for routing (not hardcoded logic)
+  - [ ] Remove any custom intent classification or routing logic from orchestrator
+  - [ ] Enhance SK prompts to guide LLM in determining:
+    - [ ] User intent from conversation (data collection, analysis, code inspection, diagnosis)
+    - [ ] Next agent to invoke based on conversation state
+    - [ ] When to ask clarifying questions vs proceed
+  - [ ] Add conversation history tracking in scratchpad (simple append, no parsing)
+  - [ ] Update unit tests to verify LLM receives conversation context and determines routing
+  - [ ] Ensure orchestrator is thin: reads scratchpad → invokes LLM → routes based on LLM response
+  - **Acceptance**: Orchestrator delegates ALL intent understanding and routing decisions to LLM; contains no custom classification logic
+  - **Note**: Initial implementation in db30977 may contain custom logic that needs refactoring
 
-- [ ] **REFACTOR-3** Update Pattern Analyzer for conversational mode
-  - [ ] Implement `_read_conversation_context()`
-  - [ ] Add conversational findings format
-  - [ ] Update prompts for flexible input
-  - **Acceptance**: Pattern Analyzer works with conversational notes
+- [ ] **REFACTOR-2** Update Data Fetcher for conversational mode (LLM-Delegated)
+  - [ ] Enhance `_build_sk_prompt()` to include full `CONVERSATION_HISTORY` section from scratchpad
+  - [ ] Add conversational prompt templates instructing LLM to extract K8s/Prometheus parameters from conversation
+  - [ ] LLM determines pod name, namespace, service name, time ranges from conversational context
+  - [ ] LLM uses `KubernetesPlugin` and `PrometheusPlugin` via `FunctionChoiceBehavior.Auto()`
+  - [ ] If parameters missing, LLM generates clarifying questions (no custom `_ask_user_for_missing_params()`)
+  - [ ] Update unit tests to verify LLM receives conversation context and invokes correct plugins
+  - **Acceptance**: Data Fetcher delegates ALL parameter extraction to LLM; agent contains no custom extraction logic
 
-- [ ] **REFACTOR-4** Update Code Inspector for conversational mode
-  - [ ] Add `_extract_repositories_from_conversation()`
-  - [ ] Implement `_interactive_repository_discovery()`
-  - [ ] Update prompts for conversational analysis
-  - **Acceptance**: Code Inspector discovers repositories conversationally
+- [ ] **REFACTOR-3** Update Pattern Analyzer for conversational mode (LLM-Delegated)
+  - [ ] Agent reads entire scratchpad (including `CONVERSATION_HISTORY` and `AGENT_NOTES`) via `read_scratchpad()`
+  - [ ] Enhance SK prompts to instruct LLM to extract patterns from conversational notes and structured data
+  - [ ] LLM determines which sections are relevant for pattern analysis (flexible input handling)
+  - [ ] Add conversational findings format in prompt templates (natural language + structured sections)
+  - [ ] Update unit tests to verify LLM receives full conversation context
+  - **Acceptance**: Pattern Analyzer delegates ALL context reading and parsing to LLM; no custom `_read_conversation_context()` method
 
-- [ ] **REFACTOR-5** Update Root Cause Analyst for conversational mode
-  - [ ] Add `_synthesize_from_conversation()`
-  - [ ] Implement `_generate_conversational_diagnosis()`
-  - [ ] Update prompts for conversational synthesis
-  - **Acceptance**: Root Cause Analyst generates natural diagnosis
+- [ ] **REFACTOR-4** Update Code Inspector for conversational mode (LLM-Delegated)
+  - [ ] Enhance SK prompts to instruct LLM to identify repository paths from conversation history
+  - [ ] LLM reads `CONVERSATION_HISTORY` and determines repository locations mentioned by user
+  - [ ] LLM generates clarifying questions for repository discovery (interactive, via invoke)
+  - [ ] LLM uses `GitPlugin` for actual git operations (blame, find_file, extract_code_context)
+  - [ ] Update unit tests to verify LLM extracts repository paths from conversation
+  - **Acceptance**: Code Inspector delegates ALL repository discovery to LLM; no custom `_extract_repositories_from_conversation()` method
 
-- [ ] **REFACTOR-6** Enhance scratchpad for conversation
-  - [ ] Add `CONVERSATION_HISTORY` section
-  - [ ] Add `AGENT_NOTES` flexible section
-  - [ ] Add `append_conversation()` helper
-  - [ ] Add `get_conversation_context()` helper
-  - **Acceptance**: Scratchpad supports conversational patterns
+- [ ] **REFACTOR-5** Update Root Cause Analyst for conversational mode (LLM-Delegated)
+  - [ ] Enhance SK prompts to instruct LLM to synthesize findings from entire scratchpad
+  - [ ] LLM reads all sections (`CONVERSATION_HISTORY`, `DATA_COLLECTED`, `PATTERN_ANALYSIS`, `CODE_INSPECTION`)
+  - [ ] LLM performs evidence synthesis, hypothesis generation, confidence scoring via prompt instructions
+  - [ ] Add conversational diagnosis format in prompt templates (natural language + actionable recommendations)
+  - [ ] Update unit tests to verify LLM receives complete context and generates diagnosis
+  - **Acceptance**: Root Cause Analyst delegates ALL synthesis logic to LLM; no custom synthesis methods beyond existing SK pattern
 
-- [ ] **REFACTOR-7** Create conversational flow reference
-  - [ ] Create `aletheia/agents/workflows/conversational.py`
-  - [ ] Implement reference workflow from example
-  - [ ] Document intent patterns
-  - [ ] Document parameter extraction patterns
-  - **Acceptance**: Complete conversational example available
+- [ ] **REFACTOR-6** Enhance scratchpad for conversation (Data Structure Only)
+  - [ ] Add `CONVERSATION_HISTORY` section to scratchpad schema
+  - [ ] Add `AGENT_NOTES` flexible section for agents to write conversational findings
+  - [ ] Add `append_conversation(role, message)` helper (simple data accessor, no parsing logic)
+  - [ ] Add `get_conversation_context()` helper (returns full history as string, no parsing)
+  - [ ] Helpers are pure data accessors - NO custom parsing, extraction, or transformation logic
+  - **Acceptance**: Scratchpad supports conversational data storage; helpers are simple getters/setters only
 
-- [ ] **REFACTOR-8** Update CLI for conversational mode
-  - [ ] Add `--mode conversational` flag support
-  - [ ] Update session initialization for conversation
-  - [ ] Add conversational UI helpers
-  - **Acceptance**: CLI supports both guided and conversational modes
+- [ ] **REFACTOR-7** Create conversational flow reference (LLM-Delegated Example)
+  - [ ] Create `aletheia/agents/workflows/conversational.py` as reference implementation
+  - [ ] Document how LLM handles intent understanding (via enhanced prompts, not custom code)
+  - [ ] Document how LLM extracts parameters from conversation (via scratchpad context in prompts)
+  - [ ] Show example prompts for conversational parameter extraction
+  - [ ] Show example of LLM-generated clarifying questions
+  - [ ] Emphasize: workflow orchestrates by invoking SK with conversation context; LLM does all logic
+  - **Acceptance**: Complete conversational example demonstrates LLM-first pattern with NO custom extraction logic
 
-- [ ] **REFACTOR-9** Testing for conversational mode
-  - [ ] Unit tests for intent understanding
-  - [ ] Unit tests for parameter extraction
-  - [ ] Integration tests for conversational flow
-  - [ ] E2E test matching example scenario
-  - **Coverage Target**: >80%
+- [ ] **REFACTOR-8** Update CLI for conversational mode (Orchestration Only)
+  - [ ] Add `--mode conversational` flag support to CLI
+  - [ ] Update session initialization to set mode=conversational in metadata
+  - [ ] Add conversational UI helpers (display conversation, format LLM responses, user input)
+  - [ ] UI helpers are display/input only - NO logic for parameter extraction or parsing
+  - [ ] Route to conversational orchestrator when mode=conversational
+  - **Acceptance**: CLI supports both guided and conversational modes; UI layer remains logic-free
 
-- [ ] **REFACTOR-10** Documentation updates
-  - [ ] Update SPECIFICATION.md with conversational architecture
-  - [ ] Update AGENTS.md with conversational patterns
-  - [ ] Create conversational mode user guide
-  - [ ] Add conversational examples to README
-  - **Acceptance**: Documentation reflects conversational mode
+- [ ] **REFACTOR-9** Testing for conversational mode (LLM Behavior Verification)
+  - [ ] Unit tests verify LLM receives conversation context in prompts (mock LLM invocation)
+  - [ ] Unit tests verify LLM response includes extracted parameters (mock LLM output with params)
+  - [ ] Unit tests verify agents have NO custom extraction logic (code inspection tests)
+  - [ ] Integration tests for conversational flow (orchestrator → agents with conversation context)
+  - [ ] E2E test matching example scenario (full conversation with mocked LLM responses)
+  - [ ] Tests verify plugin invocation via `FunctionChoiceBehavior.Auto()` (not direct calls)
+  - **Coverage Target**: >80% with focus on LLM prompt construction and plugin registration
+
+- [ ] **REFACTOR-10** Documentation updates (LLM-First Pattern)
+  - [ ] Update SPECIFICATION.md with conversational architecture emphasizing LLM-first design
+  - [ ] Update AGENTS.md with conversational patterns: "Agents build prompts, LLMs extract parameters"
+  - [ ] Create conversational mode user guide with example conversations
+  - [ ] Add conversational examples to README showing natural language input → LLM extraction → plugin use
+  - [ ] Document prompt engineering techniques for parameter extraction (not Python code patterns)
+  - [ ] Add section: "Why No Custom Extraction Logic?" explaining LLM-delegation benefits
+  - **Acceptance**: Documentation clearly communicates LLM-first approach for all agent logic
 
 ### **DEPRECATION**: Remove Guided Mode (Post-MVP v1.2)
 
