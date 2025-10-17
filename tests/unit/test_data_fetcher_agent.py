@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, MagicMock, patch, PropertyMock
+from unittest.mock import Mock, MagicMock, AsyncMock, patch, PropertyMock
 
 from aletheia.agents.data_fetcher import DataFetcherAgent
 from aletheia.fetchers.base import FetchResult, FetchError, ConnectionError
@@ -394,7 +394,8 @@ class TestSummarization:
 class TestExecute:
     """Test agent execution."""
     
-    def test_execute_success(self):
+    @pytest.mark.asyncio
+    async def test_execute_success(self):
         """Test successful execution with data fetching (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -425,7 +426,7 @@ class TestExecute:
         agent.fetchers["kubernetes"] = mock_fetcher
         
         # Execute in direct mode (backward compatibility)
-        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
+        result = await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         assert result["success"] is True
         assert "kubernetes" in result["sources_fetched"]
@@ -434,7 +435,8 @@ class TestExecute:
         assert result["sk_used"] is False
         scratchpad.write_section.assert_called_once()
     
-    def test_execute_with_failure(self):
+    @pytest.mark.asyncio
+    async def test_execute_with_failure(self):
         """Test execution with fetching failure (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -451,14 +453,15 @@ class TestExecute:
         mock_fetcher.fetch.side_effect = ConnectionError("Connection failed")
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
+        result = await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         assert result["success"] is False
         assert "kubernetes" in result["sources_failed"]
         assert result["total_data_points"] == 0
         assert result["sk_used"] is False
     
-    def test_execute_no_sources_error(self):
+    @pytest.mark.asyncio
+    async def test_execute_no_sources_error(self):
         """Test execution fails when no sources available."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -470,9 +473,10 @@ class TestExecute:
         agent = DataFetcherAgent(config, scratchpad)
         
         with pytest.raises(ValueError, match="No data sources"):
-            agent.execute(use_sk=False)
+            await agent.execute(use_sk=False)
     
-    def test_execute_retry_logic(self):
+    @pytest.mark.asyncio
+    async def test_execute_retry_logic(self):
         """Test that retry logic is applied on failures (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -500,7 +504,7 @@ class TestExecute:
         ]
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
+        result = await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         # Should succeed after retries
         assert result["success"] is True
@@ -577,7 +581,8 @@ class TestQueryGeneration:
 class TestErrorHandling:
     """Test error handling scenarios."""
     
-    def test_handle_fetch_error(self):
+    @pytest.mark.asyncio
+    async def test_handle_fetch_error(self):
         """Test handling FetchError during execution (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -594,7 +599,7 @@ class TestErrorHandling:
         mock_fetcher.fetch.side_effect = FetchError("Persistent failure")
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
+        result = await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         # Execution should complete but mark source as failed
         assert result["success"] is False
@@ -624,7 +629,8 @@ class TestErrorHandling:
 class TestScratchpadIntegration:
     """Test scratchpad read/write operations."""
     
-    def test_write_to_scratchpad(self):
+    @pytest.mark.asyncio
+    async def test_write_to_scratchpad(self):
         """Test writing collected data to scratchpad (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -648,7 +654,7 @@ class TestScratchpadIntegration:
         )
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
+        await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=False)
         
         # Verify scratchpad write
         scratchpad.write_section.assert_called_once()
@@ -661,7 +667,8 @@ class TestScratchpadIntegration:
         assert "summary" in data["kubernetes"]
         assert "metadata" in data["kubernetes"]
     
-    def test_read_problem_description(self):
+    @pytest.mark.asyncio
+    async def test_read_problem_description(self):
         """Test reading problem description from scratchpad (direct mode)."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
@@ -690,7 +697,7 @@ class TestScratchpadIntegration:
         )
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        agent.execute(sources=["kubernetes"], use_sk=False)
+        await agent.execute(sources=["kubernetes"], use_sk=False)
         
         # Should read problem description
         scratchpad.read_section.assert_called_with(ScratchpadSection.PROBLEM_DESCRIPTION)
@@ -785,7 +792,8 @@ class TestSKIntegration:
         assert data["kubernetes"]["count"] == 0
         assert "raw_response" in data["kubernetes"]["metadata"]
     
-    def test_execute_with_sk_mode(self):
+    @pytest.mark.asyncio
+    async def test_execute_with_sk_mode(self):
         """Test execution in SK mode with mocked invoke."""
         config = {
             "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
@@ -804,18 +812,19 @@ class TestSKIntegration:
         "metadata": {}
     }
 }'''
-        agent.invoke = Mock(return_value=mock_response)
+        agent.invoke_async = AsyncMock(return_value=mock_response)
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=True)
+        result = await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=True)
         
         assert result["success"] is True
         assert result["sk_used"] is True
         assert "kubernetes" in result["sources_fetched"]
         assert result["total_data_points"] == 50
-        agent.invoke.assert_called_once()
+        agent.invoke_async.assert_called_once()
         scratchpad.write_section.assert_called_once()
     
-    def test_execute_sk_fallback_to_direct(self):
+    @pytest.mark.asyncio
+    async def test_execute_sk_fallback_to_direct(self):
         """Test SK mode falls back to direct mode on error."""
         config = {
             "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
@@ -827,7 +836,7 @@ class TestSKIntegration:
         agent = DataFetcherAgent(config, scratchpad)
         
         # Mock SK invoke to raise exception
-        agent.invoke = Mock(side_effect=Exception("SK failed"))
+        agent.invoke_async = AsyncMock(side_effect=Exception("SK failed"))
         
         # Mock fetcher for fallback
         mock_fetcher = Mock()
@@ -842,14 +851,15 @@ class TestSKIntegration:
         )
         agent.fetchers["kubernetes"] = mock_fetcher
         
-        result = agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=True)
+        result = await agent.execute(sources=["kubernetes"], pod="test-pod", use_sk=True)
         
         # Should fall back to direct mode
         assert result["success"] is True
         assert result["sk_used"] is False
         mock_fetcher.fetch.assert_called()
     
-    def test_sk_mode_with_prometheus(self):
+    @pytest.mark.asyncio
+    async def test_sk_mode_with_prometheus(self):
         """Test SK mode with Prometheus plugin."""
         config = {
             "llm": {"default_model": "gpt-4o-mini", "api_key": "test-key"},
@@ -868,9 +878,9 @@ class TestSKIntegration:
         "metadata": {"query": "rate(http_requests_total[5m])"}
     }
 }'''
-        agent.invoke = Mock(return_value=mock_response)
+        agent.invoke_async = AsyncMock(return_value=mock_response)
         
-        result = agent.execute(
+        result = await agent.execute(
             sources=["prometheus"],
             query="rate(http_requests_total[5m])",
             use_sk=True

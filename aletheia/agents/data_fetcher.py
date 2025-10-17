@@ -110,7 +110,7 @@ class DataFetcherAgent(SKBaseAgent):
         
         self._plugins_registered = True
     
-    def execute(
+    async def execute(
         self,
         sources: Optional[List[str]] = None,
         time_window: Optional[str] = None,
@@ -156,11 +156,11 @@ class DataFetcherAgent(SKBaseAgent):
         
         # Choose execution mode
         if use_sk:
-            return self._execute_with_sk(sources_to_fetch, time_range, problem, **kwargs)
+            return await self._execute_with_sk(sources_to_fetch, time_range, problem, **kwargs)
         else:
             return self._execute_direct(sources_to_fetch, time_range, problem, **kwargs)
     
-    def _execute_with_sk(
+    async def _execute_with_sk(
         self,
         sources: List[str],
         time_range: Tuple[datetime, datetime],
@@ -190,7 +190,7 @@ class DataFetcherAgent(SKBaseAgent):
         
         # Invoke SK agent - it will automatically call plugin functions
         try:
-            response = self.invoke(prompt, settings={"temperature": 0.1})
+            response = await self.invoke_async(prompt, settings={"temperature": 0.1})
             
             # Parse the response to extract collected data
             # The SK agent should have called the plugin functions and received results
