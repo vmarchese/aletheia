@@ -1555,6 +1555,167 @@ llm:
   - [ ] Create PRs automatically
   - [ ] Regression testing
 
+### **REFACTOR**: Conversational Orchestration (Post-MVP v1.1)
+
+- [ ] **REFACTOR-1** Implement intent-based orchestration
+  - [ ] Add `_execute_conversational_mode()` to OrchestratorAgent
+  - [ ] Implement `_understand_user_intent()` with LLM intent parsing
+  - [ ] Implement `_decide_next_agent()` for dynamic routing
+  - [ ] Add conversation history tracking in scratchpad
+  - **Acceptance**: Orchestrator can route based on user intent, not just phases
+
+- [ ] **REFACTOR-2** Update Data Fetcher for conversational mode
+  - [ ] Add `_extract_kubernetes_params_from_conversation()`
+  - [ ] Add `_extract_prometheus_params_from_conversation()`
+  - [ ] Implement `_ask_user_for_missing_params()` for clarification
+  - [ ] Update SK prompts for parameter extraction from conversation
+  - **Acceptance**: Data Fetcher extracts K8s/Prometheus params from problem description
+
+- [ ] **REFACTOR-3** Update Pattern Analyzer for conversational mode
+  - [ ] Implement `_read_conversation_context()`
+  - [ ] Add conversational findings format
+  - [ ] Update prompts for flexible input
+  - **Acceptance**: Pattern Analyzer works with conversational notes
+
+- [ ] **REFACTOR-4** Update Code Inspector for conversational mode
+  - [ ] Add `_extract_repositories_from_conversation()`
+  - [ ] Implement `_interactive_repository_discovery()`
+  - [ ] Update prompts for conversational analysis
+  - **Acceptance**: Code Inspector discovers repositories conversationally
+
+- [ ] **REFACTOR-5** Update Root Cause Analyst for conversational mode
+  - [ ] Add `_synthesize_from_conversation()`
+  - [ ] Implement `_generate_conversational_diagnosis()`
+  - [ ] Update prompts for conversational synthesis
+  - **Acceptance**: Root Cause Analyst generates natural diagnosis
+
+- [ ] **REFACTOR-6** Enhance scratchpad for conversation
+  - [ ] Add `CONVERSATION_HISTORY` section
+  - [ ] Add `AGENT_NOTES` flexible section
+  - [ ] Add `append_conversation()` helper
+  - [ ] Add `get_conversation_context()` helper
+  - **Acceptance**: Scratchpad supports conversational patterns
+
+- [ ] **REFACTOR-7** Create conversational flow reference
+  - [ ] Create `aletheia/agents/workflows/conversational.py`
+  - [ ] Implement reference workflow from example
+  - [ ] Document intent patterns
+  - [ ] Document parameter extraction patterns
+  - **Acceptance**: Complete conversational example available
+
+- [ ] **REFACTOR-8** Update CLI for conversational mode
+  - [ ] Add `--mode conversational` flag support
+  - [ ] Update session initialization for conversation
+  - [ ] Add conversational UI helpers
+  - **Acceptance**: CLI supports both guided and conversational modes
+
+- [ ] **REFACTOR-9** Testing for conversational mode
+  - [ ] Unit tests for intent understanding
+  - [ ] Unit tests for parameter extraction
+  - [ ] Integration tests for conversational flow
+  - [ ] E2E test matching example scenario
+  - **Coverage Target**: >80%
+
+- [ ] **REFACTOR-10** Documentation updates
+  - [ ] Update SPECIFICATION.md with conversational architecture
+  - [ ] Update AGENTS.md with conversational patterns
+  - [ ] Create conversational mode user guide
+  - [ ] Add conversational examples to README
+  - **Acceptance**: Documentation reflects conversational mode
+
+### **DEPRECATION**: Remove Guided Mode (Post-MVP v1.2)
+
+**Context**: After conversational mode is fully implemented and validated, remove the legacy guided mode to simplify the codebase and reduce maintenance burden.
+
+- [ ] **DEPRECATE-1** Mark guided mode as deprecated
+  - [ ] Add deprecation warnings to CLI for `--mode guided`
+  - [ ] Add deprecation notice in UI when using guided mode
+  - [ ] Update documentation with deprecation timeline
+  - [ ] Set deprecation date (e.g., 3 months after v1.1 release)
+  - **Acceptance**: Users are warned about guided mode removal
+
+- [ ] **DEPRECATE-2** Create migration guide
+  - [ ] Document differences between guided and conversational modes
+  - [ ] Create side-by-side comparison examples
+  - [ ] Document migration steps for existing workflows
+  - [ ] Provide conversion guide for custom scripts
+  - **Acceptance**: Users can migrate to conversational mode
+
+- [ ] **DEPRECATE-3** Remove guided mode from Orchestrator
+  - [ ] Remove `_execute_guided_mode()` method from OrchestratorAgent
+  - [ ] Remove `InvestigationPhase` enum
+  - [ ] Remove phase-based routing logic
+  - [ ] Remove guided mode specific UI helpers
+  - [ ] Update tests to remove guided mode test cases
+  - **Acceptance**: Orchestrator only supports conversational mode
+
+- [ ] **DEPRECATE-4** Remove guided mode from UI
+  - [ ] Remove `aletheia/ui/workflow.py` (guided workflow)
+  - [ ] Remove menu system utilities specific to guided mode
+  - [ ] Remove numbered choice input handlers
+  - [ ] Remove phase-specific progress indicators
+  - [ ] Update CLI to remove `--mode` flag (conversational becomes default)
+  - **Acceptance**: UI only supports conversational interaction
+
+- [ ] **DEPRECATE-5** Clean up agent interfaces
+  - [ ] Remove phase-based execution patterns from all agents
+  - [ ] Remove guided mode specific prompts from `aletheia/llm/prompts.py`
+  - [ ] Simplify agent `execute()` methods (remove mode parameter)
+  - [ ] Remove guided mode configuration options from config schema
+  - **Acceptance**: Agents only support conversational execution
+
+- [ ] **DEPRECATE-6** Update configuration system
+  - [ ] Remove `ui.default_mode` configuration option
+  - [ ] Remove `ui.confirmation_level` (use conversational confirmations)
+  - [ ] Remove guided mode specific settings
+  - [ ] Update example configuration files
+  - [ ] Update configuration schema validation
+  - **Acceptance**: Configuration only supports conversational mode
+
+- [ ] **DEPRECATE-7** Update session management
+  - [ ] Remove `mode` field from SessionMetadata (or default to "conversational")
+  - [ ] Update session creation to not accept mode parameter
+  - [ ] Update session resume to handle legacy guided mode sessions
+  - [ ] Migrate existing guided mode sessions to conversational format
+  - **Acceptance**: Sessions only support conversational mode
+
+- [ ] **DEPRECATE-8** Remove guided mode tests
+  - [ ] Remove all guided mode specific unit tests
+  - [ ] Remove guided mode integration tests
+  - [ ] Remove guided mode E2E tests
+  - [ ] Remove guided mode demo scenarios
+  - [ ] Update test fixtures to remove guided mode data
+  - **Acceptance**: Test suite only covers conversational mode
+
+- [ ] **DEPRECATE-9** Update documentation
+  - [ ] Remove guided mode sections from README
+  - [ ] Remove guided mode from SPECIFICATION.md
+  - [ ] Remove guided mode from AGENTS.md
+  - [ ] Remove guided mode examples and screenshots
+  - [ ] Update all references to "mode selection" or "guided vs conversational"
+  - **Acceptance**: Documentation only describes conversational mode
+
+- [ ] **DEPRECATE-10** Final cleanup and validation
+  - [ ] Search codebase for remaining "guided" references (grep)
+  - [ ] Remove dead code related to guided mode
+  - [ ] Update CHANGELOG with breaking change notice
+  - [ ] Bump version to v2.0.0 (major version for breaking change)
+  - [ ] Run full test suite to ensure nothing broke
+  - [ ] Performance comparison (before/after removal)
+  - **Acceptance**: Codebase is clean, all tests pass, conversational mode only
+
+**Deprecation Timeline**:
+- **v1.1 Release**: Conversational mode fully implemented, guided mode marked deprecated
+- **v1.1 + 3 months**: Final warning period, aggressive deprecation notices
+- **v2.0.0 Release**: Guided mode completely removed
+
+**Benefits of Removal**:
+- Simplified codebase (remove ~500-1000 LOC)
+- Reduced maintenance burden (one interaction pattern instead of two)
+- Clearer architecture (single orchestration strategy)
+- Better UX focus (all effort on conversational mode)
+- Easier onboarding for contributors (fewer concepts to learn)
+
 ---
 
 ## Development Best Practices
