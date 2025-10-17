@@ -95,6 +95,16 @@ Your role is to:
 - Explain your reasoning clearly
 
 Always be honest about uncertainty and provide evidence for your conclusions.""",
+
+    "intent_understanding": """You are an intent understanding agent for the Aletheia troubleshooting system.
+Your role is to:
+- Understand user's natural language requests in the context of troubleshooting
+- Extract the primary intent from user messages
+- Identify parameters mentioned (services, time windows, data sources)
+- Determine what data or analysis the user is requesting
+- Recognize when the user is asking clarifying questions
+
+Always classify the user's intent accurately and extract all relevant parameters.""",
 }
 
 
@@ -189,6 +199,45 @@ Generate:
 4. Recommended actions (prioritized: immediate/high/medium/low)
 
 Be specific, actionable, and honest about uncertainty."""),
+
+    "intent_understanding": PromptTemplate("""Understand the user's intent from their message in the context of a troubleshooting investigation.
+
+User Message: {user_message}
+
+Conversation History:
+{conversation_history}
+
+Current Investigation State:
+{investigation_state}
+
+Classify the user's intent into ONE of these categories:
+- fetch_data: User wants to collect logs, metrics, or traces
+- analyze_patterns: User wants to analyze patterns in collected data
+- inspect_code: User wants to inspect source code related to errors
+- diagnose: User wants root cause analysis or diagnosis
+- show_findings: User wants to see current findings or results
+- clarify: User is asking questions or needs clarification
+- modify_scope: User wants to change the investigation scope (time window, services, etc.)
+- other: Intent doesn't match any category
+
+Extract parameters if mentioned:
+- services: List of service names mentioned
+- time_window: Time window mentioned (e.g., "2h", "last hour")
+- data_sources: Specific data sources mentioned (kubernetes, prometheus, elasticsearch)
+- keywords: Important keywords or error messages mentioned
+
+Respond ONLY with a JSON object in this exact format:
+{{
+  "intent": "<intent_category>",
+  "confidence": <0.0-1.0>,
+  "parameters": {{
+    "services": ["service1", "service2"],
+    "time_window": "2h",
+    "data_sources": ["kubernetes"],
+    "keywords": ["error", "timeout"]
+  }},
+  "reasoning": "<brief explanation of your classification>"
+}}"""),
 }
 
 

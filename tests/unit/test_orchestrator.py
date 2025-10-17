@@ -6,13 +6,15 @@ Tests cover:
 - Error handling and recovery
 - User interaction flow
 - Guided mode workflow
+- Conversational mode workflow
 """
 
+import json
 import pytest
 from unittest.mock import Mock, MagicMock, patch, call
 from datetime import datetime
 
-from aletheia.agents.orchestrator import OrchestratorAgent, InvestigationPhase
+from aletheia.agents.orchestrator import OrchestratorAgent, InvestigationPhase, UserIntent
 from aletheia.scratchpad import Scratchpad, ScratchpadSection
 
 
@@ -414,8 +416,8 @@ class TestGuidedModeExecution:
     
     def test_execute_unsupported_mode(self, orchestrator):
         """Test execution with unsupported mode."""
-        with pytest.raises(NotImplementedError, match="Mode 'conversational' not implemented"):
-            orchestrator.execute(mode="conversational")
+        with pytest.raises(NotImplementedError, match="Mode 'invalid_mode' not implemented"):
+            orchestrator.execute(mode="invalid_mode")
 
 
 class TestPhaseRouting:
@@ -501,4 +503,220 @@ class TestPromptMethods:
         result = orchestrator._prompt_affected_services()
         
         assert result == []
+
+
+class TestConversationalMode:
+    """Test conversational mode implementation."""
+    
+    @patch('aletheia.agents.orchestrator.Prompt.ask')
+    def test_understand_user_intent_fetch_data(self, mock_ask, orchestrator, mock_scratchpad):
+        """Test intent understanding for data fetching."""
+        mock_llm = Mock()
+        intent_response = {
+            "intent": "fetch_data",
+            "confidence": 0.9,
+            "parameters": {
+                "services": ["payments-svc"],
+                "time_window": "2h",
+                "data_sources": ["kubernetes"],
+                "keywords": ["error", "timeout"]
+            },
+            "reasoning": "User wants to collect logs from kubernetes"
+        }
+        mock_llm.complete = Mock(return_value=json.dumps(intent_response))
+        
+        with patch.object(orchestrator, 'get_llm', return_value=mock_llm):
+            result = orchestrator._understand_user_intent(
+                "Show me errors from payments service in the last 2 hours",
+                []
+            )
+        
+        assert result["intent"] == "fetch_data"
+        assert result["confidence"] == 0.9
+        assert "payments-svc" in result["parameters"]["services"]
+        assert result["parameters"]["time_window"] == "2h"
+    
+    def test_decide_next_agent_fetch_data(self, orchestrator):
+        """Test agent routing decision for fetch_data intent."""
+        agent_name = orchestrator._decide_next_agent("fetch_data", {})
+        assert agent_name == "data_fetcher"
+    
+    def test_decide_next_agent_analyze_patterns(self, orchestrator, mock_scratchpad):
+        """Test agent routing decision for analyze_patterns intent."""
+        # Mock that data has been collected
+        mock_scratchpad.has_section = Mock(return_value=True)
+        
+        agent_name = orchestrator._decide_next_agent("analyze_patterns", {})
+        assert agent_name == "pattern_analyzer"
+    
+    def test_decide_next_agent_without_dependencies(self, orchestrator, mock_scratchpad):
+        """Test that agent routing fails without dependencies."""
+        # Mock that no data has been collected
+        mock_scratchpad.has_section = Mock(return_value=False)
+        
+        agent_name = orchestrator._decide_next_agent("analyze_patterns", {})
+        assert agent_name is None
+    
+    def test_check_agent_dependencies_satisfied(self, orchestrator, mock_scratchpad):
+        """Test dependency check when satisfied."""
+        mock_scratchpad.has_section = Mock(return_value=True)
+        
+        result = orchestrator._check_agent_dependencies("pattern_analyzer")
+        assert result is True
+    
+    def test_check_agent_dependencies_not_satisfied(self, orchestrator, mock_scratchpad):
+        """Test dependency check when not satisfied."""
+        mock_scratchpad.has_section = Mock(return_value=False)
+        
+        result = orchestrator._check_agent_dependencies("pattern_analyzer")
+        assert result is False
+    
+    def test_process_initial_message(self, orchestrator, mock_scratchpad):
+        """Test processing of initial conversational message."""
+        mock_llm = Mock()
+        intent_response = {
+            "intent": "fetch_data",
+            "confidence": 0.9,
+            "parameters": {
+                "services": ["payments"],
+                "time_window": "1h",
+                "data_sources": ["kubernetes"],
+                "keywords": ["crash"]
+            },
+            "reasoning": "User wants to investigate crashes"
+        }
+        mock_llm.complete = Mock(return_value=json.dumps(intent_response))
+        
+        with patch.object(orchestrator, 'get_llm', return_value=mock_llm):
+            orchestrator._process_initial_message("payments service is crashing")
+        
+        # Check that problem description was written
+        mock_scratchpad.write_section.assert_called_once()
+        call_args = mock_scratchpad.write_section.call_args
+        assert call_args[0][0] == ScratchpadSection.PROBLEM_DESCRIPTION
+        assert "payments service is crashing" in call_args[0][1]["description"]
+    
+    def test_get_investigation_state_summary_empty(self, orchestrator, mock_scratchpad):
+        """Test investigation state summary when nothing is done."""
+        mock_scratchpad.has_section = Mock(return_value=False)
+        
+        summary = orchestrator._get_investigation_state_summary()
+        assert "just started" in summary.lower()
+    
+    def test_get_investigation_state_summary_with_data(self, orchestrator, mock_scratchpad):
+        """Test investigation state summary with collected data."""
+        def has_section_side_effect(section):
+            return section in [
+                ScratchpadSection.PROBLEM_DESCRIPTION,
+                ScratchpadSection.DATA_COLLECTED
+            ]
+        
+        mock_scratchpad.has_section = Mock(side_effect=has_section_side_effect)
+        mock_scratchpad.read_section = Mock(return_value={
+            "kubernetes": {"summary": "200 log entries"},
+            "prometheus": {"summary": "50 metrics"}
+        })
+        
+        summary = orchestrator._get_investigation_state_summary()
+        assert "Problem description recorded" in summary
+        assert "Data collected from: kubernetes, prometheus" in summary
+    
+    def test_handle_fetch_data_intent_success(self, orchestrator, mock_scratchpad):
+        """Test handling fetch_data intent successfully."""
+        with patch.object(orchestrator, 'route_to_agent', return_value={"success": True}):
+            with patch.object(orchestrator, '_update_problem_parameters'):
+                response = orchestrator._handle_fetch_data_intent({
+                    "services": ["test-svc"],
+                    "time_window": "2h"
+                })
+        
+        assert "collected the data" in response.lower()
+    
+    def test_handle_analyze_patterns_intent_no_data(self, orchestrator, mock_scratchpad):
+        """Test handling analyze_patterns intent without data."""
+        mock_scratchpad.has_section = Mock(return_value=False)
+        
+        response = orchestrator._handle_analyze_patterns_intent({})
+        assert "collect data first" in response.lower()
+    
+    def test_handle_diagnose_intent_no_data(self, orchestrator, mock_scratchpad):
+        """Test handling diagnose intent without data."""
+        mock_scratchpad.has_section = Mock(return_value=False)
+        
+        response = orchestrator._handle_diagnose_intent({})
+        assert "collect some data" in response.lower()
+    
+    def test_handle_show_findings_intent(self, orchestrator):
+        """Test handling show_findings intent."""
+        with patch.object(orchestrator, 'present_findings'):
+            response = orchestrator._handle_show_findings_intent()
+        
+        assert "anything else" in response.lower()
+    
+    def test_update_problem_parameters(self, orchestrator, mock_scratchpad):
+        """Test updating problem parameters."""
+        mock_scratchpad.read_section = Mock(return_value={
+            "description": "original problem",
+            "affected_services": []
+        })
+        
+        orchestrator._update_problem_parameters({
+            "services": ["new-svc"],
+            "time_window": "4h"
+        })
+        
+        # Verify write was called
+        assert mock_scratchpad.write_section.called
+        call_args = mock_scratchpad.write_section.call_args
+        updated_data = call_args[0][1]
+        assert updated_data["affected_services"] == ["new-svc"]
+        assert updated_data["time_window"] == "4h"
+    
+    def test_check_if_complete_true(self, orchestrator, mock_scratchpad):
+        """Test checking if investigation is complete."""
+        mock_scratchpad.has_section = Mock(return_value=True)
+        
+        result = orchestrator._check_if_complete()
+        assert result is True
+    
+    def test_check_if_complete_false(self, orchestrator, mock_scratchpad):
+        """Test checking if investigation is not complete."""
+        mock_scratchpad.has_section = Mock(return_value=False)
+        
+        result = orchestrator._check_if_complete()
+        assert result is False
+    
+    @patch('aletheia.agents.orchestrator.Prompt.ask')
+    def test_execute_conversational_mode_new_session(self, mock_ask, orchestrator, mock_scratchpad):
+        """Test executing conversational mode with new session."""
+        # Setup mocks
+        mock_scratchpad.has_section = Mock(return_value=False)
+        mock_llm = Mock()
+        
+        # Simulate conversation: initial message -> data fetch -> exit
+        mock_ask.side_effect = [
+            "show me errors from payments",  # Initial message
+            "exit"  # Exit command
+        ]
+        
+        intent_response = {
+            "intent": "fetch_data",
+            "confidence": 0.9,
+            "parameters": {
+                "services": ["payments"],
+                "time_window": "2h",
+                "data_sources": ["kubernetes"],
+                "keywords": ["error"]
+            },
+            "reasoning": "User wants logs"
+        }
+        mock_llm.complete = Mock(return_value=json.dumps(intent_response))
+        
+        with patch.object(orchestrator, 'get_llm', return_value=mock_llm):
+            with patch.object(orchestrator, '_display_welcome_conversational'):
+                result = orchestrator._execute_conversational_mode()
+        
+        assert result["status"] == "completed"
+        assert result["mode"] == "conversational"
+        assert result["conversation_length"] > 0
 

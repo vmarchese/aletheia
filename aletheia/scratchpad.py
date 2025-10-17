@@ -7,6 +7,7 @@ It provides structured sections for each phase of the investigation:
 - PATTERN_ANALYSIS: Anomalies, correlations, error clusters
 - CODE_INSPECTION: Source code mapping and analysis
 - FINAL_DIAGNOSIS: Root cause hypothesis and recommendations
+- CONVERSATION_HISTORY: Conversational mode interaction history
 
 All scratchpad data is encrypted at rest using session encryption keys.
 """
@@ -27,6 +28,7 @@ class ScratchpadSection:
     PATTERN_ANALYSIS = "PATTERN_ANALYSIS"
     CODE_INSPECTION = "CODE_INSPECTION"
     FINAL_DIAGNOSIS = "FINAL_DIAGNOSIS"
+    CONVERSATION_HISTORY = "CONVERSATION_HISTORY"
 
 
 class Scratchpad:

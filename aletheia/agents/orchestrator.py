@@ -3,17 +3,22 @@
 This module provides the OrchestratorAgent class which manages the overall
 investigation workflow, including:
 - Session initialization
-- User interaction (guided mode)
+- User interaction (guided and conversational modes)
 - Routing to specialist agents
 - Presenting findings to the user
 - Error handling and recovery
 
-The orchestrator supports two modes:
+The orchestrator supports two interaction modes:
+1. Guided mode: Menu-driven workflow with phase-based routing
+2. Conversational mode: Natural language interaction with intent-based routing
+
+And two routing strategies:
 1. Custom routing (legacy): Direct agent-to-agent routing
 2. SK HandoffOrchestration: Using Semantic Kernel's orchestration pattern
 """
 
 import asyncio
+import json
 import os
 from datetime import datetime
 from enum import Enum
@@ -46,6 +51,18 @@ class InvestigationPhase(Enum):
     CODE_INSPECTION = "code_inspection"
     ROOT_CAUSE_ANALYSIS = "root_cause_analysis"
     COMPLETED = "completed"
+
+
+class UserIntent(Enum):
+    """User intents in conversational mode."""
+    FETCH_DATA = "fetch_data"
+    ANALYZE_PATTERNS = "analyze_patterns"
+    INSPECT_CODE = "inspect_code"
+    DIAGNOSE = "diagnose"
+    SHOW_FINDINGS = "show_findings"
+    CLARIFY = "clarify"
+    MODIFY_SCOPE = "modify_scope"
+    OTHER = "other"
 
 
 class OrchestratorAgent(BaseAgent):
@@ -127,7 +144,7 @@ class OrchestratorAgent(BaseAgent):
         """Execute the orchestration workflow.
         
         This is the main entry point that coordinates the entire investigation.
-        In guided mode, it prompts the user through each step.
+        Supports both guided (menu-driven) and conversational (natural language) modes.
         
         Args:
             **kwargs: Execution parameters (mode, initial_problem, etc.)
@@ -139,6 +156,8 @@ class OrchestratorAgent(BaseAgent):
         
         if mode == "guided":
             return self._execute_guided_mode(**kwargs)
+        elif mode == "conversational":
+            return self._execute_conversational_mode(**kwargs)
         else:
             raise NotImplementedError(f"Mode '{mode}' not implemented yet")
     
@@ -204,6 +223,487 @@ class OrchestratorAgent(BaseAgent):
             "session_info": session_info,
             "findings": findings
         }
+    
+    def _execute_conversational_mode(self, **kwargs) -> Dict[str, Any]:
+        """Execute investigation in conversational (natural language) mode.
+        
+        This mode allows users to interact naturally and the system routes
+        to appropriate agents based on intent understanding.
+        
+        Args:
+            **kwargs: Execution parameters
+        
+        Returns:
+            Dictionary containing investigation results
+        """
+        # Check if resuming an existing session
+        is_resume = self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
+        
+        if is_resume:
+            self.console.print("[cyan]Resuming conversational session...[/cyan]")
+            # Load conversation history
+            conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY) or []
+        else:
+            # Start new conversational session
+            self._display_welcome_conversational()
+            conversation_history = []
+            
+            # Get initial problem description
+            initial_message = kwargs.get("initial_message")
+            if not initial_message:
+                initial_message = Prompt.ask("[bold]What would you like to investigate?[/bold]")
+            
+            # Add user's initial message to conversation
+            conversation_history.append({
+                "role": "user",
+                "content": initial_message,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Process initial message to set up session
+            self._process_initial_message(initial_message)
+        
+        # Main conversational loop
+        investigation_complete = False
+        
+        while not investigation_complete:
+            # Get user input
+            user_message = Prompt.ask("\n[bold cyan]You:[/bold cyan]")
+            
+            if user_message.lower() in ["exit", "quit", "bye"]:
+                self.console.print("[yellow]Ending investigation session.[/yellow]")
+                break
+            
+            # Add to conversation history
+            conversation_history.append({
+                "role": "user",
+                "content": user_message,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Understand user intent
+            intent_result = self._understand_user_intent(user_message, conversation_history)
+            intent = intent_result.get("intent")
+            parameters = intent_result.get("parameters", {})
+            
+            # Route based on intent
+            response = None
+            if intent == UserIntent.FETCH_DATA.value:
+                response = self._handle_fetch_data_intent(parameters)
+            elif intent == UserIntent.ANALYZE_PATTERNS.value:
+                response = self._handle_analyze_patterns_intent(parameters)
+            elif intent == UserIntent.INSPECT_CODE.value:
+                response = self._handle_inspect_code_intent(parameters)
+            elif intent == UserIntent.DIAGNOSE.value:
+                response = self._handle_diagnose_intent(parameters)
+            elif intent == UserIntent.SHOW_FINDINGS.value:
+                response = self._handle_show_findings_intent()
+                investigation_complete = self._check_if_complete()
+            elif intent == UserIntent.CLARIFY.value:
+                response = self._handle_clarify_intent(user_message, conversation_history)
+            elif intent == UserIntent.MODIFY_SCOPE.value:
+                response = self._handle_modify_scope_intent(parameters)
+            else:
+                response = "I'm not sure I understand. Could you rephrase that?"
+            
+            # Display and record response
+            if response:
+                self.console.print(f"\n[bold green]Aletheia:[/bold green] {response}")
+                conversation_history.append({
+                    "role": "assistant",
+                    "content": response,
+                    "timestamp": datetime.now().isoformat()
+                })
+            
+            # Save conversation history to scratchpad
+            self.write_scratchpad(ScratchpadSection.CONVERSATION_HISTORY, conversation_history)
+        
+        # Get final findings
+        findings = self.read_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS) or {}
+        
+        return {
+            "status": "completed",
+            "mode": "conversational",
+            "conversation_length": len(conversation_history),
+            "findings": findings
+        }
+    
+    def _understand_user_intent(
+        self,
+        user_message: str,
+        conversation_history: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Understand user intent from their message using LLM.
+        
+        Args:
+            user_message: The user's message
+            conversation_history: Previous conversation messages
+        
+        Returns:
+            Dictionary with intent, confidence, parameters, and reasoning
+        """
+        from aletheia.llm.prompts import get_system_prompt, get_user_prompt_template
+        
+        # Get current investigation state summary
+        investigation_state = self._get_investigation_state_summary()
+        
+        # Format conversation history for prompt
+        conv_history_str = "\n".join([
+            f"{msg['role'].capitalize()}: {msg['content']}"
+            for msg in conversation_history[-5:]  # Last 5 messages for context
+        ])
+        
+        # Build prompt
+        intent_template = get_user_prompt_template("intent_understanding")
+        user_prompt = intent_template.format(
+            user_message=user_message,
+            conversation_history=conv_history_str or "No previous conversation",
+            investigation_state=investigation_state
+        )
+        
+        # Get LLM response
+        try:
+            llm = self.get_llm()
+            system_prompt = get_system_prompt("intent_understanding")
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            response = llm.complete(messages, temperature=0.3)  # Low temperature for consistent intent classification
+            
+            # Parse JSON response
+            intent_data = json.loads(response)
+            
+            return intent_data
+        
+        except (json.JSONDecodeError, Exception) as e:
+            # Fallback to default intent if parsing fails
+            self.console.print(f"[yellow]Warning: Intent understanding failed: {e}[/yellow]")
+            return {
+                "intent": UserIntent.CLARIFY.value,
+                "confidence": 0.0,
+                "parameters": {},
+                "reasoning": "Failed to parse intent"
+            }
+    
+    def _decide_next_agent(self, intent: str, parameters: Dict[str, Any]) -> Optional[str]:
+        """Decide which specialist agent to route to based on intent.
+        
+        Args:
+            intent: User intent from intent understanding
+            parameters: Extracted parameters from user message
+        
+        Returns:
+            Agent name to route to, or None if no routing needed
+        """
+        # Map intents to agents
+        intent_to_agent = {
+            UserIntent.FETCH_DATA.value: "data_fetcher",
+            UserIntent.ANALYZE_PATTERNS.value: "pattern_analyzer",
+            UserIntent.INSPECT_CODE.value: "code_inspector",
+            UserIntent.DIAGNOSE.value: "root_cause_analyst"
+        }
+        
+        agent_name = intent_to_agent.get(intent)
+        
+        # Check dependencies before routing
+        if agent_name:
+            can_route = self._check_agent_dependencies(agent_name)
+            if not can_route:
+                return None
+        
+        return agent_name
+    
+    def _check_agent_dependencies(self, agent_name: str) -> bool:
+        """Check if an agent's dependencies are satisfied.
+        
+        Args:
+            agent_name: Name of the agent to check
+        
+        Returns:
+            True if dependencies are satisfied
+        """
+        # Define dependencies
+        dependencies = {
+            "pattern_analyzer": [ScratchpadSection.DATA_COLLECTED],
+            "code_inspector": [ScratchpadSection.PATTERN_ANALYSIS],
+            "root_cause_analyst": [ScratchpadSection.DATA_COLLECTED]  # Can work with just data or patterns
+        }
+        
+        required_sections = dependencies.get(agent_name, [])
+        
+        for section in required_sections:
+            if not self.scratchpad.has_section(section):
+                return False
+        
+        return True
+    
+    def _process_initial_message(self, initial_message: str) -> None:
+        """Process the initial user message to set up the investigation.
+        
+        Args:
+            initial_message: The user's initial message
+        """
+        # Use intent understanding to extract problem details
+        intent_result = self._understand_user_intent(initial_message, [])
+        parameters = intent_result.get("parameters", {})
+        
+        # Set up problem description in scratchpad
+        problem_data = {
+            "description": initial_message,
+            "time_window": parameters.get("time_window", "2h"),
+            "affected_services": parameters.get("services", []),
+            "interaction_mode": "conversational",
+            "started_at": datetime.now().isoformat(),
+            "keywords": parameters.get("keywords", [])
+        }
+        
+        self.write_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION, problem_data)
+        
+        self.console.print(
+            f"[green]✓[/green] Investigation started. I understand you want to investigate: "
+            f"[italic]{initial_message}[/italic]"
+        )
+    
+    def _get_investigation_state_summary(self) -> str:
+        """Get a summary of the current investigation state.
+        
+        Returns:
+            String summary of completed sections and available data
+        """
+        state_parts = []
+        
+        if self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION):
+            state_parts.append("Problem description recorded")
+        
+        if self.scratchpad.has_section(ScratchpadSection.DATA_COLLECTED):
+            data = self.read_scratchpad(ScratchpadSection.DATA_COLLECTED)
+            if data:
+                sources = list(data.keys())
+                state_parts.append(f"Data collected from: {', '.join(sources)}")
+        
+        if self.scratchpad.has_section(ScratchpadSection.PATTERN_ANALYSIS):
+            state_parts.append("Pattern analysis completed")
+        
+        if self.scratchpad.has_section(ScratchpadSection.CODE_INSPECTION):
+            state_parts.append("Code inspection completed")
+        
+        if self.scratchpad.has_section(ScratchpadSection.FINAL_DIAGNOSIS):
+            state_parts.append("Root cause diagnosis available")
+        
+        return "\n".join(state_parts) if state_parts else "Investigation just started"
+    
+    def _handle_fetch_data_intent(self, parameters: Dict[str, Any]) -> str:
+        """Handle user intent to fetch data.
+        
+        Args:
+            parameters: Extracted parameters (services, time_window, data_sources)
+        
+        Returns:
+            Response message to user
+        """
+        # Update problem description with any new parameters
+        self._update_problem_parameters(parameters)
+        
+        # Route to data fetcher agent
+        result = self.route_to_agent("data_fetcher")
+        
+        if result.get("success"):
+            return "I've collected the data. Would you like me to analyze it for patterns?"
+        else:
+            return f"I encountered an issue collecting data: {result.get('error', 'Unknown error')}"
+    
+    def _handle_analyze_patterns_intent(self, parameters: Dict[str, Any]) -> str:
+        """Handle user intent to analyze patterns.
+        
+        Args:
+            parameters: Extracted parameters
+        
+        Returns:
+            Response message to user
+        """
+        # Check if we have data
+        if not self.scratchpad.has_section(ScratchpadSection.DATA_COLLECTED):
+            return "I need to collect data first. Would you like me to fetch logs and metrics?"
+        
+        # Route to pattern analyzer
+        result = self.route_to_agent("pattern_analyzer")
+        
+        if result.get("success"):
+            # Provide summary of findings
+            patterns = self.read_scratchpad(ScratchpadSection.PATTERN_ANALYSIS)
+            anomaly_count = len(patterns.get("anomalies", []))
+            return f"I found {anomaly_count} significant patterns. Would you like to inspect the code or proceed to diagnosis?"
+        else:
+            return f"I encountered an issue analyzing patterns: {result.get('error', 'Unknown error')}"
+    
+    def _handle_inspect_code_intent(self, parameters: Dict[str, Any]) -> str:
+        """Handle user intent to inspect code.
+        
+        Args:
+            parameters: Extracted parameters (repositories)
+        
+        Returns:
+            Response message to user
+        """
+        # Check dependencies
+        if not self.scratchpad.has_section(ScratchpadSection.PATTERN_ANALYSIS):
+            return "I should analyze patterns first to identify code locations. Shall I do that?"
+        
+        # Update with repository paths if provided
+        if parameters.get("repositories"):
+            # Store repository paths for code inspector
+            pass
+        
+        # Route to code inspector
+        result = self.route_to_agent("code_inspector")
+        
+        if result.get("success"):
+            return "I've inspected the relevant code. Would you like me to provide a root cause diagnosis?"
+        else:
+            if result.get("skipped"):
+                return "Code inspection was skipped. I can still provide a diagnosis based on the available data."
+            return f"I encountered an issue inspecting code: {result.get('error', 'Unknown error')}"
+    
+    def _handle_diagnose_intent(self, parameters: Dict[str, Any]) -> str:
+        """Handle user intent to get diagnosis.
+        
+        Args:
+            parameters: Extracted parameters
+        
+        Returns:
+            Response message to user
+        """
+        # Check if we have sufficient data
+        if not self.scratchpad.has_section(ScratchpadSection.DATA_COLLECTED):
+            return "I need to collect some data before I can provide a diagnosis. Shall I start?"
+        
+        # Route to root cause analyst
+        result = self.route_to_agent("root_cause_analyst")
+        
+        if result.get("success"):
+            # Present diagnosis
+            diagnosis = self.read_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS)
+            root_cause = diagnosis.get("root_cause", {})
+            confidence = root_cause.get("confidence", 0.0)
+            description = root_cause.get("description", "No description available")
+            
+            response = f"Based on my analysis (confidence: {confidence:.2f}):\n\n{description}\n\n"
+            response += "Would you like to see the detailed recommendations?"
+            return response
+        else:
+            return f"I encountered an issue generating the diagnosis: {result.get('error', 'Unknown error')}"
+    
+    def _handle_show_findings_intent(self) -> str:
+        """Handle user intent to show findings.
+        
+        Returns:
+            Response message to user
+        """
+        # Present current findings
+        self.present_findings()
+        return "Is there anything else you'd like to investigate?"
+    
+    def _handle_clarify_intent(
+        self,
+        user_message: str,
+        conversation_history: List[Dict[str, Any]]
+    ) -> str:
+        """Handle user clarification questions.
+        
+        Args:
+            user_message: The user's clarification question
+            conversation_history: Previous conversation
+        
+        Returns:
+            Response to user's question
+        """
+        # Use LLM to generate contextual response
+        try:
+            llm = self.get_llm()
+            
+            # Build context from investigation state
+            investigation_state = self._get_investigation_state_summary()
+            
+            system_prompt = """You are Aletheia, a troubleshooting assistant. Answer the user's question
+based on the current investigation state. Be helpful, concise, and guide them toward next steps."""
+            
+            context_summary = f"Investigation state:\n{investigation_state}\n\nUser question: {user_message}"
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context_summary}
+            ]
+            
+            response = llm.complete(messages, temperature=0.7)
+            return response
+        
+        except Exception as e:
+            return "I'm here to help investigate your issue. What would you like to know?"
+    
+    def _handle_modify_scope_intent(self, parameters: Dict[str, Any]) -> str:
+        """Handle user intent to modify investigation scope.
+        
+        Args:
+            parameters: New parameters (services, time_window, etc.)
+        
+        Returns:
+            Response message to user
+        """
+        self._update_problem_parameters(parameters)
+        
+        changes = []
+        if parameters.get("services"):
+            changes.append(f"services to {', '.join(parameters['services'])}")
+        if parameters.get("time_window"):
+            changes.append(f"time window to {parameters['time_window']}")
+        
+        if changes:
+            return f"I've updated the investigation scope: {', '.join(changes)}. What would you like me to do next?"
+        else:
+            return "What aspect of the investigation would you like to modify?"
+    
+    def _update_problem_parameters(self, parameters: Dict[str, Any]) -> None:
+        """Update problem description with new parameters.
+        
+        Args:
+            parameters: Parameters to update (services, time_window, etc.)
+        """
+        problem_data = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
+        
+        if parameters.get("services"):
+            problem_data["affected_services"] = parameters["services"]
+        if parameters.get("time_window"):
+            problem_data["time_window"] = parameters["time_window"]
+        if parameters.get("keywords"):
+            problem_data["keywords"] = parameters.get("keywords", [])
+        
+        problem_data["updated_at"] = datetime.now().isoformat()
+        
+        self.write_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION, problem_data)
+    
+    def _check_if_complete(self) -> bool:
+        """Check if investigation is complete.
+        
+        Returns:
+            True if investigation has reached a conclusion
+        """
+        return self.scratchpad.has_section(ScratchpadSection.FINAL_DIAGNOSIS)
+    
+    def _display_welcome_conversational(self) -> None:
+        """Display welcome message for conversational mode."""
+        panel = Panel(
+            "[bold]Aletheia Investigation Assistant[/bold]\n\n"
+            "I'll help you investigate production incidents through natural conversation.\n"
+            "Just tell me what you'd like to investigate or ask questions as we go.\n\n"
+            "Type 'exit' or 'quit' to end the session.",
+            title="Welcome to Conversational Mode",
+            border_style="cyan"
+        )
+        self.console.print(panel)
+        self.console.print()
     
     def start_session(self, **kwargs) -> Dict[str, Any]:
         """Initialize a new investigation session.
