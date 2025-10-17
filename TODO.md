@@ -1585,14 +1585,14 @@ llm:
     - All 54 unit tests passing (100%)
     - Coverage improved to 56.00%
 
-- [ ] **REFACTOR-2** Update Data Fetcher for conversational mode (LLM-Delegated)
-  - [ ] Enhance `_build_sk_prompt()` to include full `CONVERSATION_HISTORY` section from scratchpad
-  - [ ] Add conversational prompt templates instructing LLM to extract K8s/Prometheus parameters from conversation
-  - [ ] LLM determines pod name, namespace, service name, time ranges from conversational context
-  - [ ] LLM uses `KubernetesPlugin` and `PrometheusPlugin` via `FunctionChoiceBehavior.Auto()`
-  - [ ] If parameters missing, LLM generates clarifying questions (no custom `_ask_user_for_missing_params()`)
-  - [ ] Update unit tests to verify LLM receives conversation context and invokes correct plugins
-  - **Acceptance**: Data Fetcher delegates ALL parameter extraction to LLM; agent contains no custom extraction logic
+- [x] **REFACTOR-2** Update Data Fetcher for conversational mode (LLM-Delegated)
+  - [x] Enhance `_build_sk_prompt()` to include full `CONVERSATION_HISTORY` section from scratchpad
+  - [x] Add conversational prompt templates instructing LLM to extract K8s/Prometheus parameters from conversation
+  - [x] LLM determines pod name, namespace, service name, time ranges from conversational context
+  - [x] LLM uses `KubernetesPlugin` and `PrometheusPlugin` via `FunctionChoiceBehavior.Auto()`
+  - [x] If parameters missing, LLM generates clarifying questions (no custom `_ask_user_for_missing_params()`)
+  - [x] Update unit tests to verify LLM receives conversation context and invokes correct plugins
+  - **Acceptance**: ✅ Data Fetcher delegates ALL parameter extraction to LLM; agent contains no custom extraction logic (Completed: 2025-10-17, Commit: 3c7b386)
 
 - [ ] **REFACTOR-3** Update Pattern Analyzer for conversational mode (LLM-Delegated)
   - [ ] Agent reads entire scratchpad (including `CONVERSATION_HISTORY` and `AGENT_NOTES`) via `read_scratchpad()`
