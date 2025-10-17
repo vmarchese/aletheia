@@ -1010,30 +1010,30 @@
   - [x] Test with mocked data sources
   - [x] Test with mocked LLM responses
   - [x] Verify scratchpad state at each stage
-  - **Acceptance**: ✅ Partially working (3 tests, 1 passing, 2 need debugging)
-  - **Status**: Created `test_full_investigation_flow_with_mocked_data_sources`, `test_session_completes_in_reasonable_time`, `test_session_flow_with_minimal_data`
+  - **Acceptance**: ✅ All tests passing (3/3 tests)
+  - **Status**: `test_full_investigation_flow_with_mocked_data_sources`, `test_session_completes_in_reasonable_time`, `test_session_flow_with_minimal_data`
 
 - [x] **5.1.2** Test session resume
   - [x] Create test: start session → interrupt → resume
   - [x] Verify state restoration
   - [x] Verify continuation from interruption point
-  - **Acceptance**: ✅ Partially working (4 tests, 2 passing: `test_session_resume_after_data_collection`, `test_session_resume_without_data_loss`)
-  - **Status**: Created 4 comprehensive resume tests including security validation
+  - **Acceptance**: ✅ All tests passing (4/4 tests)
+  - **Status**: `test_session_resume_after_data_collection`, `test_session_resume_after_pattern_analysis`, `test_session_resume_with_wrong_password_fails`, `test_session_resume_without_data_loss`
 
 - [x] **5.1.3** Test error recovery
   - [x] Test data source failure recovery
   - [x] Test agent failure recovery
   - [x] Test partial success scenarios
-  - **Acceptance**: ✅ Partially working (3 tests, 1 passing: `test_agent_failure_does_not_corrupt_scratchpad`)
-  - **Status**: Created error recovery and partial success tests
+  - **Acceptance**: ✅ All tests passing (3/3 tests)
+  - **Status**: `test_data_source_failure_recovery`, `test_partial_success_with_mixed_sources`, `test_agent_failure_does_not_corrupt_scratchpad`
 
 - [x] **5.1.4** Test session export/import
   - [x] Test export creates valid archive
   - [x] Test import restores full session
   - [x] Test encryption of exported archive
-  - **Acceptance**: ✅ Partially working (4 tests, 1 passing: `test_export_creates_valid_archive`)
-  - **Status**: Created comprehensive export/import tests including encryption validation
-  - **Summary**: 14 E2E tests created, 4 passing (28.6%), 10 need debugging. Coverage: 12.95% → 29.11% (+16.16%)
+  - **Acceptance**: ✅ All tests passing (4/4 tests)
+  - **Status**: `test_export_creates_valid_archive`, `test_import_restores_full_session`, `test_export_import_encryption`, `test_export_import_preserves_all_data`
+  - **Summary**: ✅ 14/14 E2E tests passing (100%). Coverage: 12.95% → 32.22% (+19.27%)
 
 ### 5.2 Performance Testing
 
