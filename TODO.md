@@ -836,21 +836,21 @@
 
 ### 3.9 Documentation & Cleanup
 
-- [ ] **3.9.1** Update Architecture Documentation (NEW - SK REQUIRED)
-  - [ ] Update SPECIFICATION.md with SK architecture
-  - [ ] Document SK kernel initialization pattern
-  - [ ] Document plugin architecture and registration
-  - [ ] Document handoff rules and orchestration flow
-  - [ ] Update AGENTS.md with SK agent patterns
-  - [ ] Add SK configuration examples to documentation
-  - **Acceptance**: Documentation reflects SK implementation
+- [x] **3.9.1** Update Architecture Documentation (NEW - SK REQUIRED)
+  - [x] Update SPECIFICATION.md with SK architecture
+  - [x] Document SK kernel initialization pattern
+  - [x] Document plugin architecture and registration
+  - [x] Document handoff rules and orchestration flow
+  - [x] Update AGENTS.md with SK agent patterns
+  - [x] Add SK configuration examples to documentation
+  - **Acceptance**: ✅ Documentation reflects SK implementation (Completed: 2025-10-17)
 
-- [ ] **3.9.2** Deprecate Custom Implementations (NEW - SK REQUIRED)
-  - [ ] Mark custom `LLMProvider` as deprecated (keep as backup during transition)
-  - [ ] Mark custom `BaseAgent` as deprecated after SK migration complete
-  - [ ] Update configuration schema for SK-specific settings
-  - [ ] Create migration guide for transitioning to SK agents
-  - **Acceptance**: Clear deprecation path documented
+- [x] **3.9.2** Deprecate Custom Implementations (NEW - SK REQUIRED)
+  - [x] Mark custom `LLMProvider` as deprecated (keep as backup during transition)
+  - [x] Mark custom `BaseAgent` as deprecated after SK migration complete
+  - [x] Update configuration schema for SK-specific settings
+  - [x] Create migration guide for transitioning to SK agents
+  - **Acceptance**: ✅ Clear deprecation path documented (Completed: 2025-10-17)
 
 ### 3.10 Phase 3 Completion Checklist
 
