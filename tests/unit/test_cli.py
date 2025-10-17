@@ -29,9 +29,10 @@ class TestVersionCommand:
 class TestSessionOpenCommand:
     """Tests for session open command."""
 
+    @patch("aletheia.cli._start_investigation")
     @patch("aletheia.cli.Session.create")
     @patch("aletheia.cli.getpass.getpass")
-    def test_session_open_basic(self, mock_getpass, mock_create):
+    def test_session_open_basic(self, mock_getpass, mock_create, mock_start_investigation):
         """Test basic session creation."""
         # Mock password input
         mock_getpass.side_effect = ["test-password", "test-password"]
@@ -53,10 +54,12 @@ class TestSessionOpenCommand:
         assert "INC-1234" in result.stdout
         assert "created" in result.stdout
         mock_create.assert_called_once_with(name=None, password="test-password", mode="guided")
+        mock_start_investigation.assert_called_once()
 
+    @patch("aletheia.cli._start_investigation")
     @patch("aletheia.cli.Session.create")
     @patch("aletheia.cli.getpass.getpass")
-    def test_session_open_with_name(self, mock_getpass, mock_create):
+    def test_session_open_with_name(self, mock_getpass, mock_create, mock_start_investigation):
         """Test session creation with name."""
         mock_getpass.side_effect = ["test-password", "test-password"]
 
@@ -80,16 +83,23 @@ class TestSessionOpenCommand:
         mock_create.assert_called_once_with(
             name="production-outage", password="test-password", mode="guided"
         )
+        mock_start_investigation.assert_called_once()
 
+    @patch("aletheia.cli._start_investigation")
     @patch("aletheia.cli.Session.create")
     @patch("aletheia.cli.getpass.getpass")
-    def test_session_open_with_mode(self, mock_getpass, mock_create):
+    def test_session_open_with_mode(self, mock_getpass, mock_create, mock_start_investigation):
         """Test session creation with conversational mode."""
         mock_getpass.side_effect = ["test-password", "test-password"]
 
+        mock_metadata = MagicMock()
+        mock_metadata.name = "session-abcd"
+        mock_metadata.mode = "conversational"
+        
         mock_session = MagicMock()
         mock_session.session_id = "INC-ABCD"
         mock_session.session_path = Path("/home/user/.aletheia/sessions/INC-ABCD")
+        mock_session.get_metadata.return_value = mock_metadata
         mock_create.return_value = mock_session
 
         result = runner.invoke(
@@ -100,6 +110,7 @@ class TestSessionOpenCommand:
         mock_create.assert_called_once_with(
             name=None, mode="conversational", password="test-password"
         )
+        mock_start_investigation.assert_called_once()
 
     @patch("aletheia.cli.getpass.getpass")
     def test_session_open_invalid_mode(self, mock_getpass):
@@ -201,7 +212,8 @@ class TestSessionResumeCommand:
 
     @patch("aletheia.cli.Session.resume")
     @patch("aletheia.cli.getpass.getpass")
-    def test_session_resume_basic(self, mock_getpass, mock_resume):
+    @patch("aletheia.cli._start_investigation")
+    def test_session_resume_basic(self, mock_start_investigation, mock_getpass, mock_resume):
         """Test resuming a session."""
         mock_getpass.return_value = "test-password"
 
@@ -221,6 +233,7 @@ class TestSessionResumeCommand:
         assert "resumed" in result.stdout
         assert "production-outage" in result.stdout
         mock_resume.assert_called_once_with(session_id="INC-1234", password="test-password")
+        mock_start_investigation.assert_called_once()
 
     @patch("aletheia.cli.getpass.getpass")
     def test_session_resume_empty_password(self, mock_getpass):
