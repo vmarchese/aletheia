@@ -1564,20 +1564,26 @@ llm:
 - **Prompt Engineering**: Focus on enhancing SK prompts to guide LLM behavior, not custom Python logic
 - **No Custom Extraction**: Agents read scratchpad conversation context and pass to LLM; LLM extracts parameters
 
-- [ ] **REFACTOR-1** Implement intent-based orchestration (LLM-Delegated)
-  - [ ] Review existing `_execute_conversational_mode()` in OrchestratorAgent (Commit: db30977)
-  - [ ] Verify `_understand_user_intent()` delegates ALL intent parsing to LLM (no custom intent extraction logic)
-  - [ ] Verify `_decide_next_agent()` uses LLM recommendations for routing (not hardcoded logic)
-  - [ ] Remove any custom intent classification or routing logic from orchestrator
-  - [ ] Enhance SK prompts to guide LLM in determining:
-    - [ ] User intent from conversation (data collection, analysis, code inspection, diagnosis)
-    - [ ] Next agent to invoke based on conversation state
-    - [ ] When to ask clarifying questions vs proceed
-  - [ ] Add conversation history tracking in scratchpad (simple append, no parsing)
-  - [ ] Update unit tests to verify LLM receives conversation context and determines routing
-  - [ ] Ensure orchestrator is thin: reads scratchpad → invokes LLM → routes based on LLM response
-  - **Acceptance**: Orchestrator delegates ALL intent understanding and routing decisions to LLM; contains no custom classification logic
-  - **Note**: Initial implementation in db30977 may contain custom logic that needs refactoring
+- [x] **REFACTOR-1** Implement intent-based orchestration (LLM-Delegated)
+  - [x] Review existing `_execute_conversational_mode()` in OrchestratorAgent (Commit: db30977)
+  - [x] Verify `_understand_user_intent()` delegates ALL intent parsing to LLM (no custom intent extraction logic)
+  - [x] Verify `_decide_next_agent()` uses LLM recommendations for routing (not hardcoded logic)
+  - [x] Remove any custom intent classification or routing logic from orchestrator
+  - [x] Enhance SK prompts to guide LLM in determining:
+    - [x] User intent from conversation (data collection, analysis, code inspection, diagnosis)
+    - [x] Next agent to invoke based on conversation state
+    - [x] When to ask clarifying questions vs proceed
+  - [x] Add conversation history tracking in scratchpad (already implemented)
+  - [x] Update unit tests to verify LLM receives conversation context and determines routing
+  - [x] Ensure orchestrator is thin: reads scratchpad → invokes LLM → routes based on LLM response
+  - **Acceptance**: ✅ Orchestrator delegates ALL intent understanding and routing decisions to LLM; contains no custom classification logic (Completed: 2025-10-17, Commit: 0fd1409)
+  - **Implementation Details**:
+    - Removed hardcoded `intent_to_agent` dictionary mapping
+    - Removed custom `_check_agent_dependencies()` method
+    - Added `agent_routing` and `agent_routing_decision` prompt templates
+    - Added LLM-based helper methods: `_generate_clarification_response()`, `_execute_agent_and_generate_response()`, `_get_agent_results_summary()`
+    - All 54 unit tests passing (100%)
+    - Coverage improved to 56.00%
 
 - [ ] **REFACTOR-2** Update Data Fetcher for conversational mode (LLM-Delegated)
   - [ ] Enhance `_build_sk_prompt()` to include full `CONVERSATION_HISTORY` section from scratchpad
