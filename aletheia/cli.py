@@ -21,7 +21,7 @@ from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.code_inspector import CodeInspectorAgent
 from aletheia.agents.root_cause_analyst import RootCauseAnalystAgent
 from aletheia.scratchpad import Scratchpad
-from aletheia.utils import set_verbose_commands
+from aletheia.utils import set_verbose_commands, enable_trace_logging, disable_trace_logging
 
 app = typer.Typer(
     name="aletheia",
@@ -129,12 +129,20 @@ def session_open(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Session name"),
     mode: str = typer.Option("guided", "--mode", "-m", help="Session mode (guided or conversational)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
+    very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
 ) -> None:
     """Open a new troubleshooting session."""
+    # Enable very-verbose mode (implies verbose)
+    if very_verbose:
+        verbose = True
+    
     # Enable verbose command output if requested
     if verbose:
         set_verbose_commands(True)
         console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
+    
+    if very_verbose:
+        console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
     
     if mode not in ["guided", "conversational"]:
         typer.echo("Error: Mode must be 'guided' or 'conversational'", err=True)
@@ -157,7 +165,14 @@ def session_open(
             name=name,
             password=password,
             mode=mode,
+            verbose=very_verbose,
         )
+        
+        # Enable trace logging if very-verbose mode
+        if very_verbose:
+            enable_trace_logging(session.session_path)
+            console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
+        
         metadata = session.get_metadata()
         console.print(f"[green]Session '{metadata.name}' created successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
@@ -206,12 +221,20 @@ def session_list() -> None:
 def session_resume(
     session_id: str = typer.Argument(..., help="Session ID to resume"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
+    very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
 ) -> None:
     """Resume an existing troubleshooting session."""
+    # Enable very-verbose mode (implies verbose)
+    if very_verbose:
+        verbose = True
+    
     # Enable verbose command output if requested
     if verbose:
         set_verbose_commands(True)
         console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
+    
+    if very_verbose:
+        console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
     
     # Get password
     password = getpass.getpass("Enter session password: ")
@@ -222,6 +245,12 @@ def session_resume(
     try:
         session = Session.resume(session_id=session_id, password=password)
         metadata = session.get_metadata()
+        
+        # Enable trace logging if very-verbose mode or if session was created with verbose
+        if very_verbose or metadata.verbose:
+            enable_trace_logging(session.session_path)
+            console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
+        
         console.print(f"[green]Session '{metadata.name}' resumed successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
         console.print(f"Mode: {metadata.mode}")

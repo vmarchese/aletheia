@@ -53,7 +53,7 @@ class TestSessionOpenCommand:
         assert result.exit_code == 0
         assert "INC-1234" in result.stdout
         assert "created" in result.stdout
-        mock_create.assert_called_once_with(name=None, password="test-password", mode="guided")
+        mock_create.assert_called_once_with(name=None, password="test-password", mode="guided", verbose=False)
         mock_start_investigation.assert_called_once()
 
     @patch("aletheia.cli._start_investigation")
@@ -81,7 +81,7 @@ class TestSessionOpenCommand:
         assert "INC-5678" in result.stdout
         assert "production-outage" in result.stdout
         mock_create.assert_called_once_with(
-            name="production-outage", password="test-password", mode="guided"
+            name="production-outage", password="test-password", mode="guided", verbose=False
         )
         mock_start_investigation.assert_called_once()
 
@@ -108,7 +108,7 @@ class TestSessionOpenCommand:
 
         assert result.exit_code == 0
         mock_create.assert_called_once_with(
-            name=None, mode="conversational", password="test-password"
+            name=None, mode="conversational", password="test-password", verbose=False
         )
         mock_start_investigation.assert_called_once()
 
@@ -218,6 +218,7 @@ class TestSessionResumeCommand:
         mock_metadata = MagicMock()
         mock_metadata.name = "production-outage"
         mock_metadata.mode = "guided"
+        mock_metadata.verbose = False  # Added for task 4.6
         
         mock_session = MagicMock()
         mock_session.session_id = "INC-1234"

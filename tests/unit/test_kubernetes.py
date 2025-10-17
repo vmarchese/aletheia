@@ -74,6 +74,8 @@ class TestKubernetesFetcher:
 
         mock_result = Mock()
         mock_result.stdout = "test log line\n"
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             logs = fetcher._fetch_raw_logs("default", "test-pod", None, None)
@@ -93,6 +95,8 @@ class TestKubernetesFetcher:
 
         mock_result = Mock()
         mock_result.stdout = "container log\n"
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             logs = fetcher._fetch_raw_logs("default", "test-pod", "app", None)
@@ -108,6 +112,8 @@ class TestKubernetesFetcher:
 
         mock_result = Mock()
         mock_result.stdout = "recent log\n"
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         time_window = (datetime.now() - timedelta(hours=2), datetime.now())
 
@@ -371,6 +377,8 @@ Plain text INFO message
 
         mock_result = Mock()
         mock_result.stdout = "pod-1 pod-2 pod-3"
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             pods = fetcher.list_pods(namespace="default")
@@ -387,6 +395,8 @@ Plain text INFO message
 
         mock_result = Mock()
         mock_result.stdout = "payments-pod-1 payments-pod-2"
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             pods = fetcher.list_pods(selector="app=payments-svc")
@@ -403,8 +413,10 @@ Plain text INFO message
 
         mock_result = Mock()
         mock_result.stdout = ""
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
             pods = fetcher.list_pods()
 
         assert pods == []
@@ -437,6 +449,8 @@ Plain text INFO message
 
         mock_result = Mock()
         mock_result.stdout = json.dumps(pod_json)
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
             status = fetcher.get_pod_status("test-pod")
@@ -463,6 +477,8 @@ Plain text INFO message
 
         mock_result = Mock()
         mock_result.stdout = "invalid json"
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
             with pytest.raises(QueryError, match="Failed to parse"):
@@ -475,6 +491,8 @@ Plain text INFO message
 
         mock_result = Mock()
         mock_result.stdout = "Kubernetes control plane is running at https://..."
+        mock_result.returncode = 0
+        mock_result.stderr = ""
 
         with patch("subprocess.run", return_value=mock_result):
             result = fetcher.test_connection()

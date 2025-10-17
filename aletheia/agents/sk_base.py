@@ -23,6 +23,7 @@ from semantic_kernel.contents import ChatHistory, ChatMessageContent
 
 from aletheia.scratchpad import Scratchpad
 from aletheia.llm.prompts import get_system_prompt
+from aletheia.utils.logging import is_trace_enabled, log_prompt, log_prompt_response
 
 
 class SKBaseAgent:
@@ -241,6 +242,23 @@ class SKBaseAgent:
         Raises:
             Exception: If agent invocation fails
         """
+        # Get model name for logging
+        llm_config = self.config.get("llm", {})
+        agents_config = llm_config.get("agents", {})
+        agent_config = agents_config.get(self.agent_name, {})
+        model = agent_config.get("model") or llm_config.get("default_model", "gpt-4o")
+        
+        # Log prompt if trace logging is enabled
+        if is_trace_enabled():
+            # Estimate tokens (rough approximation: 4 chars per token)
+            prompt_tokens = len(user_message) // 4
+            log_prompt(
+                agent_name=self.agent_name,
+                prompt=user_message,
+                model=model,
+                prompt_tokens=prompt_tokens
+            )
+        
         # Add user message to history
         self.chat_history.add_user_message(user_message)
         
@@ -269,6 +287,18 @@ class SKBaseAgent:
             response_text = response.content
         else:
             response_text = str(response)
+        
+        # Log response if trace logging is enabled
+        if is_trace_enabled():
+            # Estimate tokens for response
+            completion_tokens = len(response_text) // 4
+            total_tokens = prompt_tokens + completion_tokens if prompt_tokens else None
+            log_prompt_response(
+                agent_name=self.agent_name,
+                response=response_text,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens
+            )
         
         # Add response to history
         self.chat_history.add_assistant_message(response_text)

@@ -56,6 +56,7 @@ class SessionMetadata:
     status: str  # active | completed | failed
     salt: str  # Base64-encoded salt for encryption
     mode: str  # guided | conversational
+    verbose: bool = False  # whether very-verbose mode (-vv) is enabled
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -64,6 +65,9 @@ class SessionMetadata:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SessionMetadata":
         """Create from dictionary."""
+        # Handle backwards compatibility for sessions without verbose field
+        if "verbose" not in data:
+            data["verbose"] = False
         return cls(**data)
 
 
@@ -183,6 +187,7 @@ class Session:
         mode: str = "guided",
         password: Optional[str] = None,
         session_dir: Optional[Path] = None,
+        verbose: bool = False,
     ) -> "Session":
         """
         Create a new session.
@@ -192,6 +197,7 @@ class Session:
             mode: Interaction mode (guided or conversational)
             password: Session password for encryption
             session_dir: Base directory for sessions
+            verbose: Enable very-verbose mode (-vv) with trace logging
 
         Returns:
             New Session instance
@@ -235,6 +241,7 @@ class Session:
             status="active",
             salt=base64.b64encode(salt).decode("utf-8"),
             mode=mode,
+            verbose=verbose,
         )
 
         session._metadata = metadata

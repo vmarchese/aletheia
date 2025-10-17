@@ -28,6 +28,7 @@ from rich.table import Table
 
 from aletheia.agents.base import BaseAgent
 from aletheia.scratchpad import ScratchpadSection
+from aletheia.utils.logging import log_agent_transition, is_trace_enabled
 
 # SK orchestration support (optional, for future use)
 try:
@@ -272,6 +273,16 @@ class OrchestratorAgent(BaseAgent):
             raise ValueError(f"Agent '{agent_name}' not registered")
         
         agent = self.agent_registry[agent_name]
+        
+        # Log agent transition if trace logging is enabled
+        if is_trace_enabled():
+            from_agent = getattr(self, '_last_agent', None)
+            log_agent_transition(
+                from_agent=from_agent,
+                to_agent=agent_name,
+                reason=f"Phase: {self.current_phase.value if hasattr(self, 'current_phase') else 'unknown'}"
+            )
+            self._last_agent = agent_name
         
         # Always show which agent is executing for transparency
         agent_display_name = self._format_agent_name(agent_name)

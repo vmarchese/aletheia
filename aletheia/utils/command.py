@@ -6,9 +6,16 @@ with optional verbose output for debugging.
 
 import subprocess
 import os
+import time
 from typing import List, Optional, Dict, Any
 from rich.console import Console
 from rich.syntax import Syntax
+
+from aletheia.utils.logging import (
+    is_trace_enabled,
+    log_command,
+    log_command_result,
+)
 
 
 # Global flag for verbose command output
@@ -67,16 +74,21 @@ def run_command(
         subprocess.CalledProcessError: If command fails and check=True
         subprocess.TimeoutExpired: If command times out
     """
+    # Log to trace file if enabled
+    cmd_str = " ".join(cmd)
+    if is_trace_enabled():
+        log_command(cmd_str, cwd=cwd)
+    
     if _VERBOSE_COMMANDS:
         # Print command being executed
-        cmd_str = " ".join(cmd)
         _console.print(f"\n[bold cyan]→ Executing command:[/bold cyan]")
         _console.print(f"  [dim]{cmd_str}[/dim]")
         
         if cwd:
             _console.print(f"  [dim]Working directory: {cwd}[/dim]")
     
-    # Execute command
+    # Execute command with timing
+    start_time = time.time()
     result = subprocess.run(
         cmd,
         capture_output=capture_output,
@@ -87,6 +99,7 @@ def run_command(
         env=env,
         **kwargs
     )
+    duration = time.time() - start_time
     
     if _VERBOSE_COMMANDS:
         # Print results
@@ -120,6 +133,16 @@ def run_command(
                     _console.print(f"    {line}")
         
         _console.print()  # Blank line after command output
+    
+    # Log result to trace file
+    if is_trace_enabled():
+        log_command_result(
+            cmd_str,
+            result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            duration_seconds=duration
+        )
     
     # Now check for errors if requested
     if check and result.returncode != 0:
