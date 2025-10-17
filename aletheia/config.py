@@ -58,12 +58,14 @@ class AgentLLMConfig(BaseModel):
     """LLM configuration for a specific agent."""
 
     model: str = "gpt-4o"
+    base_url: Optional[str] = None
 
 
 class LLMConfig(BaseModel):
     """LLM configuration for all agents."""
 
     default_model: str = "gpt-4o"
+    base_url: Optional[str] = None
     api_key_env: str = "OPENAI_API_KEY"
     agents: Dict[str, AgentLLMConfig] = Field(default_factory=dict)
 

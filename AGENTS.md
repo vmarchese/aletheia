@@ -401,6 +401,66 @@ agents:
   use_sk_agents: true  # Use SK-based agents (default: true)
 ```
 
+### LLM Configuration
+
+Aletheia supports flexible LLM configuration including custom OpenAI-compatible endpoints.
+
+#### Default Configuration
+
+Configure default settings that apply to all agents:
+
+```yaml
+llm:
+  default_model: "gpt-4o"
+  base_url: "https://api.openai.com/v1"  # Optional: custom endpoint
+  api_key_env: "OPENAI_API_KEY"
+```
+
+#### Agent-Specific Configuration
+
+Override settings per agent with agent-specific precedence:
+
+```yaml
+llm:
+  default_model: "gpt-4o"
+  base_url: "https://api.openai.com/v1"
+  
+  agents:
+    data_fetcher:
+      model: "gpt-4o"
+      base_url: "https://custom-endpoint.example.com/v1"  # Override default
+    
+    pattern_analyzer:
+      model: "gpt-4o-mini"
+      # No base_url - uses default from llm.base_url
+    
+    root_cause_analyst:
+      model: "o1"
+      # Uses default base_url for reasoning tasks
+```
+
+#### Azure OpenAI Example
+
+```yaml
+llm:
+  default_model: "gpt-4"
+  base_url: "https://my-resource.openai.azure.com/openai/deployments/gpt-4"
+  api_key_env: "AZURE_OPENAI_API_KEY"
+```
+
+#### Local/Self-Hosted LLM Example
+
+```yaml
+llm:
+  default_model: "llama-3.1-70b"
+  base_url: "http://localhost:8000/v1"  # Local OpenAI-compatible server
+```
+
+**Configuration Priority**:
+1. Agent-specific `base_url` (highest priority)
+2. Default `llm.base_url`
+3. SDK default (OpenAI API if not specified)
+
 ### Plugin Examples
 
 #### Kubernetes Plugin

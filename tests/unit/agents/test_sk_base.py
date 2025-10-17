@@ -155,6 +155,93 @@ class TestSKBaseAgentKernel:
         # Should only create kernel once
         assert mock_kernel_cls.call_count == 1
         assert kernel1 is kernel2
+    
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.OpenAIChatCompletion')
+    def test_kernel_with_base_url_default(self, mock_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test kernel uses default base_url configuration."""
+        config = {
+            "llm": {
+                "default_model": "gpt-4o",
+                "api_key": "test-api-key",
+                "base_url": "https://api.openai.com/v1",
+                "agents": {}
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify service was created with base_url
+        mock_completion_cls.assert_called_once_with(
+            service_id="default",
+            ai_model_id="gpt-4o",
+            api_key="test-api-key",
+            base_url="https://api.openai.com/v1"
+        )
+    
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.OpenAIChatCompletion')
+    def test_kernel_with_base_url_agent_override(self, mock_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test agent-specific base_url overrides default."""
+        config = {
+            "llm": {
+                "default_model": "gpt-4o",
+                "api_key": "test-api-key",
+                "base_url": "https://api.openai.com/v1",
+                "agents": {
+                    "testsk": {
+                        "model": "gpt-4o",
+                        "base_url": "https://custom-endpoint.example.com/v1"
+                    }
+                }
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify agent-specific base_url was used
+        mock_completion_cls.assert_called_once_with(
+            service_id="default",
+            ai_model_id="gpt-4o",
+            api_key="test-api-key",
+            base_url="https://custom-endpoint.example.com/v1"
+        )
+    
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.OpenAIChatCompletion')
+    def test_kernel_without_base_url(self, mock_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test kernel without base_url (uses SDK default)."""
+        config = {
+            "llm": {
+                "default_model": "gpt-4o",
+                "api_key": "test-api-key",
+                "agents": {}
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify service was created without base_url parameter
+        mock_completion_cls.assert_called_once_with(
+            service_id="default",
+            ai_model_id="gpt-4o",
+            api_key="test-api-key"
+        )
 
 
 class TestSKBaseAgentAgent:

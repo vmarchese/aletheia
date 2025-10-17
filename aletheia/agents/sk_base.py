@@ -107,19 +107,25 @@ class SKBaseAgent:
                         agent_config = agents_config[key]
                         break
             
-            # Determine model and credentials
+            # Determine model, credentials, and base_url
             model = agent_config.get("model") or llm_config.get("default_model", "gpt-4o")
             api_key = llm_config.get("api_key") or None
+            # Agent-specific base_url takes precedence over default
+            base_url = agent_config.get("base_url") or llm_config.get("base_url") or None
             
             # Create kernel
             self._kernel = Kernel()
             
             # Add OpenAI chat completion service
-            service = OpenAIChatCompletion(
-                service_id="default",
-                ai_model_id=model,
-                api_key=api_key
-            )
+            service_kwargs = {
+                "service_id": "default",
+                "ai_model_id": model,
+                "api_key": api_key,
+            }
+            if base_url is not None:
+                service_kwargs["base_url"] = base_url
+            
+            service = OpenAIChatCompletion(**service_kwargs)
             self._kernel.add_service(service)
         
         return self._kernel

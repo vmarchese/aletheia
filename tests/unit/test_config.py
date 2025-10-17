@@ -74,6 +74,50 @@ class TestConfigSchema:
         # Non-existent agent should use default
         assert config.get_agent_config("unknown").model == "gpt-4o"
 
+    def test_llm_base_url_default(self):
+        """Test default base_url configuration."""
+        config = LLMConfig(
+            default_model="gpt-4o",
+            base_url="https://api.openai.com/v1"
+        )
+        
+        assert config.base_url == "https://api.openai.com/v1"
+        # Agent without specific base_url gets None (uses SDK default)
+        assert config.get_agent_config("unknown").base_url is None
+
+    def test_llm_base_url_agent_specific(self):
+        """Test agent-specific base_url configuration."""
+        config = LLMConfig(
+            default_model="gpt-4o",
+            base_url="https://api.openai.com/v1",
+            agents={
+                "data_fetcher": {
+                    "model": "gpt-4o",
+                    "base_url": "https://custom-endpoint.example.com/v1"
+                },
+                "pattern_analyzer": {
+                    "model": "gpt-4o-mini"
+                    # No base_url - should inherit from default via SK initialization
+                }
+            }
+        )
+        
+        # Agent with specific base_url
+        assert config.get_agent_config("data_fetcher").base_url == "https://custom-endpoint.example.com/v1"
+        # Agent without specific base_url gets None (handled by SK initialization)
+        assert config.get_agent_config("pattern_analyzer").base_url is None
+        # Unknown agent gets None
+        assert config.get_agent_config("unknown").base_url is None
+
+    def test_llm_base_url_azure_example(self):
+        """Test base_url configuration for Azure OpenAI."""
+        config = LLMConfig(
+            default_model="gpt-4",
+            base_url="https://my-resource.openai.azure.com/openai/deployments/gpt-4"
+        )
+        
+        assert config.base_url == "https://my-resource.openai.azure.com/openai/deployments/gpt-4"
+
     def test_credentials_config(self):
         """Test credentials configuration."""
         # Environment credentials
