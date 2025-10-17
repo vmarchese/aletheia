@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from semantic_kernel import Kernel
 from semantic_kernel.agents import ChatCompletionAgent
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion, OpenAIChatPromptExecutionSettings
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion, AzureChatCompletion, OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory, ChatMessageContent
 
 from aletheia.scratchpad import Scratchpad
@@ -87,8 +87,12 @@ class SKBaseAgent:
     def kernel(self) -> Kernel:
         """Get or create the Semantic Kernel instance.
         
-        Lazy initialization of the kernel with OpenAI chat completion service.
+        Lazy initialization of the kernel with OpenAI or Azure chat completion service.
         The service is configured based on agent-specific or default LLM config.
+        
+        Supports both standard OpenAI and Azure OpenAI Services:
+        - If use_azure=True, uses AzureChatCompletion
+        - Otherwise, uses OpenAIChatCompletion
         
         Returns:
             Configured Semantic Kernel instance
@@ -107,25 +111,54 @@ class SKBaseAgent:
                         agent_config = agents_config[key]
                         break
             
-            # Determine model, credentials, and base_url
-            model = agent_config.get("model") or llm_config.get("default_model", "gpt-4o")
-            api_key = llm_config.get("api_key") or None
-            # Agent-specific base_url takes precedence over default
-            base_url = agent_config.get("base_url") or llm_config.get("base_url") or None
+            # Determine if using Azure OpenAI (agent-specific overrides default)
+            use_azure = agent_config.get("use_azure", llm_config.get("use_azure", False))
             
             # Create kernel
             self._kernel = Kernel()
             
-            # Add OpenAI chat completion service
-            service_kwargs = {
-                "service_id": "default",
-                "ai_model_id": model,
-                "api_key": api_key,
-            }
-            if base_url is not None:
-                service_kwargs["base_url"] = base_url
+            if use_azure:
+                # Azure OpenAI configuration
+                azure_deployment = agent_config.get("azure_deployment") or llm_config.get("azure_deployment")
+                azure_endpoint = agent_config.get("azure_endpoint") or llm_config.get("azure_endpoint")
+                azure_api_version = agent_config.get("azure_api_version") or llm_config.get("azure_api_version")
+                api_key = llm_config.get("api_key") or None
+                
+                # Validate required Azure fields
+                if not azure_deployment:
+                    raise ValueError(f"Azure deployment name required when use_azure=True (agent: {self.agent_name})")
+                if not azure_endpoint:
+                    raise ValueError(f"Azure endpoint required when use_azure=True (agent: {self.agent_name})")
+                
+                # Create Azure chat completion service
+                service_kwargs = {
+                    "service_id": "default",
+                    "deployment_name": azure_deployment,
+                    "endpoint": azure_endpoint,
+                    "api_key": api_key,
+                }
+                if azure_api_version is not None:
+                    service_kwargs["api_version"] = azure_api_version
+                
+                service = AzureChatCompletion(**service_kwargs)
+            else:
+                # Standard OpenAI configuration
+                model = agent_config.get("model") or llm_config.get("default_model", "gpt-4o")
+                api_key = llm_config.get("api_key") or None
+                # Agent-specific base_url takes precedence over default
+                base_url = agent_config.get("base_url") or llm_config.get("base_url") or None
+                
+                # Create OpenAI chat completion service
+                service_kwargs = {
+                    "service_id": "default",
+                    "ai_model_id": model,
+                    "api_key": api_key,
+                }
+                if base_url is not None:
+                    service_kwargs["base_url"] = base_url
+                
+                service = OpenAIChatCompletion(**service_kwargs)
             
-            service = OpenAIChatCompletion(**service_kwargs)
             self._kernel.add_service(service)
         
         return self._kernel

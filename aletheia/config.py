@@ -59,6 +59,12 @@ class AgentLLMConfig(BaseModel):
 
     model: str = "gpt-4o"
     base_url: Optional[str] = None
+    
+    # Azure OpenAI configuration
+    use_azure: bool = False
+    azure_deployment: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    azure_api_version: Optional[str] = None
 
 
 class LLMConfig(BaseModel):
@@ -68,6 +74,12 @@ class LLMConfig(BaseModel):
     base_url: Optional[str] = None
     api_key_env: str = "OPENAI_API_KEY"
     agents: Dict[str, AgentLLMConfig] = Field(default_factory=dict)
+    
+    # Azure OpenAI configuration (default for all agents unless overridden)
+    use_azure: bool = False
+    azure_deployment: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    azure_api_version: Optional[str] = None
 
     def get_agent_config(self, agent_name: str) -> AgentLLMConfig:
         """Get LLM configuration for a specific agent."""

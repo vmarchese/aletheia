@@ -118,6 +118,84 @@ class TestConfigSchema:
         
         assert config.base_url == "https://my-resource.openai.azure.com/openai/deployments/gpt-4"
 
+    def test_azure_openai_default_configuration(self):
+        """Test Azure OpenAI default configuration."""
+        config = LLMConfig(
+            use_azure=True,
+            azure_deployment="gpt-4o",
+            azure_endpoint="https://my-resource.openai.azure.com/",
+            azure_api_version="2024-02-15-preview",
+            api_key_env="AZURE_OPENAI_API_KEY"
+        )
+        
+        assert config.use_azure is True
+        assert config.azure_deployment == "gpt-4o"
+        assert config.azure_endpoint == "https://my-resource.openai.azure.com/"
+        assert config.azure_api_version == "2024-02-15-preview"
+        assert config.api_key_env == "AZURE_OPENAI_API_KEY"
+
+    def test_azure_openai_agent_specific_configuration(self):
+        """Test agent-specific Azure OpenAI configuration."""
+        config = LLMConfig(
+            use_azure=True,
+            azure_deployment="gpt-4o",
+            azure_endpoint="https://my-resource.openai.azure.com/",
+            agents={
+                "data_fetcher": {
+                    "use_azure": False,  # Override to use standard OpenAI
+                    "model": "gpt-4o"
+                },
+                "pattern_analyzer": {
+                    "use_azure": True,  # Use Azure with specific deployment
+                    "azure_deployment": "gpt-4o-mini",
+                    "azure_endpoint": "https://other-resource.openai.azure.com/"
+                }
+            }
+        )
+        
+        # data_fetcher overrides to standard OpenAI
+        assert config.get_agent_config("data_fetcher").use_azure is False
+        # pattern_analyzer uses Azure with specific config
+        assert config.get_agent_config("pattern_analyzer").use_azure is True
+        assert config.get_agent_config("pattern_analyzer").azure_deployment == "gpt-4o-mini"
+
+    def test_azure_openai_mixed_configuration(self):
+        """Test mixed Azure and standard OpenAI configuration."""
+        config = LLMConfig(
+            default_model="gpt-4o",
+            base_url="https://api.openai.com/v1",  # Default is standard OpenAI
+            use_azure=False,
+            agents={
+                "code_inspector": {
+                    "use_azure": True,  # This agent uses Azure
+                    "azure_deployment": "gpt-4o",
+                    "azure_endpoint": "https://my-resource.openai.azure.com/"
+                },
+                "root_cause_analyst": {
+                    "model": "gpt-4o"  # Uses default standard OpenAI
+                }
+            }
+        )
+        
+        # code_inspector uses Azure
+        assert config.get_agent_config("code_inspector").use_azure is True
+        # root_cause_analyst uses default (standard OpenAI)
+        assert config.get_agent_config("root_cause_analyst").use_azure is False
+
+    def test_azure_openai_minimal_configuration(self):
+        """Test minimal Azure OpenAI configuration (no api_version)."""
+        config = LLMConfig(
+            use_azure=True,
+            azure_deployment="gpt-4o",
+            azure_endpoint="https://my-resource.openai.azure.com/"
+            # api_version is optional - will use SK default
+        )
+        
+        assert config.use_azure is True
+        assert config.azure_deployment == "gpt-4o"
+        assert config.azure_endpoint == "https://my-resource.openai.azure.com/"
+        assert config.azure_api_version is None  # Optional
+
     def test_credentials_config(self):
         """Test credentials configuration."""
         # Environment credentials

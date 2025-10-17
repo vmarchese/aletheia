@@ -448,6 +448,71 @@ llm:
   api_key_env: "AZURE_OPENAI_API_KEY"
 ```
 
+**Note**: The above uses `base_url` for Azure OpenAI. For full Azure OpenAI Services support with native SK integration, see the Azure OpenAI Configuration section below.
+
+#### Azure OpenAI Services (Native Support)
+
+Aletheia provides native Azure OpenAI Services support through Semantic Kernel's `AzureChatCompletion`:
+
+**Default Azure Configuration**:
+```yaml
+llm:
+  use_azure: true
+  azure_deployment: "gpt-4o"
+  azure_endpoint: "https://my-resource.openai.azure.com/"
+  azure_api_version: "2024-02-15-preview"  # Optional, uses SK default if omitted
+  api_key_env: "AZURE_OPENAI_API_KEY"
+```
+
+**Agent-Specific Azure Configuration**:
+```yaml
+llm:
+  # Default: Standard OpenAI
+  default_model: "gpt-4o"
+  api_key_env: "OPENAI_API_KEY"
+  
+  agents:
+    data_fetcher:
+      # This agent uses Azure OpenAI
+      use_azure: true
+      azure_deployment: "gpt-4o"
+      azure_endpoint: "https://my-resource.openai.azure.com/"
+    
+    pattern_analyzer:
+      # This agent uses standard OpenAI
+      model: "gpt-4o-mini"
+```
+
+**Mixed Configuration (Azure as Default)**:
+```yaml
+llm:
+  # Default: Azure OpenAI for all agents
+  use_azure: true
+  azure_deployment: "gpt-4o"
+  azure_endpoint: "https://default-resource.openai.azure.com/"
+  api_key_env: "AZURE_OPENAI_API_KEY"
+  
+  agents:
+    code_inspector:
+      # Override to use standard OpenAI for this agent
+      use_azure: false
+      model: "gpt-4o"
+      api_key_env: "OPENAI_API_KEY"
+```
+
+**Required Azure Fields**:
+- `use_azure`: Set to `true` to enable Azure OpenAI
+- `azure_deployment`: Azure deployment name (required when `use_azure=true`)
+- `azure_endpoint`: Azure resource endpoint URL (required when `use_azure=true`)
+
+**Optional Azure Fields**:
+- `azure_api_version`: API version (e.g., "2024-02-15-preview"). If omitted, SK uses its default
+
+**Configuration Priority** (Azure vs. Standard OpenAI):
+1. Agent-specific `use_azure` (highest priority)
+2. Default `llm.use_azure`
+3. Standard OpenAI (default: `use_azure=false`)
+
 #### Local/Self-Hosted LLM Example
 
 ```yaml

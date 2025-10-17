@@ -243,6 +243,178 @@ class TestSKBaseAgentKernel:
             api_key="test-api-key"
         )
 
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.AzureChatCompletion')
+    def test_kernel_with_azure_openai(self, mock_azure_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test kernel uses Azure OpenAI when use_azure=True."""
+        config = {
+            "llm": {
+                "use_azure": True,
+                "azure_deployment": "gpt-4o",
+                "azure_endpoint": "https://my-resource.openai.azure.com/",
+                "azure_api_version": "2024-02-15-preview",
+                "api_key": "test-azure-key",
+                "agents": {}
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_azure_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify Azure service was created with correct parameters
+        mock_azure_completion_cls.assert_called_once_with(
+            service_id="default",
+            deployment_name="gpt-4o",
+            endpoint="https://my-resource.openai.azure.com/",
+            api_key="test-azure-key",
+            api_version="2024-02-15-preview"
+        )
+
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.AzureChatCompletion')
+    def test_kernel_with_azure_agent_override(self, mock_azure_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test agent-specific Azure configuration overrides default."""
+        config = {
+            "llm": {
+                "use_azure": True,
+                "azure_deployment": "default-deployment",
+                "azure_endpoint": "https://default-resource.openai.azure.com/",
+                "api_key": "test-azure-key",
+                "agents": {
+                    "testsk": {
+                        "use_azure": True,
+                        "azure_deployment": "agent-deployment",
+                        "azure_endpoint": "https://agent-resource.openai.azure.com/",
+                        "azure_api_version": "2024-03-01-preview"
+                    }
+                }
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_azure_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify agent-specific Azure config was used
+        mock_azure_completion_cls.assert_called_once_with(
+            service_id="default",
+            deployment_name="agent-deployment",
+            endpoint="https://agent-resource.openai.azure.com/",
+            api_key="test-azure-key",
+            api_version="2024-03-01-preview"
+        )
+
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.OpenAIChatCompletion')
+    def test_kernel_with_azure_disabled_by_agent(self, mock_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test agent can override use_azure=True to use standard OpenAI."""
+        config = {
+            "llm": {
+                "use_azure": True,  # Default is Azure
+                "azure_deployment": "gpt-4o",
+                "azure_endpoint": "https://my-resource.openai.azure.com/",
+                "default_model": "gpt-4o",
+                "api_key": "test-key",
+                "agents": {
+                    "testsk": {
+                        "use_azure": False,  # Agent overrides to standard OpenAI
+                        "model": "gpt-4o"
+                    }
+                }
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify standard OpenAI service was used (not Azure)
+        mock_completion_cls.assert_called_once_with(
+            service_id="default",
+            ai_model_id="gpt-4o",
+            api_key="test-key"
+        )
+
+    @patch('aletheia.agents.sk_base.Kernel')
+    @patch('aletheia.agents.sk_base.AzureChatCompletion')
+    def test_kernel_azure_without_api_version(self, mock_azure_completion_cls, mock_kernel_cls, mock_scratchpad):
+        """Test Azure configuration without api_version (optional)."""
+        config = {
+            "llm": {
+                "use_azure": True,
+                "azure_deployment": "gpt-4o",
+                "azure_endpoint": "https://my-resource.openai.azure.com/",
+                "api_key": "test-azure-key",
+                # No azure_api_version - should work without it
+                "agents": {}
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        mock_service = MagicMock()
+        mock_azure_completion_cls.return_value = mock_service
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        kernel = agent.kernel
+        
+        # Verify Azure service was created without api_version
+        mock_azure_completion_cls.assert_called_once_with(
+            service_id="default",
+            deployment_name="gpt-4o",
+            endpoint="https://my-resource.openai.azure.com/",
+            api_key="test-azure-key"
+        )
+
+    @patch('aletheia.agents.sk_base.Kernel')
+    def test_kernel_azure_missing_deployment_raises_error(self, mock_kernel_cls, mock_scratchpad):
+        """Test that missing azure_deployment raises ValueError."""
+        config = {
+            "llm": {
+                "use_azure": True,
+                # Missing azure_deployment
+                "azure_endpoint": "https://my-resource.openai.azure.com/",
+                "api_key": "test-azure-key",
+                "agents": {}
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        
+        with pytest.raises(ValueError, match="Azure deployment name required"):
+            _ = agent.kernel
+
+    @patch('aletheia.agents.sk_base.Kernel')
+    def test_kernel_azure_missing_endpoint_raises_error(self, mock_kernel_cls, mock_scratchpad):
+        """Test that missing azure_endpoint raises ValueError."""
+        config = {
+            "llm": {
+                "use_azure": True,
+                "azure_deployment": "gpt-4o",
+                # Missing azure_endpoint
+                "api_key": "test-azure-key",
+                "agents": {}
+            }
+        }
+        mock_kernel = MagicMock()
+        mock_kernel_cls.return_value = mock_kernel
+        
+        agent = TestSKAgent(config, mock_scratchpad)
+        
+        with pytest.raises(ValueError, match="Azure endpoint required"):
+            _ = agent.kernel
+
 
 class TestSKBaseAgentAgent:
     """Test ChatCompletionAgent initialization and management."""
