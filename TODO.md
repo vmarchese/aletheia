@@ -491,6 +491,8 @@ llm:
     data_fetcher:
       model: "gpt-4o"
       base_url: "https://my-custom-endpoint.com/v1"  # Override for specific agent
+```      
+
 ### 3.2 Base Agent Framework
 
 - [x] **3.2.1** Design base agent class
