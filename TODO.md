@@ -1106,7 +1106,63 @@ llm:
   - [x] Test verbose flag propagation
   - **Coverage Target**: ✅ 83.56% (exceeds >80% target, 20/20 tests passing, Completed: 2025-10-17)
 
-### 4.7 Phase 4 Completion Checklist
+### 4.7 Enhanced Logging for Operations
+
+- [ ] **4.7.1** Implement comprehensive operation logging in DEBUG mode
+  - [ ] Add DEBUG-level logging for every agent operation before execution:
+    - [ ] Agent start/end execution with timestamps
+    - [ ] LLM invocation parameters (model, prompt summary, token count)
+    - [ ] Scratchpad read/write operations
+    - [ ] Agent state transitions
+  - [ ] Log format: `[TIMESTAMP] [AGENT_NAME] [OPERATION] Starting/Completed - duration: Xms`
+  - [ ] Use existing `aletheia/utils/logging.py` module
+  - **Acceptance**: All agent operations are logged in DEBUG mode
+
+- [ ] **4.7.2** Implement external call logging in DEBUG mode
+  - [ ] Log all external commands before execution:
+    - [ ] kubectl commands (pod name, namespace, operation)
+    - [ ] git commands (repository, file path, operation)
+    - [ ] Prometheus HTTP requests (endpoint, query, time range)
+  - [ ] Log command completion with exit code and duration
+  - [ ] Log command output summary (first 200 chars or line count)
+  - [ ] Format: `[TIMESTAMP] [PLUGIN_NAME] [COMMAND] Starting: <command_string>`
+  - [ ] Format: `[TIMESTAMP] [PLUGIN_NAME] [COMMAND] Completed: exit_code=X, duration=Yms, output_lines=Z`
+  - **Acceptance**: All external calls are logged before/after execution
+
+- [ ] **4.7.3** Integrate logging with SK plugins
+  - [ ] Update `KubernetesPlugin` methods to log kubectl operations
+  - [ ] Update `PrometheusPlugin` methods to log HTTP requests
+  - [ ] Update `GitPlugin` methods to log git commands
+  - [ ] Use Python `logging` module with DEBUG level
+  - [ ] Ensure logging respects verbose flag from session metadata
+  - **Acceptance**: All plugin operations are logged in DEBUG mode
+
+- [ ] **4.7.4** Update orchestrator logging
+  - [ ] Log agent routing decisions with reasoning
+  - [ ] Log handoff events (agent A → agent B)
+  - [ ] Log user interactions in conversational mode
+  - [ ] Log error recovery attempts
+  - [ ] Log orchestration state transitions
+  - **Acceptance**: Orchestration flow is fully traceable
+
+- [ ] **4.7.5** Add log filtering and formatting utilities
+  - [ ] Create `setup_debug_logging(session_id: str)` function
+  - [ ] Configure log file output: `~/.aletheia/sessions/{id}/debug.log`
+  - [ ] Add colored console output for DEBUG logs (optional, configurable)
+  - [ ] Add log filtering by agent/plugin name
+  - [ ] Add log rotation (max 10MB per file)
+  - **Acceptance**: Logs are well-formatted and manageable
+
+- [ ] **4.7.6** Unit tests for enhanced logging
+  - [ ] Test DEBUG logging is triggered for all agent operations
+  - [ ] Test external call logging captures command/output
+  - [ ] Test log file creation and content
+  - [ ] Test logging respects verbose flag
+  - [ ] Test log filtering and formatting
+  - [ ] Test no logging overhead in non-DEBUG mode
+  - **Coverage Target**: >80%
+
+### 4.8 Phase 4 Completion Checklist
 
 - [x] CLI commands implemented (4.1 complete)
 - [x] Guided mode fully functional (4.2 complete)
@@ -1114,6 +1170,7 @@ llm:
 - [x] Diagnosis display tested (4.4 complete)
 - [x] Input handling robust and validated (4.5 complete)
 - [x] Verbose mode implemented (4.6 complete - 2025-10-17)
+- [ ] Enhanced logging for operations (4.7 pending)
 - [ ] User experience validated with manual testing
 - [ ] Documentation updated (user guide)
 - **Phase Gate**: UX ready for integration testing

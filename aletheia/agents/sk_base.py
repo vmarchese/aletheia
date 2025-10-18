@@ -12,6 +12,7 @@ Key features:
 """
 
 import asyncio
+import os
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -123,7 +124,10 @@ class SKBaseAgent:
                 azure_deployment = agent_config.get("azure_deployment") or llm_config.get("azure_deployment")
                 azure_endpoint = agent_config.get("azure_endpoint") or llm_config.get("azure_endpoint")
                 azure_api_version = agent_config.get("azure_api_version") or llm_config.get("azure_api_version")
-                api_key = llm_config.get("api_key") or None
+                
+                # Get API key from environment variable or config
+                api_key_env = llm_config.get("api_key_env", "OPENAI_API_KEY")
+                api_key = llm_config.get("api_key") or os.getenv(api_key_env)
                 
                 # Validate required Azure fields
                 if not azure_deployment:
@@ -145,7 +149,11 @@ class SKBaseAgent:
             else:
                 # Standard OpenAI configuration
                 model = agent_config.get("model") or llm_config.get("default_model", "gpt-4o")
-                api_key = llm_config.get("api_key") or None
+                
+                # Get API key from environment variable or config
+                api_key_env = llm_config.get("api_key_env", "OPENAI_API_KEY")
+                api_key = llm_config.get("api_key") or os.getenv(api_key_env)
+                
                 # Agent-specific base_url takes precedence over default
                 base_url = agent_config.get("base_url") or llm_config.get("base_url") or None
                 

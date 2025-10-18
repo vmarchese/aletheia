@@ -170,6 +170,14 @@ class BaseAgent(ABC):
             if "timeout" in agent_config:
                 provider_config["timeout"] = agent_config["timeout"]
             
+            # Add Azure OpenAI configuration if present
+            if llm_config.get("use_azure"):
+                provider_config["use_azure"] = True
+                provider_config["azure_deployment"] = agent_config.get("azure_deployment") or llm_config.get("azure_deployment")
+                provider_config["azure_endpoint"] = agent_config.get("azure_endpoint") or llm_config.get("azure_endpoint")
+                if "azure_api_version" in llm_config or "azure_api_version" in agent_config:
+                    provider_config["azure_api_version"] = agent_config.get("azure_api_version") or llm_config.get("azure_api_version")
+            
             self._llm_provider = LLMFactory.create_provider(provider_config)
         
         return self._llm_provider

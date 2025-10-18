@@ -213,6 +213,20 @@ class TestOpenAIProvider:
         messages = provider._normalize_messages(input_messages)
         assert messages == input_messages
     
+    def test_normalize_messages_dict_list(self):
+        """Test normalizing list of dict messages (common pattern)."""
+        provider = OpenAIProvider(api_key="test")
+        input_messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "User"},
+        ]
+        messages = provider._normalize_messages(input_messages)
+        assert len(messages) == 2
+        assert messages[0].role == LLMRole.SYSTEM
+        assert messages[0].content == "System"
+        assert messages[1].role == LLMRole.USER
+        assert messages[1].content == "User"
+    
     @patch("openai.OpenAI")
     def test_complete_simple_string(self, mock_openai_class):
         """Test completion with simple string input."""

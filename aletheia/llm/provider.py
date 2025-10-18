@@ -153,18 +153,36 @@ class LLMProvider(ABC):
         """
         pass
     
-    def _normalize_messages(self, messages: Union[str, List[LLMMessage]]) -> List[LLMMessage]:
+    def _normalize_messages(self, messages: Union[str, List[Union[LLMMessage, Dict[str, str]]]]) -> List[LLMMessage]:
         """Normalize input messages to list of LLMMessage objects.
         
         Args:
-            messages: Either a string or list of LLMMessage objects
+            messages: Either a string, list of LLMMessage objects, or list of dicts
             
         Returns:
             List of LLMMessage objects
         """
         if isinstance(messages, str):
             return [LLMMessage(role=LLMRole.USER, content=messages)]
-        return messages
+        
+        # Convert list items to LLMMessage if needed
+        normalized = []
+        for msg in messages:
+            if isinstance(msg, LLMMessage):
+                normalized.append(msg)
+            elif isinstance(msg, dict):
+                # Convert dict to LLMMessage
+                role_str = msg.get("role", "user")
+                role = LLMRole(role_str) if isinstance(role_str, str) else role_str
+                normalized.append(LLMMessage(
+                    role=role,
+                    content=msg.get("content", ""),
+                    name=msg.get("name")
+                ))
+            else:
+                raise ValueError(f"Unsupported message type: {type(msg)}")
+        
+        return normalized
 
 
 class OpenAIProvider(LLMProvider):
@@ -202,15 +220,23 @@ class OpenAIProvider(LLMProvider):
         api_key: Optional[str] = None,
         model: str = "gpt-4o",
         base_url: Optional[str] = None,
-        timeout: int = DEFAULT_TIMEOUT
+        timeout: int = DEFAULT_TIMEOUT,
+        use_azure: bool = False,
+        azure_deployment: Optional[str] = None,
+        azure_endpoint: Optional[str] = None,
+        azure_api_version: Optional[str] = None
     ):
         """Initialize OpenAI provider.
         
         Args:
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
+            api_key: OpenAI/Azure API key
             model: Default model to use
-            base_url: Optional custom base URL
+            base_url: Optional custom base URL (for standard OpenAI)
             timeout: Default timeout in seconds
+            use_azure: Whether to use Azure OpenAI
+            azure_deployment: Azure deployment name
+            azure_endpoint: Azure endpoint URL
+            azure_api_version: Azure API version
             
         Raises:
             LLMAuthenticationError: If API key is not provided
@@ -226,6 +252,12 @@ class OpenAIProvider(LLMProvider):
         self.base_url = base_url
         self.default_timeout = timeout
         
+        # Azure OpenAI configuration
+        self.use_azure = use_azure
+        self.azure_deployment = azure_deployment
+        self.azure_endpoint = azure_endpoint
+        self.azure_api_version = azure_api_version
+        
         # Lazy import of openai
         self._client = None
     
@@ -234,17 +266,26 @@ class OpenAIProvider(LLMProvider):
         """Lazy initialization of OpenAI client."""
         if self._client is None:
             try:
-                from openai import OpenAI
+                from openai import AzureOpenAI, OpenAI
             except ImportError:
                 raise ImportError(
                     "openai package not installed. Install with: pip install openai"
                 )
             
-            kwargs = {"api_key": self.api_key}
-            if self.base_url:
-                kwargs["base_url"] = self.base_url
-            
-            self._client = OpenAI(**kwargs)
+            if self.use_azure:
+                # Use Azure OpenAI client
+                kwargs = {
+                    "api_key": self.api_key,
+                    "azure_endpoint": self.azure_endpoint,
+                    "api_version": self.azure_api_version or "2024-02-15-preview"
+                }
+                self._client = AzureOpenAI(**kwargs)
+            else:
+                # Use standard OpenAI client
+                kwargs = {"api_key": self.api_key}
+                if self.base_url:
+                    kwargs["base_url"] = self.base_url
+                self._client = OpenAI(**kwargs)
         
         return self._client
     
@@ -280,8 +321,10 @@ class OpenAIProvider(LLMProvider):
         api_messages = [msg.to_dict() for msg in normalized_messages]
         
         # Build request parameters
+        # For Azure, use deployment name instead of model
+        model_or_deployment = self.azure_deployment if self.use_azure else kwargs.pop("model", self.model)
         request_params = {
-            "model": kwargs.pop("model", self.model),
+            "model": model_or_deployment,
             "messages": api_messages,
             "temperature": temperature,
             "timeout": timeout or self.default_timeout,
@@ -388,15 +431,23 @@ class SemanticKernelProvider(LLMProvider):
         api_key: Optional[str] = None,
         model: str = "gpt-4o",
         base_url: Optional[str] = None,
-        timeout: int = DEFAULT_TIMEOUT
+        timeout: int = DEFAULT_TIMEOUT,
+        use_azure: bool = False,
+        azure_deployment: Optional[str] = None,
+        azure_endpoint: Optional[str] = None,
+        azure_api_version: Optional[str] = None
     ):
         """Initialize Semantic Kernel provider.
         
         Args:
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
-            model: Default model to use
-            base_url: Optional custom base URL (not used by SK service)
+            api_key: OpenAI/Azure API key
+            model: Default model to use (or Azure deployment name)
+            base_url: Optional custom base URL (for standard OpenAI)
             timeout: Default timeout in seconds
+            use_azure: Whether to use Azure OpenAI
+            azure_deployment: Azure deployment name
+            azure_endpoint: Azure endpoint URL
+            azure_api_version: Azure API version
             
         Raises:
             LLMAuthenticationError: If API key is not provided
@@ -413,6 +464,12 @@ class SemanticKernelProvider(LLMProvider):
         self.base_url = base_url
         self.default_timeout = timeout
         
+        # Azure OpenAI configuration
+        self.use_azure = use_azure
+        self.azure_deployment = azure_deployment or model
+        self.azure_endpoint = azure_endpoint
+        self.azure_api_version = azure_api_version
+        
         # Initialize SK service
         self._service = None
         self._kernel = None
@@ -422,18 +479,32 @@ class SemanticKernelProvider(LLMProvider):
         """Lazy initialization of Semantic Kernel service."""
         if self._service is None:
             try:
-                from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+                from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion, AzureChatCompletion
             except ImportError:
                 raise ImportError(
                     "semantic_kernel package not installed. "
                     "Install with: pip install semantic-kernel"
                 )
             
-            self._service = OpenAIChatCompletion(
-                service_id="default",
-                ai_model_id=self.model,
-                api_key=self.api_key
-            )
+            if self.use_azure:
+                # Use Azure OpenAI service
+                service_kwargs = {
+                    "service_id": "default",
+                    "deployment_name": self.azure_deployment,
+                    "endpoint": self.azure_endpoint,
+                    "api_key": self.api_key,
+                }
+                if self.azure_api_version:
+                    service_kwargs["api_version"] = self.azure_api_version
+                
+                self._service = AzureChatCompletion(**service_kwargs)
+            else:
+                # Use standard OpenAI service
+                self._service = OpenAIChatCompletion(
+                    service_id="default",
+                    ai_model_id=self.model,
+                    api_key=self.api_key
+                )
         
         return self._service
     
@@ -663,20 +734,31 @@ class LLMFactory:
             if not api_key and "api_key_env" in config:
                 api_key = os.getenv(config["api_key_env"])
             
+            # Check if using Azure OpenAI
+            use_azure = config.get("use_azure", False)
+            
             # Choose provider implementation
             if use_semantic_kernel:
                 provider = SemanticKernelProvider(
                     api_key=api_key,
                     model=model,
                     base_url=config.get("base_url"),
-                    timeout=config.get("timeout", SemanticKernelProvider.DEFAULT_TIMEOUT)
+                    timeout=config.get("timeout", SemanticKernelProvider.DEFAULT_TIMEOUT),
+                    use_azure=use_azure,
+                    azure_deployment=config.get("azure_deployment"),
+                    azure_endpoint=config.get("azure_endpoint"),
+                    azure_api_version=config.get("azure_api_version")
                 )
             else:
                 provider = OpenAIProvider(
                     api_key=api_key,
                     model=model,
                     base_url=config.get("base_url"),
-                    timeout=config.get("timeout", OpenAIProvider.DEFAULT_TIMEOUT)
+                    timeout=config.get("timeout", OpenAIProvider.DEFAULT_TIMEOUT),
+                    use_azure=use_azure,
+                    azure_deployment=config.get("azure_deployment"),
+                    azure_endpoint=config.get("azure_endpoint"),
+                    azure_api_version=config.get("azure_api_version")
                 )
             
             # Cache the provider
