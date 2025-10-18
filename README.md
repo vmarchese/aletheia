@@ -16,6 +16,7 @@
 - **📝 Auditable Process**: Complete investigation trail preserved in encrypted scratchpad format
 - **⏸️ Resume Capability**: Interrupted sessions can be resumed without data loss
 - **🤖 AI-Powered Agents**: Microsoft Semantic Kernel-based agents with specialized skills
+- **💬 Conversational Mode**: Natural language interaction with LLM-powered intent understanding
 - **🎯 Guided Mode**: Menu-driven workflow for structured troubleshooting
 - **🎨 Rich Terminal UI**: Beautiful, interactive output using Rich library
 
@@ -27,6 +28,8 @@
 - [Usage](#-usage)
   - [Session Management](#session-management)
   - [Investigation Workflow](#investigation-workflow)
+    - [Guided Mode](#guided-mode-default)
+    - [Conversational Mode](#conversational-mode)
 - [Data Sources](#-data-sources)
 - [Agent Architecture](#-agent-architecture)
 - [Configuration Guide](#-configuration-guide)
@@ -463,6 +466,153 @@ What would you like to do?
 [4] End session
 > Select:
 ```
+
+#### Conversational Mode
+
+Natural language interaction with LLM-powered intent understanding:
+
+```
+$ aletheia session open --name incident-2025-10-17 --mode conversational
+
+> [Aletheia] Enter session password: ********
+> [Aletheia] Session INC-8F2A created.
+
+> [Aletheia] How can I help you troubleshoot today?
+
+> [User]: Why is payments-svc returning 500 errors in production?
+
+> [Aletheia] I'll investigate that for you. Let me collect logs from 
+payments-svc in production namespace...
+
+⏳ Collecting data... (elapsed: 3s)
+
+> [Aletheia] ✅ I found 200 log entries from payments-svc in the last hour. 
+Here's what I discovered:
+  • 47 ERROR level messages
+  • Top error: "nil pointer dereference" (45 occurrences)
+  • Circuit breaker opened to promo-svc at 08:05:15
+
+The errors started around 08:05. Would you like me to fetch metrics to see 
+if there was a traffic spike?
+
+> [User]: Yes, check error rate and latency
+
+> [Aletheia] Fetching Prometheus metrics for error rate and P95 latency...
+
+⏳ Analyzing patterns... (elapsed: 2s)
+
+> [Aletheia] ✅ Pattern analysis complete:
+  • Error rate spiked from 0.2% to 7.3% at 08:05 (36x increase)
+  • Temporal correlation: payments-svc v1.19 deployed at 08:04
+  • 45 panics with identical stack trace: charge.go:112 → features.go:57
+
+This looks like a nil pointer dereference introduced in v1.19. Do you have 
+access to the source code repository?
+
+> [User]: Yes, it's at /Users/alice/repos/payments-svc
+
+> [Aletheia] Thanks! Let me analyze the code...
+
+⏳ Inspecting code... (elapsed: 4s)
+
+> [Aletheia] ✅ Code analysis complete:
+  • Error at features.go:57 in IsEnabled() function
+  • Git blame shows recent change by john.doe (commit a3f9c2d, 2025-10-10)
+  • Change: "Refactor feature flag loading" - removed nil check
+  • Caller at promo.go:88 doesn't guard against nil
+
+Let me synthesize the diagnosis...
+
+⏳ Generating diagnosis... (elapsed: 2s)
+
+> [Aletheia] ✅ Diagnosis complete.
+
+═══════════════════════════════════════════════════
+🎯 ROOT CAUSE DIAGNOSIS
+═══════════════════════════════════════════════════
+
+PROBABLE CAUSE:
+Nil pointer dereference in featurekit/features.go:57
+
+DESCRIPTION:
+The IsEnabled function dereferences f.Enabled without checking if f is nil.
+A recent refactor (commit a3f9c2d on 2025-10-10 by john.doe) changed feature
+flag loading, allowing Get() to return nil. Callers in payments-svc don't
+guard against this condition.
+
+CONFIDENCE: 0.92 (Very High)
+
+EVIDENCE:
+• 45 panics with stack trace: charge.go:112 → features.go:57 → promo.go:88
+• Error spike at 08:05 (70 seconds after v1.19 deployment)
+• Git blame: Recent change "Refactor feature flag loading"
+• No nil checks in caller at promo.go:88
+
+RECOMMENDED ACTIONS:
+[IMMEDIATE] Rollback payments-svc to v1.18 to stop customer impact
+[HIGH]      Apply nil-safe patch to IsEnabled function
+[MEDIUM]    Add unit test for nil Feature handling
+[LOW]       Review all callers of featurekit.Get() for nil checks
+
+═══════════════════════════════════════════════════
+
+> [Aletheia] What would you like to do?
+
+> [User]: Show me the proposed patch
+
+> [Aletheia] Here's the proposed patch for features.go:
+
+--- features.go.original
++++ features.go.patched
+@@ -54,7 +54,10 @@
+ type Feature struct { Name string; Enabled *bool }
+
+ func IsEnabled(f *Feature) bool {
+-    return *f.Enabled
++    if f == nil || f.Enabled == nil {
++        return false
++    }
++    return *f.Enabled
+ }
+
+> [User]: Perfect, thanks! Save the diagnosis
+
+> [Aletheia] ✅ Diagnosis saved to:
+  ~/.aletheia/sessions/INC-8F2A/diagnosis.md
+
+You can resume this session anytime with:
+  aletheia session resume INC-8F2A
+
+> [User]: End session
+
+> [Aletheia] Session ended. Investigation complete.
+```
+
+**Conversational Mode Features**:
+
+- **Natural Language Input**: Describe problems in your own words
+- **LLM-Powered Understanding**: Automatically extracts service names, namespaces, time windows
+- **Context-Aware**: Remembers previous messages and builds on conversation
+- **Clarifying Questions**: Asks for missing information when needed
+- **Adaptive Workflow**: Adjusts investigation based on findings
+
+**Special Commands** (available during conversation):
+
+- `help` - Show available commands
+- `history` - Display conversation history
+- `status` - Show investigation progress
+- `exit` - End the session
+
+**Why Conversational Mode?**
+
+Conversational mode uses the **LLM-First pattern**, where:
+- ✅ **No menu navigation** - just describe what you need
+- ✅ **Flexible input** - "payments pod", "the payments service", "payments-svc" all work
+- ✅ **Context retention** - LLM remembers previous context ("it", "that service")
+- ✅ **Natural clarifications** - LLM generates appropriate questions
+- ✅ **Adaptive flow** - Investigation adjusts based on what's discovered
+
+See [SPECIFICATION.md Section 13](SPECIFICATION.md#13-conversational-mode-architecture) for implementation details.
 
 ## 🔌 Data Sources
 

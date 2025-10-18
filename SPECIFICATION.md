@@ -1375,17 +1375,686 @@ def test_full_session_flow():
 
 **Guided Mode**: Menu-driven interaction where user selects from numbered choices.
 
-**Conversational Mode**: Natural language interaction with LLM-powered intent understanding.
+**Conversational Mode**: Natural language interaction with LLM-powered intent understanding (see Section 2.7).
 
 **Session Key**: Encryption key derived from user password using PBKDF2, used to encrypt all session data.
 
 **Template Query**: Pre-defined query structure (Elasticsearch DSL, PromQL) with placeholders for common use cases.
 
+**LLM-First Pattern**: Architecture pattern where agents delegate ALL decision logic (parameter extraction, intent classification, routing) to the LLM via prompts, avoiding custom parsing code.
+
+**Plugin**: Semantic Kernel function decorated with `@kernel_function` that exposes external tool operations (kubectl, git, HTTP APIs) to the LLM for automatic invocation.
+
 ---
 
-## 13. Appendix
+## 13. Conversational Mode Architecture
 
-### A. Example Session Transcript (Guided Mode)
+###  13.1 Overview
+
+**Conversational Mode** enables natural language interaction with Aletheia, allowing users to describe problems and ask questions without navigating menus. This mode leverages the **LLM-First pattern**, where ALL parameter extraction, intent understanding, and routing decisions are delegated to the LLM through carefully crafted prompts.
+
+**Key Principle**: Agents build prompts and invoke the LLM; the LLM does all the reasoning, extraction, and decision-making. Agents do NOT implement custom parsing, extraction, or classification logic.
+
+### 13.2 LLM-First Pattern
+
+#### 13.2.1 Design Philosophy
+
+Traditional agent systems often implement custom logic for tasks like:
+- ❌ Regex patterns to extract pod names from user input
+- ❌ Hardcoded intent-to-agent mapping dictionaries
+- ❌ Custom parsers for stack traces or error messages
+- ❌ Rule-based decision trees for routing
+
+The **LLM-First Pattern** eliminates this custom logic by asking the LLM to do the work:
+
+```python
+# ❌ OLD WAY (Custom Extraction Logic)
+def extract_pod_name(user_input: str) -> str:
+    match = re.search(r'pod[:\s]+([a-z0-9-]+)', user_input)
+    return match.group(1) if match else "default"
+
+# ✅ NEW WAY (LLM-First Pattern)
+async def execute(self):
+    conversation = self.scratchpad.get_conversation_context()
+    prompt = f"""
+    Based on this conversation:
+    {conversation}
+    
+    Extract the pod name the user wants to investigate.
+    Use kubernetes.fetch_kubernetes_logs() to collect logs.
+    """
+    response = await self.invoke(prompt)  # LLM extracts pod name and calls plugin
+```
+
+**Benefits**:
+1. **Flexibility**: LLM handles variations ("payments pod", "pod: payments-svc", "the payments service")
+2. **Maintainability**: No regex patterns or parsers to maintain
+3. **Context Awareness**: LLM considers full conversation history
+4. **Natural Handling**: Works with ambiguous or incomplete information
+5. **Extensibility**: Adding new parameters doesn't require code changes
+
+#### 13.2.2 Core Principles
+
+**1. Agents Build Prompts, LLMs Extract Parameters**
+
+```python
+# Agent responsibility: Build prompt with conversation context
+prompt = f"""
+You are a data fetcher agent.
+
+Conversation history:
+{self.scratchpad.get_conversation_context()}
+
+Problem description:
+{self.read_scratchpad("PROBLEM_DESCRIPTION")}
+
+Available plugins:
+- kubernetes.fetch_kubernetes_logs(pod, namespace, since, tail_lines)
+- prometheus.fetch_prometheus_metrics(query, start, end, step)
+
+Task: Extract parameters from the conversation and use plugins to collect data.
+"""
+
+# LLM responsibility: Extract pod="payments-svc", namespace="default", etc.
+response = await self.invoke(prompt)
+```
+
+**2. Plugins for ALL External Operations**
+
+```python
+# ✅ CORRECT: Register plugins, let LLM call them
+self.kernel.add_plugin(KubernetesPlugin(config), plugin_name="kubernetes")
+self.kernel.add_plugin(PrometheusPlugin(config), plugin_name="prometheus")
+
+# LLM automatically calls:
+# kubernetes.fetch_kubernetes_logs(pod="payments-svc", namespace="production")
+```
+
+```python
+# ❌ WRONG: Direct subprocess calls in agent code
+logs = subprocess.run(["kubectl", "logs", pod_name], capture_output=True)
+```
+
+**3. No Hardcoded Routing Logic**
+
+```python
+# ❌ WRONG: Hardcoded intent-to-agent mapping
+intent_to_agent = {
+    "collect_data": data_fetcher,
+    "analyze_patterns": pattern_analyzer,
+    "inspect_code": code_inspector
+}
+next_agent = intent_to_agent[classified_intent]
+```
+
+```python
+# ✅ CORRECT: LLM decides routing based on conversation
+prompt = f"""
+Based on this conversation and investigation state:
+{conversation_history}
+{investigation_state}
+
+Which agent should run next and why?
+Available agents: data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst
+"""
+decision = await self.invoke(prompt)
+# LLM response: "route to data_fetcher because no data collected yet"
+```
+
+**4. Conversation History is the Context**
+
+```python
+# Agent reads conversation from scratchpad
+conversation = self.scratchpad.get_conversation_context()
+
+# Agent includes conversation in prompt
+prompt = f"Based on this conversation:\n{conversation}\n\nYour task: ..."
+
+# LLM has full context to make informed decisions
+response = await self.invoke(prompt)
+```
+
+**5. LLM Generates Clarifying Questions**
+
+```python
+# ❌ WRONG: Hardcoded question templates
+if missing_namespace:
+    question = "Which namespace is the pod in? (default, production, staging)"
+```
+
+```python
+# ✅ CORRECT: LLM generates contextual questions
+prompt = f"""
+Conversation: {conversation}
+Missing information: namespace
+
+Generate a natural, helpful question to ask the user.
+"""
+question = await self.invoke(prompt)
+# LLM: "I see you're investigating payments-svc. Which namespace is it in?"
+```
+
+### 13.3 Conversational Flow
+
+#### 13.3.1 Session Start
+
+```
+User: "Why is payments-svc returning 500 errors in production?"
+  ↓
+Orchestrator:
+  1. Appends user message to CONVERSATION_HISTORY section in scratchpad
+  2. Reads full conversation context
+  3. Invokes LLM with intent understanding prompt
+  ↓
+LLM Response:
+  {
+    "intent": "investigate_errors",
+    "confidence": 0.95,
+    "parameters": {
+      "service": "payments-svc",
+      "namespace": "production",
+      "error_type": "500 errors"
+    },
+    "next_action": "collect_data"
+  }
+  ↓
+Orchestrator:
+  1. Invokes LLM with routing decision prompt
+  2. LLM decides to route to data_fetcher
+  3. Appends agent's response to conversation
+```
+
+#### 13.3.2 Data Collection
+
+```
+Data Fetcher Agent:
+  1. Reads CONVERSATION_HISTORY from scratchpad
+  2. Reads PROBLEM_DESCRIPTION from scratchpad
+  3. Registers KubernetesPlugin and PrometheusPlugin with kernel
+  4. Builds prompt with conversation context
+  5. Invokes LLM
+  ↓
+LLM Processing (via FunctionChoiceBehavior.Auto()):
+  1. Extracts parameters: pod="payments-svc", namespace="production", since="1h"
+  2. Calls kubernetes.fetch_kubernetes_logs(pod="payments-svc", namespace="production", since="1h")
+  3. Receives log data from plugin
+  4. Synthesizes summary in natural language
+  ↓
+LLM Response:
+  "I collected 200 log lines from payments-svc pod in production namespace.
+   Found 47 ERROR messages, mostly 'nil pointer dereference at features.go:57'.
+   Circuit breaker opened to promo-svc at 08:05:15."
+  ↓
+Data Fetcher Agent:
+  1. Writes DATA_COLLECTED section to scratchpad
+  2. Appends agent response to CONVERSATION_HISTORY
+  3. Returns control to orchestrator
+```
+
+#### 13.3.3 Pattern Analysis
+
+```
+Orchestrator:
+  1. Reads updated conversation
+  2. Invokes LLM with routing decision prompt
+  3. LLM decides to route to pattern_analyzer
+  ↓
+Pattern Analyzer Agent:
+  1. Reads CONVERSATION_HISTORY
+  2. Reads DATA_COLLECTED section
+  3. Invokes LLM with pattern analysis prompt
+  ↓
+LLM Analysis:
+  "Based on collected data:
+   - Error rate spike at 08:05 (36x increase)
+   - Deployment of payments-svc v1.19 at 08:04
+   - 45 panics with same stack trace: features.go:57
+   
+   Pattern: Nil pointer dereference introduced in recent deployment"
+  ↓
+Pattern Analyzer Agent:
+  1. Writes PATTERN_ANALYSIS section
+  2. Appends findings to conversation
+  3. Returns to orchestrator
+```
+
+#### 13.3.4 User Clarification
+
+```
+Code Inspector Agent:
+  1. Reads conversation and pattern analysis
+  2. LLM needs repository path to run git blame
+  ↓
+LLM Response:
+  "I need access to the source code repository to analyze the error at features.go:57.
+   What's the path to the git repository for payments-svc?"
+  ↓
+Agent:
+  1. Appends clarifying question to conversation
+  2. Returns to orchestrator
+  ↓
+Orchestrator:
+  1. Displays question to user
+  2. Waits for user response
+  ↓
+User: "/Users/alice/repos/payments-svc"
+  ↓
+Orchestrator:
+  1. Appends user response to conversation
+  2. Routes back to code_inspector
+  ↓
+Code Inspector:
+  1. Reads updated conversation
+  2. LLM extracts repository path: "/Users/alice/repos/payments-svc"
+  3. LLM calls git.git_blame() plugin
+  4. Continues analysis
+```
+
+#### 13.3.5 Final Diagnosis
+
+```
+Root Cause Analyst Agent:
+  1. Reads ALL scratchpad sections:
+     - CONVERSATION_HISTORY
+     - PROBLEM_DESCRIPTION
+     - DATA_COLLECTED
+     - PATTERN_ANALYSIS
+     - CODE_INSPECTION
+  2. Builds synthesis prompt with full context
+  3. Invokes LLM
+  ↓
+LLM Synthesis:
+  "Root Cause: Nil pointer dereference in features.go:57
+   
+   Evidence:
+   - 45 panics with identical stack trace
+   - Recent refactor (commit a3f9c2d) by john.doe removed nil check
+   - Temporal correlation: errors started 70s after v1.19 deployment
+   
+   Confidence: 0.92
+   
+   Recommendations:
+   [IMMEDIATE] Rollback to v1.18
+   [HIGH] Add nil check in IsEnabled()
+   [MEDIUM] Add unit tests for nil Feature handling"
+  ↓
+Root Cause Analyst:
+  1. Writes FINAL_DIAGNOSIS section
+  2. Appends diagnosis to conversation
+  ↓
+Orchestrator:
+  1. Formats diagnosis for display
+  2. Presents to user with action menu
+```
+
+### 13.4 Prompt Engineering Patterns
+
+#### 13.4.1 Intent Understanding Prompt
+
+```
+You are an orchestrator agent for the Aletheia troubleshooting system.
+
+**Conversation History**:
+{conversation_history}
+
+**Current Investigation State**:
+{investigation_state}
+
+**Your Task**: Understand the user's intent and extract relevant parameters.
+
+**Output** (JSON format):
+{
+  "intent": "investigate_errors|collect_data|analyze_patterns|inspect_code|diagnose|clarify",
+  "confidence": 0.0-1.0,
+  "parameters": {
+    // Extract ANY relevant parameters from natural language
+    // Examples: service_name, pod_name, namespace, time_window, error_type
+  },
+  "reasoning": "Why you classified this intent",
+  "clarification_needed": "Optional: what to ask user if unclear"
+}
+
+**Guidelines**:
+- Extract parameters from natural language variations
+- Consider conversation context, not just the last message
+- If ambiguous, set intent="clarify" and provide clarification_needed
+- Be specific with extracted parameters
+```
+
+#### 13.4.2 Parameter Extraction Prompt
+
+```
+You are a data fetcher agent.
+
+**Conversation**:
+{conversation_history}
+
+**Problem**:
+{problem_description}
+
+**Available Plugins**:
+- kubernetes.fetch_kubernetes_logs(pod: str, namespace: str, since: str, tail_lines: int)
+- prometheus.fetch_prometheus_metrics(query: str, start: str, end: str, step: str)
+
+**Task**: 
+1. Extract parameters from the conversation (pod name, namespace, time window)
+2. Use the appropriate plugin to collect data
+3. Summarize what you collected
+
+**Examples**:
+- "payments service" → pod="payments-svc"
+- "in production" → namespace="production"
+- "last 2 hours" → since="2h"
+- "since 8am" → calculate time difference
+
+**Important**: 
+- Call plugins directly (FunctionChoiceBehavior.Auto enabled)
+- If parameters missing, ask for clarification
+- Provide natural language summary of results
+```
+
+#### 13.4.3 Agent Routing Prompt
+
+```
+You are deciding which specialist agent to invoke next.
+
+**Conversation**:
+{conversation_history}
+
+**Investigation State**:
+- Data collected: {data_collected}
+- Pattern analysis done: {pattern_analysis_done}
+- Code inspected: {code_inspected}
+- Agents run: {agents_run}
+
+**Available Agents**:
+1. data_fetcher: Collects logs/metrics/traces
+   Prerequisites: Service or pod name identified
+   
+2. pattern_analyzer: Finds anomalies and correlations
+   Prerequisites: DATA_COLLECTED section exists
+   
+3. code_inspector: Maps errors to code, runs git blame
+   Prerequisites: PATTERN_ANALYSIS exists, repository paths known
+   
+4. root_cause_analyst: Synthesizes all findings
+   Prerequisites: PATTERN_ANALYSIS exists (CODE_INSPECTION optional)
+
+**Output** (JSON):
+{
+  "action": "route_to_agent|ask_clarification|complete",
+  "agent": "data_fetcher|pattern_analyzer|code_inspector|root_cause_analyst|null",
+  "reasoning": "Why this agent is appropriate",
+  "prerequisites_met": true|false,
+  "suggested_response": "What to tell the user"
+}
+
+**Rules**:
+- Check prerequisites before routing
+- Follow natural flow: data → patterns → code → diagnosis
+- If prerequisites not met, set action="ask_clarification"
+- If investigation complete, set action="complete"
+```
+
+#### 13.4.4 Clarification Question Prompt
+
+```
+You are an agent in the Aletheia troubleshooting system.
+
+**Conversation**:
+{conversation_history}
+
+**Missing Information**: {missing_info}
+
+**Task**: Generate a natural, helpful clarifying question.
+
+**Guidelines**:
+- Be specific about what you need
+- Explain why you need it
+- Provide examples if helpful
+- Keep it conversational
+
+**Example**:
+Missing: namespace
+Output: "I see you're investigating payments-svc. Which Kubernetes namespace 
+is it running in? (Common examples: default, production, staging)"
+```
+
+### 13.5 Why No Custom Extraction Logic?
+
+#### 13.5.1 Problems with Custom Extraction
+
+**Brittleness**: Regex patterns break with variations
+```python
+# Handles: "pod: payments-svc"
+pattern = r'pod:\s+([a-z0-9-]+)'
+
+# Breaks with: "payments pod", "the payments service", "pod called payments-svc"
+```
+
+**Maintenance Burden**: Every new variation requires code changes
+```python
+# Need to handle:
+# "in the last 2 hours"
+# "since 2 hours ago"
+# "2h ago"
+# "from 8am to 10am"
+# → Endless regex updates
+```
+
+**Context Blindness**: Custom logic can't consider conversation history
+```python
+# First message: "I'm looking at the payments service"
+# Second message: "Check the production namespace"
+# → Hardcoded parser can't correlate "it" with "payments service"
+```
+
+**Lack of Flexibility**: Can't handle ambiguity or missing information gracefully
+```python
+# User: "Check the pod"
+# → Which pod? Custom logic must hardcode every clarification case
+```
+
+#### 13.5.2 Advantages of LLM-Delegation
+
+**Natural Language Understanding**: LLM handles variations effortlessly
+```python
+prompt = f"Extract the pod name from: {user_input}"
+
+# Works with:
+# "payments pod" → "payments-svc"
+# "the pod for payments" → "payments-svc"
+# "check payments-svc" → "payments-svc"
+# "payment service pod" → "payments-svc"
+```
+
+**Context Awareness**: LLM considers full conversation
+```python
+# Conversation:
+# User: "I'm investigating payments-svc"
+# Agent: "What namespace?"
+# User: "production"
+
+# LLM extracts BOTH from conversation:
+# {pod: "payments-svc", namespace: "production"}
+```
+
+**Graceful Degradation**: LLM generates appropriate clarifying questions
+```python
+# User: "Check the logs"
+# LLM: "Which service's logs would you like me to check?"
+```
+
+**Adaptability**: Adding new parameters doesn't require code changes
+```python
+# To support "container" parameter:
+# ❌ Custom: Add regex, update parser, handle edge cases (100+ LOC)
+# ✅ LLM-First: Update prompt description (2 lines)
+```
+
+#### 13.5.3 When to Use Custom Logic
+
+**Rule of Thumb**: If the LLM can do it based on conversation context, delegate it to the LLM.
+
+**Exceptions** (use custom logic):
+1. **Performance-Critical Operations**: Parsing megabytes of binary data
+2. **Deterministic Validation**: Checking if file exists, validating UUID format
+3. **External Tool Interfaces**: Actual subprocess execution (but expose via plugins)
+
+**Example**:
+```python
+# ✅ Custom logic for validation
+if not os.path.exists(repository_path):
+    raise ValueError(f"Repository not found: {repository_path}")
+
+# ✅ Custom logic for subprocess execution (in plugin)
+@kernel_function
+def fetch_logs(self, pod: str, namespace: str):
+    result = subprocess.run(["kubectl", "logs", pod, "-n", namespace])
+    return result.stdout
+
+# ❌ Custom logic for extraction (delegate to LLM)
+# Don't: pod_match = re.search(r'pod:\s+([a-z0-9-]+)', conversation)
+```
+
+### 13.6 Implementation Checklist
+
+When implementing conversational features, ensure:
+
+- [ ] **Agent reads conversation context**: Use `scratchpad.get_conversation_context()`
+- [ ] **Agent builds prompts with context**: Include conversation in all LLM calls
+- [ ] **No custom extraction code**: No regex, string parsing, or hardcoded patterns
+- [ ] **Plugins registered**: All external tools exposed via `@kernel_function`
+- [ ] **FunctionChoiceBehavior.Auto()**: LLM can call plugins automatically
+- [ ] **Natural language responses**: Agent appends LLM responses to conversation
+- [ ] **No hardcoded routing**: LLM decides next agent based on investigation state
+- [ ] **Clarifying questions via LLM**: No hardcoded question templates
+
+**Verification Tests**:
+1. Mock LLM invocation and verify conversation context in prompt
+2. Verify NO custom extraction methods in agent code
+3. Verify plugins registered in agent `__init__`
+4. Verify agent appends to CONVERSATION_HISTORY section
+5. Integration test with real LLM (mocked plugins)
+
+---
+
+## 14. Appendix
+
+### A. Example Session Transcript (Conversational Mode)
+
+```bash
+$ aletheia session open --name incident-2025-10-11
+
+> [Aletheia] Enter session password: ********
+> [Aletheia] Session INC-8F2A created.
+
+> [Aletheia] How can I help you troubleshoot today?
+
+> [User]: Why is payments-svc returning 500 errors in production?
+
+> [Aletheia] I'll investigate that for you. Let me collect logs from payments-svc in production namespace...
+
+⏳ Collecting data... (elapsed: 3s)
+
+> [Aletheia] ✅ I found 200 log entries from payments-svc in the last hour. Here's what I discovered:
+  • 47 ERROR level messages
+  • Top error: "nil pointer dereference" (45 occurrences)
+  • Circuit breaker opened to promo-svc at 08:05:15
+  
+The errors started around 08:05. Would you like me to fetch metrics to see if there was a traffic spike?
+
+> [User]: Yes, check error rate and latency
+
+> [Aletheia] Fetching Prometheus metrics for error rate and P95 latency...
+
+⏳ Analyzing patterns... (elapsed: 2s)
+
+> [Aletheia] ✅ Pattern analysis complete:
+  • Error rate spiked from 0.2% to 7.3% at 08:05 (36x increase)
+  • Temporal correlation: payments-svc v1.19 deployed at 08:04
+  • 45 panics with identical stack trace: charge.go:112 → features.go:57
+  
+This looks like a nil pointer dereference introduced in v1.19. Do you have access to the source code repository?
+
+> [User]: Yes, it's at /Users/alice/repos/payments-svc
+
+> [Aletheia] Thanks! Let me analyze the code...
+
+⏳ Inspecting code... (elapsed: 4s)
+
+> [Aletheia] ✅ Code analysis complete:
+  • Error at features.go:57 in IsEnabled() function
+  • Git blame shows recent change by john.doe (commit a3f9c2d, 2025-10-10)
+  • Change: "Refactor feature flag loading" - removed nil check
+  • Caller at promo.go:88 doesn't guard against nil
+
+Let me synthesize the diagnosis...
+
+⏳ Generating diagnosis... (elapsed: 2s)
+
+> [Aletheia] ✅ Diagnosis complete. Here's what I found:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ROOT CAUSE ANALYSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBABLE CAUSE:
+Nil pointer dereference in featurekit/features.go:57
+
+DESCRIPTION:
+The IsEnabled function dereferences f.Enabled without checking if f is nil.
+A recent refactor (commit a3f9c2d on 2025-10-10 by john.doe) changed feature
+flag loading, allowing Get() to return nil. Callers in payments-svc don't
+guard against this condition.
+
+EVIDENCE:
+• 45 panics with stack trace: charge.go:112 → features.go:57 → promo.go:88
+• Error spike at 08:05 (70 seconds after v1.19 deployment)
+• Git blame: Recent change "Refactor feature flag loading"
+• No nil checks in caller at promo.go:88
+
+CONFIDENCE: 0.92
+
+RECOMMENDED ACTIONS:
+[IMMEDIATE] Rollback payments-svc to v1.18 to stop customer impact
+[HIGH]      Apply nil-safe patch to IsEnabled function
+[MEDIUM]    Add unit test for nil Feature handling
+[LOW]       Review all callers of featurekit.Get() for nil checks
+
+> [Aletheia] What would you like to do?
+
+> [User]: Show me the proposed patch
+
+> [Aletheia] Here's the proposed patch for features.go:
+
+--- features.go.original
++++ features.go.patched
+@@ -54,7 +54,10 @@
+ type Feature struct { Name string; Enabled *bool }
+
+ func IsEnabled(f *Feature) bool {
+-    return *f.Enabled
++    if f == nil || f.Enabled == nil {
++        return false
++    }
++    return *f.Enabled
+ }
+
+> [User]: Perfect, thanks! Save the diagnosis
+
+> [Aletheia] ✅ Diagnosis saved to:
+  ~/.aletheia/sessions/INC-8F2A/diagnosis.md
+
+You can resume this session anytime with:
+  aletheia session resume INC-8F2A
+
+> [User]: End session
+
+> [Aletheia] Session ended. Investigation complete.
+```
+
+### B. Example Session Transcript (Guided Mode)
 
 ```bash
 $ aletheia session open --name incident-2025-10-11

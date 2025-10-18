@@ -621,6 +621,341 @@ agents:
 
 **See**: `MIGRATION_SK.md` for detailed migration guide
 
+## Conversational Mode Development Patterns
+
+### Overview
+
+**Conversational Mode** enables natural language interaction with Aletheia. This section describes the **LLM-First pattern** for implementing conversational features.
+
+**Key Principle**: Agents build prompts and invoke the LLM; the LLM does ALL reasoning, extraction, and decision-making. Agents do NOT implement custom parsing, extraction, or classification logic.
+
+### LLM-First Pattern
+
+#### What is LLM-First?
+
+Traditional agent systems implement custom logic:
+```python
+# ❌ OLD WAY: Custom extraction logic
+def extract_pod_name(user_input: str) -> str:
+    match = re.search(r'pod[:\s]+([a-z0-9-]+)', user_input)
+    return match.group(1) if match else "default"
+```
+
+LLM-First pattern delegates to the LLM:
+```python
+# ✅ NEW WAY: LLM extraction
+async def execute(self):
+    conversation = self.scratchpad.get_conversation_context()
+    prompt = f"""
+    Based on this conversation:
+    {conversation}
+    
+    Extract the pod name and use kubernetes.fetch_kubernetes_logs() to collect logs.
+    """
+    response = await self.invoke(prompt)  # LLM extracts & calls plugin
+```
+
+#### Core Principles
+
+**1. Agents Build Prompts, LLMs Extract Parameters**
+
+```python
+prompt = f"""
+You are a data fetcher agent.
+
+Conversation: {self.scratchpad.get_conversation_context()}
+Problem: {self.read_scratchpad("PROBLEM_DESCRIPTION")}
+
+Available plugins:
+- kubernetes.fetch_kubernetes_logs(pod, namespace, since, tail_lines)
+
+Task: Extract parameters from conversation and use plugins to collect data.
+"""
+response = await self.invoke(prompt)
+```
+
+**2. Plugins for ALL External Operations**
+
+```python
+# ✅ CORRECT: Register plugins, let LLM call them
+self.kernel.add_plugin(KubernetesPlugin(config), plugin_name="kubernetes")
+
+# LLM automatically calls:
+# kubernetes.fetch_kubernetes_logs(pod="payments-svc", namespace="production")
+```
+
+```python
+# ❌ WRONG: Direct subprocess calls
+logs = subprocess.run(["kubectl", "logs", pod_name], capture_output=True)
+```
+
+**3. No Hardcoded Routing Logic**
+
+```python
+# ❌ WRONG: Hardcoded intent mapping
+intent_to_agent = {"collect_data": data_fetcher, "analyze": pattern_analyzer}
+```
+
+```python
+# ✅ CORRECT: LLM decides routing
+prompt = f"""
+Based on conversation and state, which agent should run next?
+Available: data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst
+"""
+decision = await self.invoke(prompt)
+```
+
+**4. Conversation History is the Context**
+
+```python
+# Read full conversation from scratchpad
+conversation = self.scratchpad.get_conversation_context()
+
+# Include in prompt for LLM
+prompt = f"Based on this conversation:\n{conversation}\n\nYour task: ..."
+```
+
+**5. LLM Generates Clarifying Questions**
+
+```python
+# ❌ WRONG: Hardcoded templates
+if missing_namespace:
+    question = "Which namespace? (default, production, staging)"
+```
+
+```python
+# ✅ CORRECT: LLM generates questions
+prompt = f"""
+Conversation: {conversation}
+Missing: namespace
+Generate a natural, helpful question.
+"""
+question = await self.invoke(prompt)
+```
+
+### Implementing Conversational Agents
+
+#### Step 1: Read Conversation Context
+
+```python
+async def _execute_conversational(self):
+    # Read conversation history from scratchpad
+    conversation = self.scratchpad.get_conversation_context()
+    
+    # Read other relevant sections
+    problem = self.read_scratchpad("PROBLEM_DESCRIPTION")
+    data = self.read_scratchpad("DATA_COLLECTED")
+```
+
+#### Step 2: Build Conversational Prompt
+
+```python
+def _build_conversational_prompt(self, conversation: str, problem: dict) -> str:
+    return f"""
+You are a data fetcher agent for troubleshooting.
+
+**Conversation History**:
+{conversation}
+
+**Problem Description**:
+{problem}
+
+**Your Task**:
+1. Extract parameters from the conversation (pod name, namespace, time window)
+2. Use kubernetes plugin to fetch logs
+3. Summarize findings in natural language
+
+**Available Plugins**:
+- kubernetes.fetch_kubernetes_logs(pod: str, namespace: str, since: str)
+- prometheus.fetch_prometheus_metrics(query: str, start: str, end: str)
+
+**Guidelines**:
+- Extract parameters naturally ("payments service" → pod="payments-svc")
+- If information missing, ask clarifying questions
+- Call plugins directly (FunctionChoiceBehavior.Auto enabled)
+"""
+```
+
+#### Step 3: Invoke LLM with Plugins
+
+```python
+async def _execute_conversational(self):
+    conversation = self.scratchpad.get_conversation_context()
+    problem = self.read_scratchpad("PROBLEM_DESCRIPTION")
+    
+    # Build prompt with conversation context
+    prompt = self._build_conversational_prompt(conversation, problem)
+    
+    # LLM extracts params and calls plugins automatically
+    response = await self.invoke(prompt)
+    
+    # Write results to scratchpad
+    self.write_scratchpad("DATA_COLLECTED", {"summary": response})
+    
+    # Append agent response to conversation
+    self.scratchpad.append_conversation("agent", response)
+```
+
+#### Step 4: Handle Clarifications
+
+```python
+async def _execute_conversational(self):
+    conversation = self.scratchpad.get_conversation_context()
+    
+    prompt = self._build_conversational_prompt(conversation, ...)
+    response = await self.invoke(prompt)
+    
+    # Check if LLM needs clarification
+    if "need to know" in response.lower() or "which" in response.lower():
+        # LLM generated a clarifying question
+        self.scratchpad.append_conversation("agent", response)
+        return {"status": "awaiting_user_input", "question": response}
+    
+    # Otherwise, process results
+    self.write_scratchpad("DATA_COLLECTED", ...)
+```
+
+### Why No Custom Extraction Logic?
+
+#### Problems with Custom Extraction
+
+**Brittleness**: Regex patterns break with variations
+```python
+pattern = r'pod:\s+([a-z0-9-]+)'  # Handles "pod: payments-svc"
+# Breaks: "payments pod", "the payments service", "pod called payments-svc"
+```
+
+**Maintenance Burden**: Every variation requires code changes
+```python
+# Must handle: "2 hours ago", "since 2h", "from 8am", "last 2 hours"
+# → Endless regex updates
+```
+
+**Context Blindness**: Can't correlate across messages
+```python
+# Message 1: "I'm checking the payments service"
+# Message 2: "Use production namespace"
+# → Custom parser can't link "it" to "payments"
+```
+
+#### Advantages of LLM-Delegation
+
+**Natural Language Understanding**: Handles all variations
+```python
+prompt = f"Extract pod name from: {user_input}"
+
+# Works with all of these:
+# "payments pod" → "payments-svc"
+# "the pod for payments" → "payments-svc"
+# "check payments-svc" → "payments-svc"
+```
+
+**Context Awareness**: Considers full conversation
+```python
+# Conversation:
+# User: "Check payments-svc"
+# Agent: "Which namespace?"
+# User: "production"
+
+# LLM extracts BOTH: {pod: "payments-svc", namespace: "production"}
+```
+
+**Graceful Degradation**: Generates appropriate questions
+```python
+# User: "Check the logs"
+# LLM: "Which service's logs would you like me to check?"
+```
+
+**Adaptability**: No code changes for new parameters
+```python
+# To add "container" parameter:
+# ❌ Custom: Add regex, update parser (100+ LOC)
+# ✅ LLM-First: Update prompt description (2 lines)
+```
+
+### When to Use Custom Logic
+
+**Rule of Thumb**: If the LLM can do it based on conversation, delegate to LLM.
+
+**Use Custom Logic For**:
+1. **Performance-Critical**: Parsing megabytes of binary data
+2. **Deterministic Validation**: File exists checks, UUID validation
+3. **External Tool Execution**: Actual subprocess calls (in plugins)
+
+```python
+# ✅ Custom validation
+if not os.path.exists(repo_path):
+    raise ValueError(f"Repository not found: {repo_path}")
+
+# ✅ Custom subprocess (in plugin)
+@kernel_function
+def fetch_logs(self, pod: str):
+    return subprocess.run(["kubectl", "logs", pod]).stdout
+
+# ❌ Custom extraction (delegate to LLM)
+# Don't: pod_match = re.search(r'pod:\s+([a-z0-9-]+)', conversation)
+```
+
+### Conversational Implementation Checklist
+
+When implementing conversational features:
+
+- [ ] **Agent reads conversation context**: `scratchpad.get_conversation_context()`
+- [ ] **Agent builds prompts with context**: Include conversation in LLM calls
+- [ ] **No custom extraction code**: No regex, string parsing, or patterns
+- [ ] **Plugins registered**: External tools via `@kernel_function`
+- [ ] **FunctionChoiceBehavior.Auto()**: LLM calls plugins automatically
+- [ ] **Natural language responses**: Append LLM responses to conversation
+- [ ] **No hardcoded routing**: LLM decides next agent
+- [ ] **LLM-generated clarifications**: No hardcoded question templates
+
+### Testing Conversational Agents
+
+```python
+@pytest.mark.asyncio
+async def test_conversational_execution(mock_kernel, mock_agent):
+    """Test agent with conversational context."""
+    scratchpad = Scratchpad(encryption_key=b"test" * 8)
+    
+    # Set up conversation history
+    scratchpad.append_conversation("user", "Check payments-svc in production")
+    
+    agent = DataFetcherAgent(config, scratchpad)
+    
+    with patch.object(agent, '_kernel', mock_kernel), \
+         patch.object(agent, '_agent', mock_agent):
+        
+        # Mock LLM response with extracted parameters
+        mock_agent.invoke.return_value = "Fetched 200 logs from payments-svc..."
+        
+        result = await agent.execute()
+        
+        # Verify LLM received conversation context
+        call_args = mock_agent.invoke.call_args[0][0]
+        assert "Check payments-svc in production" in call_args
+        
+        # Verify agent wrote results
+        assert scratchpad.has_section("DATA_COLLECTED")
+        
+        # Verify agent updated conversation
+        conversation = scratchpad.get_conversation_context()
+        assert "Fetched 200 logs" in conversation
+```
+
+### Reference Implementation
+
+See `aletheia/agents/workflows/conversational.py` for complete examples of:
+- Intent understanding prompts
+- Parameter extraction prompts
+- Agent routing prompts
+- Clarification generation prompts
+- Complete conversational flow walkthrough
+
+**Documentation**:
+- [SPECIFICATION.md Section 13](SPECIFICATION.md#13-conversational-mode-architecture): Complete architecture guide
+- [README.md Conversational Mode](README.md#conversational-mode): User-facing documentation
+- `aletheia/agents/workflows/conversational.py`: Reference implementation with examples
+
 
 
 ## Common Issues & Solutions
