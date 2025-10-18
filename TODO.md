@@ -1660,14 +1660,21 @@ llm:
   - [ ] Tests verify plugin invocation via `FunctionChoiceBehavior.Auto()` (not direct calls)
   - **Coverage Target**: >80% with focus on LLM prompt construction and plugin registration
 
-- [ ] **REFACTOR-10** Documentation updates (LLM-First Pattern)
-  - [ ] Update SPECIFICATION.md with conversational architecture emphasizing LLM-first design
-  - [ ] Update AGENTS.md with conversational patterns: "Agents build prompts, LLMs extract parameters"
-  - [ ] Create conversational mode user guide with example conversations
-  - [ ] Add conversational examples to README showing natural language input → LLM extraction → plugin use
-  - [ ] Document prompt engineering techniques for parameter extraction (not Python code patterns)
-  - [ ] Add section: "Why No Custom Extraction Logic?" explaining LLM-delegation benefits
-  - **Acceptance**: Documentation clearly communicates LLM-first approach for all agent logic
+- [x] **REFACTOR-10** Documentation updates (LLM-First Pattern) ✅ COMPLETE (2025-10-18, Commit: 3e5f5cf)
+  - [x] Update SPECIFICATION.md with conversational architecture emphasizing LLM-first design
+  - [x] Update AGENTS.md with conversational patterns: "Agents build prompts, LLMs extract parameters"
+  - [x] Create conversational mode user guide with example conversations
+  - [x] Add conversational examples to README showing natural language input → LLM extraction → plugin use
+  - [x] Document prompt engineering techniques for parameter extraction (not Python code patterns)
+  - [x] Add section: "Why No Custom Extraction Logic?" explaining LLM-delegation benefits
+  - **Acceptance**: ✅ Documentation clearly communicates LLM-first approach for all agent logic
+  - **Summary**:
+    - Added Section 13 to SPECIFICATION.md (560+ lines): Complete conversational architecture
+    - Updated README.md with conversational mode section (130+ lines) and updated key features
+    - Added conversational patterns to AGENTS.md (430+ lines) before "Common Issues"
+    - All docs emphasize: Agents build prompts, LLMs extract parameters, no custom extraction
+    - Documented prompt engineering patterns, clarification flows, testing approaches
+    - Added conversational session transcript examples to both SPECIFICATION.md and README.md
 
 ### **DEPRECATION**: Remove Guided Mode (Post-MVP v1.2)
 
