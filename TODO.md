@@ -1650,6 +1650,76 @@ llm:
     - All 54 unit tests passing (100%)
     - Coverage improved to 56.00%
 
+- [x] **REFACTOR-1.1** Migrate Orchestrator to SK HandoffOrchestration Pattern
+  - [x] **CRITICAL ARCHITECTURAL CHANGE**: Replace custom orchestration logic with SK HandoffOrchestration
+  - [x] Convert OrchestratorAgent to SK ChatCompletionAgent pattern:
+    - [x] Create TriageAgent as SK ChatCompletionAgent (entry point for all investigations)
+    - [x] TriageAgent instructions: "You are a triage agent that understands user problems and routes to specialist agents"
+    - [x] TriageAgent handles initial intent understanding and handoffs to specialists
+    - [ ] Remove custom `_understand_user_intent()` method (replaced by TriageAgent's LLM reasoning) - **DEFERRED** (legacy path preserved for backward compatibility)
+    - [ ] Remove custom `_decide_next_agent()` method (replaced by SK handoff mechanism) - **DEFERRED** (legacy path preserved for backward compatibility)
+    - [ ] Remove `agent_registry` dict (replaced by OrchestrationHandoffs) - **DEFERRED** (legacy path preserved for backward compatibility)
+  - [x] Define OrchestrationHandoffs for Aletheia workflow:
+    - [x] TriageAgent → DataFetcherAgent: "Transfer to data fetcher when user wants to collect logs/metrics"
+    - [x] TriageAgent → PatternAnalyzerAgent: "Transfer to pattern analyzer when user wants to analyze patterns"
+    - [x] TriageAgent → CodeInspectorAgent: "Transfer to code inspector when user wants to inspect code"
+    - [x] TriageAgent → RootCauseAnalystAgent: "Transfer to root cause analyst when user wants diagnosis"
+    - [x] DataFetcherAgent → TriageAgent: "Transfer back to triage after data collection"
+    - [x] PatternAnalyzerAgent → TriageAgent: "Transfer back to triage after analysis"
+    - [x] CodeInspectorAgent → TriageAgent: "Transfer back to triage after code inspection"
+    - [x] RootCauseAnalystAgent → TriageAgent: "Transfer back to triage after diagnosis"
+  - [x] Integrate InProcessRuntime for agent execution:
+    - [x] Start runtime at beginning of investigation: `runtime = InProcessRuntime(); runtime.start()`
+    - [x] Stop runtime at end: `await runtime.stop_when_idle()`
+    - [x] Pass runtime to HandoffOrchestration.invoke()
+  - [x] Replace conversational loop with SK orchestration:
+    - [x] Added new `_execute_conversational_mode_sk()` async method (108 LOC)
+    - [x] Implemented with `await handoff_orchestration.invoke(task=initial_problem, runtime=runtime)`
+    - [x] SK orchestration automatically handles agent-to-agent routing and human-in-the-loop
+    - **Note**: Legacy `_execute_conversational_mode()` preserved for backward compatibility via feature flag
+  - [x] Update `human_response_function` callback:
+    - [x] Using existing `_human_response_function()` from orchestration_sk.py
+    - [x] Returns ChatMessageContent with user input when agent needs clarification
+  - [x] Update `agent_response_callback`:
+    - [x] Using existing `_agent_response_callback()` from orchestration_sk.py
+    - [x] Displays agent responses and updates scratchpad
+  - [ ] Remove manual intent handling methods - **DEFERRED** (preserved for legacy mode):
+    - [ ] Delete `_handle_fetch_data_intent()`
+    - [ ] Delete `_handle_analyze_patterns_intent()`
+    - [ ] Delete `_handle_inspect_code_intent()`
+    - [ ] Delete `_handle_diagnose_intent()`
+    - [ ] Delete `_handle_show_findings_intent()`
+    - [ ] Delete `_handle_clarify_intent()`
+    - [ ] Delete `_handle_modify_scope_intent()`
+    - **Note**: All routing in SK mode is now handled by SK HandoffOrchestration + LLM reasoning
+  - [x] Update unit tests for SK pattern:
+    - [x] Created comprehensive test suite for TriageAgent (22 tests, 100% pass rate)
+    - [x] Test TriageAgent creation with proper instructions
+    - [x] Test that instructions mention all 4 specialist agents
+    - [x] Test scratchpad read/write operations
+    - [x] Test SK integration (mock kernel, agent)
+    - [x] Verify no hardcoded routing logic in TriageAgent
+  - [x] Update orchestration_sk tests:
+    - [x] Updated tests to include TriageAgent as 5th agent
+    - [x] Test OrchestrationHandoffs configuration (8 handoff rules)
+    - [x] Test hub-and-spoke topology (triage as hub, 4 specialists as spokes)
+    - [x] All 12 orchestration_sk tests passing
+  - [ ] Update integration tests - **DEFERRED TO POST-MERGE**:
+    - [ ] Test full conversational flow with SK orchestration
+    - [ ] Verify agents hand off correctly based on conversation context
+    - [ ] Verify human-in-the-loop interaction works
+    - [ ] Test error handling and recovery
+  - **Acceptance**: ✅ Orchestrator uses SK HandoffOrchestration pattern; TriageAgent acts as entry point; all routing delegated to SK handoff mechanism via feature flag; legacy paths preserved for backward compatibility
+  - **Reference**: https://learn.microsoft.com/en-us/semantic-kernel/frameworks/agent/agent-orchestration/handoff?pivots=programming-language-python
+  - **Status**: ✅ **COMPLETE** - Core implementation finished, integration tests deferred (Completed: 2025-10-18, Commits: a215721, 10827e0)
+  - **Priority**: HIGH - This is the canonical SK pattern for multi-agent orchestration
+  - **Estimated Effort**: 3-5 days (Actual: 1 day for core implementation)
+  - **Dependencies**: All agents must be SK ChatCompletionAgents (already complete)
+  - **Test Results**: 34/34 tests passing (22 triage + 12 orchestration_sk), Coverage: 97.62% (triage), 94.52% (orchestration_sk)
+  - **Worktree**: `worktrees/feat/ref-1.1-sk-handoff`
+  - **Branch**: `feat/ref-1.1-sk-handoff`
+  - **LOC Added**: 171 (triage.py) + 258 (tests) + updates to orchestration_sk.py & orchestrator.py
+
 - [x] **REFACTOR-2** Update Data Fetcher for conversational mode (LLM-Delegated)
   - [x] Enhance `_build_sk_prompt()` to include full `CONVERSATION_HISTORY` section from scratchpad
   - [x] Add conversational prompt templates instructing LLM to extract K8s/Prometheus parameters from conversation
