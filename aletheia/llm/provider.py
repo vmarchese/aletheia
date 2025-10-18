@@ -274,12 +274,12 @@ class OpenAIProvider(LLMProvider):
             
             if self.use_azure:
                 # Use Azure OpenAI client
-                kwargs = {
-                    "api_key": self.api_key,
-                    "azure_endpoint": self.azure_endpoint,
-                    "api_version": self.azure_api_version or "2024-02-15-preview"
-                }
-                self._client = AzureOpenAI(**kwargs)
+                self._client = AzureOpenAI(
+                    api_key=self.api_key,
+                    azure_endpoint=self.azure_endpoint,
+                    api_version=self.azure_api_version or "2024-02-15-preview",
+                    azure_deployment=self.azure_deployment
+                )
             else:
                 # Use standard OpenAI client
                 kwargs = {"api_key": self.api_key}
