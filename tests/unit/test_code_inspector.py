@@ -2,12 +2,12 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch, mock_open, AsyncMock
 import tempfile
 import os
 
 from aletheia.agents.code_inspector import CodeInspectorAgent
-from aletheia.scratchpad import ScratchpadSection
+from aletheia.scratchpad import Scratchpad, ScratchpadSection
 
 
 @pytest.fixture
@@ -766,4 +766,248 @@ class TestCodeInspectorAgentSKMode:
         # Git plugin should be updated
         assert len(agent._git_plugin.repositories) == 1
         assert str(agent._git_plugin.repositories[0]) == str(temp_git_repo)
+        assert result["sk_used"] is True
+
+
+class TestCodeInspectorAgentConversational:
+    """Test conversational mode features of Code Inspector Agent."""
+    
+    def test_format_conversation_history_list(self, temp_git_repo):
+        """Test formatting conversation history from list format."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        conversation = [
+            {"role": "user", "content": "The payments service is failing"},
+            {"role": "assistant", "content": "Let me check the logs"},
+            {"role": "user", "content": "The code is in /home/user/payments-repo"}
+        ]
+        
+        formatted = agent._format_conversation_history(conversation)
+        
+        assert "user: The payments service is failing" in formatted
+        assert "assistant: Let me check the logs" in formatted
+        assert "user: The code is in /home/user/payments-repo" in formatted
+    
+    def test_format_conversation_history_dict(self, temp_git_repo):
+        """Test formatting conversation history from dict format."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        conversation = {
+            "user": ["The payments service is failing", "The code is in /home/user/payments-repo"],
+            "assistant": ["Let me check the logs"]
+        }
+        
+        formatted = agent._format_conversation_history(conversation)
+        
+        assert "user: The payments service is failing" in formatted
+        assert "user: The code is in /home/user/payments-repo" in formatted
+        assert "assistant: Let me check the logs" in formatted
+    
+    def test_format_conversation_history_empty(self, temp_git_repo):
+        """Test formatting empty conversation history."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        formatted = agent._format_conversation_history(None)
+        
+        assert formatted == "No conversation history available."
+    
+    def test_format_agent_notes_dict(self, temp_git_repo):
+        """Test formatting agent notes from dict format."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        notes = {
+            "data_fetcher": {"status": "completed", "logs_fetched": 150},
+            "pattern_analyzer": {"anomalies_found": 3}
+        }
+        
+        formatted = agent._format_agent_notes(notes)
+        
+        assert "data_fetcher" in formatted
+        assert "pattern_analyzer" in formatted
+        assert "status: completed" in formatted or "status:completed" in formatted.replace(" ", "")
+    
+    def test_format_agent_notes_empty(self, temp_git_repo):
+        """Test formatting empty agent notes."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        formatted = agent._format_agent_notes(None)
+        
+        assert formatted == "No agent notes available."
+    
+    def test_build_sk_conversational_prompt_includes_all_context(self, temp_git_repo):
+        """Test that conversational prompt includes all relevant context."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        
+        # Write test data to scratchpad
+        scratchpad.write_section(
+            ScratchpadSection.PROBLEM_DESCRIPTION,
+            {"description": "Payments service crashes"}
+        )
+        scratchpad.write_section(
+            ScratchpadSection.CONVERSATION_HISTORY,
+            [
+                {"role": "user", "content": "Repository is at /home/user/payments"}
+            ]
+        )
+        
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        pattern_analysis = {"error_clusters": [{"pattern": "charge.go:112"}]}
+        conversation_history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+        
+        prompt = agent._build_sk_conversational_prompt(pattern_analysis, conversation_history)
+        
+        # Verify all context is included
+        assert "Payments service crashes" in prompt
+        assert "Repository is at /home/user/payments" in prompt
+        assert "charge.go:112" in prompt
+    
+    def test_build_sk_guided_prompt(self, temp_git_repo):
+        """Test that guided prompt includes stack traces and repositories."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        stack_traces = ["charge.go:112 → features.go:57", "handler.py:45"]
+        
+        prompt = agent._build_sk_guided_prompt(stack_traces)
+        
+        # Verify stack traces and repositories are included
+        assert "charge.go:112" in prompt
+        assert "features.go:57" in prompt
+        assert "handler.py:45" in prompt
+        assert str(temp_git_repo) in prompt
+    
+    def test_parse_sk_response_with_conversational_fields(self, temp_git_repo):
+        """Test parsing SK response with conversational fields."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        response = '''
+        {
+            "repositories_identified": ["/home/user/payments"],
+            "needs_clarification": false,
+            "suspect_files": [
+                {
+                    "file": "charge.go",
+                    "line": 112,
+                    "function": "ProcessPayment",
+                    "analysis": "Null pointer dereference"
+                }
+            ],
+            "conversational_summary": "Found issue in charge.go",
+            "confidence": 0.85,
+            "reasoning": "Stack trace matches code location"
+        }
+        '''
+        
+        inspection = agent._parse_sk_inspection_response(response, conversational_mode=True)
+        
+        assert inspection["conversational_summary"] == "Found issue in charge.go"
+        assert inspection["confidence"] == 0.85
+        assert inspection["reasoning"] == "Stack trace matches code location"
+        assert inspection["needs_clarification"] is False
+        assert len(inspection["suspect_files"]) == 1
+    
+    def test_parse_sk_response_without_conversational_fields(self, temp_git_repo):
+        """Test parsing SK response without conversational fields adds defaults."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        response = '''
+        {
+            "suspect_files": [
+                {
+                    "file": "charge.go",
+                    "line": 112
+                }
+            ]
+        }
+        '''
+        
+        inspection = agent._parse_sk_inspection_response(response, conversational_mode=True)
+        
+        # Conversational fields should be present with defaults
+        assert "conversational_summary" in inspection
+        assert inspection["conversational_summary"] is None
+        assert "confidence" in inspection
+        assert inspection["confidence"] is None
+        assert "needs_clarification" in inspection
+        assert inspection["needs_clarification"] is False
+    
+    def test_execute_with_sk_auto_detect_conversational_mode(self, temp_git_repo):
+        """Test that SK execution auto-detects conversational mode."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        
+        # Write conversation history to trigger conversational mode
+        scratchpad.write_section(
+            ScratchpadSection.CONVERSATION_HISTORY,
+            [{"role": "user", "content": "Repository at /home/user/payments"}]
+        )
+        scratchpad.write_section(
+            ScratchpadSection.PATTERN_ANALYSIS,
+            {"error_clusters": [{"pattern": "charge.go:112"}]}
+        )
+        
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        # Mock agent and kernel
+        mock_agent = MagicMock()
+        mock_agent.invoke = AsyncMock(return_value=MagicMock(
+            content='{"suspect_files": [], "conversational_summary": "No issues found", "confidence": 0.9}'
+        ))
+        agent._agent = mock_agent
+        
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        # Execute in SK mode
+        result = agent.execute(use_sk=True)
+        
+        # Should detect conversational mode
+        assert result["conversational_mode"] is True
+        assert result["sk_used"] is True
+    
+    def test_execute_with_sk_guided_mode_no_conversation(self, temp_git_repo):
+        """Test that SK execution uses guided mode when no conversation history."""
+        config = {"llm": {"default_model": "gpt-4o", "api_key_env": "OPENAI_API_KEY"}}
+        scratchpad = Scratchpad(encryption_key=b"test_key" * 2)
+        
+        # No conversation history - should use guided mode
+        scratchpad.write_section(
+            ScratchpadSection.PATTERN_ANALYSIS,
+            {"error_clusters": [{"pattern": "charge.go:112", "stack_trace": "charge.go:112"}]}
+        )
+        
+        agent = CodeInspectorAgent(config, scratchpad, repositories=[str(temp_git_repo)])
+        
+        # Mock agent and kernel
+        mock_agent = MagicMock()
+        mock_agent.invoke = AsyncMock(return_value=MagicMock(
+            content='{"suspect_files": [], "related_code": []}'
+        ))
+        agent._agent = mock_agent
+        
+        mock_kernel = MagicMock()
+        agent._kernel = mock_kernel
+        
+        # Execute in SK mode
+        result = agent.execute(use_sk=True)
+        
+        # Should use guided mode
+        assert result["conversational_mode"] is False
         assert result["sk_used"] is True

@@ -86,6 +86,73 @@ class CodeInspectorAgent(SKBaseAgent):
         
         self._plugins_registered = True
     
+    def _format_conversation_history(self, conversation_history: Any) -> str:
+        """Format conversation history for prompt inclusion.
+        
+        This is a simple formatter - NO custom parsing or extraction logic.
+        Just converts the conversation history to a readable string format.
+        
+        Args:
+            conversation_history: Conversation history from scratchpad (list or dict)
+        
+        Returns:
+            Formatted conversation history string
+        """
+        if not conversation_history:
+            return "No conversation history available."
+        
+        if isinstance(conversation_history, list):
+            # Format as list of messages
+            formatted = []
+            for msg in conversation_history:
+                if isinstance(msg, dict):
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    formatted.append(f"{role}: {content}")
+                else:
+                    formatted.append(str(msg))
+            return "\n".join(formatted)
+        elif isinstance(conversation_history, dict):
+            # Format as dict with role -> messages mapping
+            formatted = []
+            for role, messages in conversation_history.items():
+                if isinstance(messages, list):
+                    for msg in messages:
+                        formatted.append(f"{role}: {msg}")
+                else:
+                    formatted.append(f"{role}: {messages}")
+            return "\n".join(formatted)
+        else:
+            return str(conversation_history)
+    
+    def _format_agent_notes(self, agent_notes: Any) -> str:
+        """Format agent notes for prompt inclusion.
+        
+        This is a simple formatter - NO custom parsing or extraction logic.
+        Just converts agent notes to a readable string format.
+        
+        Args:
+            agent_notes: Agent notes from scratchpad (dict or any)
+        
+        Returns:
+            Formatted agent notes string
+        """
+        if not agent_notes:
+            return "No agent notes available."
+        
+        if isinstance(agent_notes, dict):
+            formatted = []
+            for agent_name, notes in agent_notes.items():
+                formatted.append(f"=== {agent_name} ===")
+                if isinstance(notes, dict):
+                    for key, value in notes.items():
+                        formatted.append(f"{key}: {value}")
+                else:
+                    formatted.append(str(notes))
+            return "\n".join(formatted)
+        else:
+            return str(agent_notes)
+    
     def execute(self, repositories: Optional[List[str]] = None, use_sk: bool = False, **kwargs) -> Dict[str, Any]:
         """Execute the code inspection process.
         
@@ -152,7 +219,8 @@ class CodeInspectorAgent(SKBaseAgent):
         """Execute code inspection using SK agent with GitPlugin.
         
         This mode uses the SK ChatCompletionAgent which can automatically
-        invoke GitPlugin functions for git operations.
+        invoke GitPlugin functions for git operations. It supports both
+        guided and conversational modes based on scratchpad content.
         
         Args:
             pattern_analysis: Pattern analysis data from scratchpad
@@ -160,11 +228,15 @@ class CodeInspectorAgent(SKBaseAgent):
         Returns:
             Dictionary with execution results
         """
+        # Auto-detect conversational mode by checking for CONVERSATION_HISTORY
+        conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY)
+        conversational_mode = bool(conversation_history)
+        
         # Prepare context for SK agent
         stack_traces = self._extract_stack_traces(pattern_analysis)
         
-        if not stack_traces:
-            # No stack traces found, write empty result
+        if not stack_traces and not conversational_mode:
+            # No stack traces found in guided mode, write empty result
             inspection = {
                 "suspect_files": [],
                 "related_code": [],
@@ -176,11 +248,54 @@ class CodeInspectorAgent(SKBaseAgent):
                 "suspect_files_found": 0,
                 "git_blame_executed": 0,
                 "repositories_searched": len(self.repositories),
-                "sk_used": True
+                "sk_used": True,
+                "conversational_mode": False
             }
         
-        # Create a detailed prompt for the SK agent
-        user_message = f"""
+        # Build prompt based on mode
+        if conversational_mode:
+            user_message = self._build_sk_conversational_prompt(
+                pattern_analysis,
+                conversation_history
+            )
+            # Note: system prompt for conversational mode is set during agent initialization
+            # via the agent_name parameter which looks up "code_inspector_conversational"
+            # For now, we use the default system prompt and rely on the comprehensive user prompt
+        else:
+            user_message = self._build_sk_guided_prompt(stack_traces)
+        
+        # Invoke SK agent
+        response = self.invoke(
+            user_message,
+            settings={"temperature": 0.3, "max_tokens": 2000}
+        )
+        
+        # Parse response to extract inspection results
+        inspection = self._parse_sk_inspection_response(response, conversational_mode)
+        
+        # Write inspection results to scratchpad
+        self.write_scratchpad(ScratchpadSection.CODE_INSPECTION, inspection)
+        
+        return {
+            "success": True,
+            "suspect_files_found": len(inspection.get("suspect_files", [])),
+            "git_blame_executed": sum(1 for sf in inspection.get("suspect_files", []) if sf.get("git_blame")),
+            "repositories_searched": len(self.repositories),
+            "sk_used": True,
+            "conversational_mode": conversational_mode,
+            "needs_clarification": inspection.get("needs_clarification", False)
+        }
+    
+    def _build_sk_guided_prompt(self, stack_traces: List[str]) -> str:
+        """Build guided mode prompt for SK agent.
+        
+        Args:
+            stack_traces: List of stack traces to analyze
+        
+        Returns:
+            Prompt string for SK agent
+        """
+        return f"""
 Analyze the following stack traces and perform code inspection:
 
 Stack Traces:
@@ -211,11 +326,76 @@ Provide your analysis in JSON format with this structure:
     "related_code": []
 }}
 """
+    
+    def _build_sk_conversational_prompt(
+        self,
+        pattern_analysis: Dict[str, Any],
+        conversation_history: Any
+    ) -> str:
+        """Build conversational mode prompt for SK agent.
         
-        # Invoke SK agent
-        response = self.invoke(user_message, settings={"temperature": 0.3, "max_tokens": 2000})
+        This method reads all relevant sections from scratchpad and builds
+        a comprehensive prompt that includes conversation history, pattern
+        analysis, and agent notes. The LLM will extract repository paths
+        from this context.
         
-        # Parse response to extract inspection results
+        Args:
+            pattern_analysis: Pattern analysis data from scratchpad
+            conversation_history: Conversation history from scratchpad
+        
+        Returns:
+            Prompt string for SK agent
+        """
+        # Get template
+        prompt_template = get_user_prompt_template("code_inspector_conversational")
+        
+        # Read problem description
+        problem_description = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION)
+        if not problem_description:
+            problem_description = "No problem description available."
+        elif isinstance(problem_description, dict):
+            problem_description = problem_description.get("description", str(problem_description))
+        
+        # Format conversation history
+        conversation_str = self._format_conversation_history(conversation_history)
+        
+        # Format pattern analysis
+        pattern_analysis_str = json.dumps(pattern_analysis, indent=2) if pattern_analysis else "No pattern analysis available."
+        
+        # Try to read agent notes (may not exist in all scratchpads)
+        agent_notes = None
+        try:
+            # Check if AGENT_NOTES section exists
+            if hasattr(ScratchpadSection, 'AGENT_NOTES'):
+                agent_notes = self.read_scratchpad(ScratchpadSection.AGENT_NOTES)
+        except (AttributeError, KeyError):
+            # AGENT_NOTES section doesn't exist, that's okay
+            pass
+        
+        agent_notes_str = self._format_agent_notes(agent_notes)
+        
+        # Build prompt
+        return prompt_template.format(
+            problem_description=str(problem_description),
+            conversation_history=conversation_str,
+            pattern_analysis=pattern_analysis_str,
+            agent_notes=agent_notes_str
+        )
+    
+    def _parse_sk_inspection_response(
+        self,
+        response: str,
+        conversational_mode: bool
+    ) -> Dict[str, Any]:
+        """Parse SK agent response into inspection results.
+        
+        Args:
+            response: Response from SK agent
+            conversational_mode: Whether in conversational mode
+        
+        Returns:
+            Parsed inspection dictionary
+        """
         try:
             # Try to extract JSON from response
             json_match = re.search(r'\{[\s\S]*\}', response)
@@ -236,16 +416,22 @@ Provide your analysis in JSON format with this structure:
                 "analysis_text": response
             }
         
-        # Write inspection results to scratchpad
-        self.write_scratchpad(ScratchpadSection.CODE_INSPECTION, inspection)
+        # Add conversational fields if in conversational mode
+        if conversational_mode:
+            if "conversational_summary" not in inspection:
+                inspection["conversational_summary"] = None
+            if "confidence" not in inspection:
+                inspection["confidence"] = None
+            if "reasoning" not in inspection:
+                inspection["reasoning"] = None
+            if "needs_clarification" not in inspection:
+                inspection["needs_clarification"] = False
+            if "clarification_questions" not in inspection:
+                inspection["clarification_questions"] = []
+            if "repositories_identified" not in inspection:
+                inspection["repositories_identified"] = [str(repo) for repo in self.repositories]
         
-        return {
-            "success": True,
-            "suspect_files_found": len(inspection.get("suspect_files", [])),
-            "git_blame_executed": sum(1 for sf in inspection.get("suspect_files", []) if sf.get("git_blame")),
-            "repositories_searched": len(self.repositories),
-            "sk_used": True
-        }
+        return inspection
     
     def _execute_direct(self, pattern_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Execute code inspection using direct git operations (backward compatibility).
