@@ -1618,13 +1618,13 @@ llm:
   - [x] Update unit tests to verify LLM receives complete context and generates diagnosis
   - **Acceptance**: ✅ Root Cause Analyst delegates ALL synthesis logic to LLM via `_execute_conversational()` method; reads all 6 scratchpad sections (Completed: 2025-01-21, Commit: b7e33e3)
 
-- [ ] **REFACTOR-6** Enhance scratchpad for conversation (Data Structure Only)
-  - [ ] Add `CONVERSATION_HISTORY` section to scratchpad schema
-  - [ ] Add `AGENT_NOTES` flexible section for agents to write conversational findings
-  - [ ] Add `append_conversation(role, message)` helper (simple data accessor, no parsing logic)
-  - [ ] Add `get_conversation_context()` helper (returns full history as string, no parsing)
-  - [ ] Helpers are pure data accessors - NO custom parsing, extraction, or transformation logic
-  - **Acceptance**: Scratchpad supports conversational data storage; helpers are simple getters/setters only
+- [x] **REFACTOR-6** Enhance scratchpad for conversation (Data Structure Only)
+  - [x] Add `CONVERSATION_HISTORY` section to scratchpad schema
+  - [x] Add `AGENT_NOTES` flexible section for agents to write conversational findings
+  - [x] Add `append_conversation(role, message)` helper (simple data accessor, no parsing logic)
+  - [x] Add `get_conversation_context()` helper (returns full history as string, no parsing)
+  - [x] Helpers are pure data accessors - NO custom parsing, extraction, or transformation logic
+  - **Acceptance**: ✅ Scratchpad supports conversational data storage; helpers are simple getters/setters only (Completed: 2025-10-18, Commit: b283b9c)
 
 - [ ] **REFACTOR-7** Create conversational flow reference (LLM-Delegated Example)
   - [ ] Create `aletheia/agents/workflows/conversational.py` as reference implementation
