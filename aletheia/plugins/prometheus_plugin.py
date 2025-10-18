@@ -18,6 +18,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from semantic_kernel.functions import kernel_function
 
 from aletheia.fetchers.prometheus import PrometheusFetcher, PROMQL_TEMPLATES
+from aletheia.utils.logging import log_operation_start, log_operation_complete, log_plugin_invocation
 
 
 class PrometheusPlugin:
@@ -86,6 +87,25 @@ class PrometheusPlugin:
                 "metadata": {...}
             }
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="PrometheusPlugin",
+            function_name="fetch_metrics",
+            parameters={
+                "query": query,
+                "start_time": start_time,
+                "end_time": end_time,
+                "step": step,
+                "timeout": timeout
+            }
+        )
+        
+        # Start operation timing
+        operation_start = log_operation_start(
+            operation_name="prometheus_query",
+            details={"query": query[:100], "endpoint": self.endpoint}
+        )
+        
         # Parse time window if specified
         time_window = None
         if start_time or end_time:
@@ -100,6 +120,13 @@ class PrometheusPlugin:
         
         # Call fetcher
         result = self.fetcher.fetch(time_window=time_window, **kwargs)
+        
+        # Log completion
+        log_operation_complete(
+            operation_name="prometheus_query",
+            start_time=operation_start,
+            result_summary=f"{result.count} data points collected"
+        )
         
         # Return as JSON string for LLM consumption
         return json.dumps({
@@ -134,11 +161,31 @@ class PrometheusPlugin:
         Returns:
             JSON string with query results
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="PrometheusPlugin",
+            function_name="execute_query",
+            parameters={"query": query, "since_hours": since_hours}
+        )
+        
+        # Start operation timing
+        operation_start = log_operation_start(
+            operation_name="prometheus_execute_query",
+            details={"query": query[:100]}
+        )
+        
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=since_hours)
         time_window = (start_time, end_time)
         
         result = self.fetcher.fetch(time_window=time_window, query=query)
+        
+        # Log completion
+        log_operation_complete(
+            operation_name="prometheus_execute_query",
+            start_time=operation_start,
+            result_summary=f"{result.count} data points"
+        )
         
         return json.dumps({
             "data": result.data,

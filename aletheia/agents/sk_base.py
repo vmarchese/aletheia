@@ -24,7 +24,15 @@ from semantic_kernel.contents import ChatHistory, ChatMessageContent
 
 from aletheia.scratchpad import Scratchpad
 from aletheia.llm.prompts import get_system_prompt
-from aletheia.utils.logging import is_trace_enabled, log_prompt, log_prompt_response
+from aletheia.utils.logging import (
+    is_trace_enabled, 
+    log_prompt, 
+    log_prompt_response,
+    log_operation_start,
+    log_operation_complete,
+    log_scratchpad_operation,
+    log_llm_invocation
+)
 
 
 class SKBaseAgent:
@@ -277,6 +285,13 @@ class SKBaseAgent:
         if is_trace_enabled():
             # Estimate tokens (rough approximation: 4 chars per token)
             prompt_tokens = len(user_message) // 4
+            prompt_summary = user_message[:100].replace('\n', ' ')
+            log_llm_invocation(
+                agent_name=self.agent_name,
+                model=model,
+                prompt_summary=prompt_summary,
+                estimated_tokens=prompt_tokens
+            )
             log_prompt(
                 agent_name=self.agent_name,
                 prompt=user_message,
@@ -359,9 +374,21 @@ class SKBaseAgent:
             section: Section name to read
         
         Returns:
-            Section data if it exists, None otherwise
+            Section data, or None if section doesn't exist
         """
-        return self.scratchpad.read_section(section)
+        data = self.scratchpad.read_section(section)
+        
+        # Log scratchpad read operation
+        if is_trace_enabled() and data is not None:
+            data_summary = str(data)[:100] if data else None
+            log_scratchpad_operation(
+                operation="READ",
+                section=section,
+                agent_name=self.agent_name,
+                data_summary=data_summary
+            )
+        
+        return data
     
     def write_scratchpad(self, section: str, data: Any) -> None:
         """Write data to a scratchpad section.
@@ -372,6 +399,16 @@ class SKBaseAgent:
         """
         self.scratchpad.write_section(section, data)
         self.scratchpad.save()
+        
+        # Log scratchpad write operation
+        if is_trace_enabled():
+            data_summary = str(data)[:100] if data else None
+            log_scratchpad_operation(
+                operation="WRITE",
+                section=section,
+                agent_name=self.agent_name,
+                data_summary=data_summary
+            )
     
     def append_scratchpad(self, section: str, data: Any) -> None:
         """Append data to a scratchpad section.
@@ -381,6 +418,16 @@ class SKBaseAgent:
             data: Data to append to the section
         """
         self.scratchpad.append_to_section(section, data)
+        
+        # Log scratchpad append operation
+        if is_trace_enabled():
+            data_summary = str(data)[:100] if data else None
+            log_scratchpad_operation(
+                operation="APPEND",
+                section=section,
+                agent_name=self.agent_name,
+                data_summary=data_summary
+            )
         self.scratchpad.save()
     
     def reset_chat_history(self) -> None:

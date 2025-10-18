@@ -18,6 +18,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from semantic_kernel.functions import kernel_function
 
 from aletheia.fetchers.kubernetes import KubernetesFetcher
+from aletheia.utils.logging import log_operation_start, log_operation_complete, log_plugin_invocation
 
 
 class KubernetesPlugin:
@@ -86,13 +87,32 @@ class KubernetesPlugin:
                 "metadata": {...}
             }
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="KubernetesPlugin",
+            function_name="fetch_logs",
+            parameters={
+                "pod": pod,
+                "namespace": namespace,
+                "container": container,
+                "sample_size": sample_size,
+                "since_minutes": since_minutes
+            }
+        )
+        
+        # Start operation timing
+        start_time = log_operation_start(
+            operation_name=f"kubectl_logs_{pod}",
+            details={"namespace": namespace, "pod": pod}
+        )
+        
         # Prepare time window if specified
         time_window = None
         if since_minutes is not None:
             from datetime import timedelta
             end_time = datetime.now()
-            start_time = end_time - timedelta(minutes=since_minutes)
-            time_window = (start_time, end_time)
+            start_time_window = end_time - timedelta(minutes=since_minutes)
+            time_window = (start_time_window, end_time)
         
         # Call fetcher
         result = self.fetcher.fetch(
@@ -101,6 +121,13 @@ class KubernetesPlugin:
             pod=pod,
             container=container,
             sample_size=sample_size
+        )
+        
+        # Log completion
+        log_operation_complete(
+            operation_name=f"kubectl_logs_{pod}",
+            start_time=start_time,
+            result_summary=f"{result.count} logs collected"
         )
         
         # Return as JSON string for LLM consumption
@@ -133,7 +160,28 @@ class KubernetesPlugin:
         Returns:
             JSON array of pod names as a string
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="KubernetesPlugin",
+            function_name="list_pods",
+            parameters={"namespace": namespace, "selector": selector}
+        )
+        
+        # Start operation timing
+        start_time = log_operation_start(
+            operation_name=f"kubectl_list_pods_{namespace}",
+            details={"namespace": namespace, "selector": selector}
+        )
+        
         pods = self.fetcher.list_pods(namespace=namespace, selector=selector)
+        
+        # Log completion
+        log_operation_complete(
+            operation_name=f"kubectl_list_pods_{namespace}",
+            start_time=start_time,
+            result_summary=f"{len(pods)} pods found"
+        )
+        
         return json.dumps(pods, indent=2)
     
     @kernel_function(
@@ -159,7 +207,28 @@ class KubernetesPlugin:
             - container statuses
             - start time
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="KubernetesPlugin",
+            function_name="get_pod_status",
+            parameters={"pod": pod, "namespace": namespace}
+        )
+        
+        # Start operation timing
+        start_time = log_operation_start(
+            operation_name=f"kubectl_get_status_{pod}",
+            details={"namespace": namespace, "pod": pod}
+        )
+        
         status = self.fetcher.get_pod_status(pod=pod, namespace=namespace)
+        
+        # Log completion
+        log_operation_complete(
+            operation_name=f"kubectl_get_status_{pod}",
+            start_time=start_time,
+            result_summary=f"Status: {status.get('phase', 'Unknown')}"
+        )
+        
         return json.dumps(status, indent=2)
     
     @kernel_function(

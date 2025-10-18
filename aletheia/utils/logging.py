@@ -1,11 +1,19 @@
-"""Trace logging for verbose mode (-vv).
+"""Trace logging for verbose mode (-vv) and DEBUG logging.
 
-This module provides comprehensive trace logging for Aletheia's verbose mode.
-When enabled with -vv, it logs:
+This module provides comprehensive trace and debug logging for Aletheia.
+
+Verbose mode (-vv):
 - All LLM prompts with metadata
 - All external command executions with output
 - Agent state transitions
 - Function entry/exit points
+
+DEBUG mode (additional):
+- Agent operation start/end with duration
+- Scratchpad read/write operations
+- Plugin function invocations
+- LLM invocation summaries
+- State changes
 
 Logs are written to: ~/.aletheia/sessions/{session_id}/aletheia_trace.log
 """
@@ -369,3 +377,168 @@ def log_error(message: str, exception: Optional[Exception] = None) -> None:
     _TRACE_LOGGER.error(message)
     if exception:
         _TRACE_LOGGER.exception(exception)
+
+
+def log_debug(message: str) -> None:
+    """Log a debug message.
+    
+    Args:
+        message: Debug message
+    """
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return
+    
+    _TRACE_LOGGER.debug(message)
+
+
+def log_operation_start(
+    operation_name: str,
+    agent_name: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None
+) -> datetime:
+    """Log the start of an operation and return start time for duration tracking.
+    
+    Args:
+        operation_name: Name of the operation (e.g., "fetch_logs", "analyze_patterns")
+        agent_name: Name of the agent performing the operation
+        details: Optional dictionary with operation details
+    
+    Returns:
+        Start time for duration calculation
+    """
+    start_time = datetime.now()
+    
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return start_time
+    
+    prefix = f"{agent_name} | " if agent_name else ""
+    _TRACE_LOGGER.debug(f"⚙️  {prefix}{operation_name} - STARTING")
+    
+    if details:
+        for key, value in details.items():
+            _TRACE_LOGGER.debug(f"   {key}: {value}")
+    
+    return start_time
+
+
+def log_operation_complete(
+    operation_name: str,
+    start_time: datetime,
+    agent_name: Optional[str] = None,
+    result_summary: Optional[str] = None
+) -> None:
+    """Log the completion of an operation with duration.
+    
+    Args:
+        operation_name: Name of the operation
+        start_time: Start time returned from log_operation_start
+        agent_name: Name of the agent performing the operation
+        result_summary: Optional summary of the result
+    """
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return
+    
+    duration = (datetime.now() - start_time).total_seconds() * 1000  # Convert to milliseconds
+    prefix = f"{agent_name} | " if agent_name else ""
+    
+    _TRACE_LOGGER.debug(f"✅ {prefix}{operation_name} - COMPLETED (duration: {duration:.2f}ms)")
+    
+    if result_summary:
+        _TRACE_LOGGER.debug(f"   Result: {result_summary}")
+
+
+def log_scratchpad_operation(
+    operation: str,
+    section: str,
+    agent_name: Optional[str] = None,
+    data_summary: Optional[str] = None
+) -> None:
+    """Log scratchpad read/write operations.
+    
+    Args:
+        operation: Type of operation ("READ", "WRITE", "APPEND")
+        section: Scratchpad section name
+        agent_name: Name of the agent performing the operation
+        data_summary: Optional summary of the data (first 100 chars)
+    """
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return
+    
+    prefix = f"{agent_name} | " if agent_name else ""
+    _TRACE_LOGGER.debug(f"📋 {prefix}SCRATCHPAD {operation} | Section: {section}")
+    
+    if data_summary:
+        # Truncate if too long
+        if len(data_summary) > 100:
+            data_summary = data_summary[:100] + "..."
+        _TRACE_LOGGER.debug(f"   Data: {data_summary}")
+
+
+def log_state_change(
+    entity: str,
+    old_state: str,
+    new_state: str,
+    reason: Optional[str] = None
+) -> None:
+    """Log a state change in the system.
+    
+    Args:
+        entity: Name of the entity changing state (e.g., "session", "agent")
+        old_state: Previous state
+        new_state: New state
+        reason: Optional reason for the state change
+    """
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return
+    
+    _TRACE_LOGGER.debug(f"🔄 STATE CHANGE | {entity}: {old_state} → {new_state}")
+    
+    if reason:
+        _TRACE_LOGGER.debug(f"   Reason: {reason}")
+
+
+def log_plugin_invocation(
+    plugin_name: str,
+    function_name: str,
+    parameters: Dict[str, Any]
+) -> None:
+    """Log a plugin function invocation.
+    
+    Args:
+        plugin_name: Name of the plugin
+        function_name: Name of the function being called
+        parameters: Function parameters
+    """
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return
+    
+    _TRACE_LOGGER.debug(f"🔌 PLUGIN CALL | {plugin_name}.{function_name}")
+    
+    for key, value in parameters.items():
+        # Truncate long values
+        value_str = str(value)
+        if len(value_str) > 200:
+            value_str = value_str[:200] + "..."
+        _TRACE_LOGGER.debug(f"   {key}: {value_str}")
+
+
+def log_llm_invocation(
+    agent_name: str,
+    model: str,
+    prompt_summary: str,
+    estimated_tokens: Optional[int] = None
+) -> None:
+    """Log an LLM invocation with summary (detailed prompts use log_prompt).
+    
+    Args:
+        agent_name: Name of the agent making the call
+        model: Model being used
+        prompt_summary: Brief summary of the prompt (first 100 chars)
+        estimated_tokens: Estimated token count
+    """
+    if not _TRACE_ENABLED or not _TRACE_LOGGER:
+        return
+    
+    token_info = f" (~{estimated_tokens} tokens)" if estimated_tokens else ""
+    _TRACE_LOGGER.debug(f"🤖 LLM INVOKE | {agent_name} | Model: {model}{token_info}")
+    _TRACE_LOGGER.debug(f"   Prompt summary: {prompt_summary}")

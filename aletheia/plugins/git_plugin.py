@@ -18,6 +18,8 @@ from typing import Annotated, Any, Dict, List, Optional
 
 from semantic_kernel.functions import kernel_function
 
+from aletheia.utils.logging import log_operation_start, log_operation_complete, log_plugin_invocation
+
 
 class GitPlugin:
     """Semantic Kernel plugin for Git operations.
@@ -82,9 +84,27 @@ class GitPlugin:
                 "line": 42
             }
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="GitPlugin",
+            function_name="git_blame",
+            parameters={"file_path": file_path, "line_number": line_number, "repo": repo}
+        )
+        
+        # Start operation timing
+        operation_start = log_operation_start(
+            operation_name=f"git_blame_{Path(file_path).name}",
+            details={"file": file_path, "line": line_number, "repo": Path(repo).name}
+        )
+        
         repository = Path(repo)
         
         if not repository.exists() or not (repository / ".git").exists():
+            log_operation_complete(
+                operation_name=f"git_blame_{Path(file_path).name}",
+                start_time=operation_start,
+                result_summary="Repository not found"
+            )
             return json.dumps({
                 "success": False,
                 "error": f"Repository not found or not a git repository: {repo}"
@@ -101,6 +121,11 @@ class GitPlugin:
             )
             
             if result.returncode != 0:
+                log_operation_complete(
+                    operation_name=f"git_blame_{Path(file_path).name}",
+                    start_time=operation_start,
+                    result_summary=f"Failed: {result.stderr[:50]}"
+                )
                 return json.dumps({
                     "success": False,
                     "error": f"git blame failed: {result.stderr.strip()}",
@@ -116,6 +141,11 @@ class GitPlugin:
             # Extract commit hash (first field), handling optional ^ prefix for initial commits
             commit_match = re.match(r'^\^?([0-9a-f]+)', blame_line)
             if not commit_match:
+                log_operation_complete(
+                    operation_name=f"git_blame_{Path(file_path).name}",
+                    start_time=operation_start,
+                    result_summary="Failed to parse output"
+                )
                 return json.dumps({
                     "success": False,
                     "error": "Failed to parse git blame output",
@@ -132,9 +162,20 @@ class GitPlugin:
                 "line": line_number
             })
             
+            log_operation_complete(
+                operation_name=f"git_blame_{Path(file_path).name}",
+                start_time=operation_start,
+                result_summary=f"Commit: {commit_hash[:8]}"
+            )
+            
             return json.dumps(commit_info, indent=2)
         
         except subprocess.TimeoutExpired:
+            log_operation_complete(
+                operation_name=f"git_blame_{Path(file_path).name}",
+                start_time=operation_start,
+                result_summary="Timeout after 10s"
+            )
             return json.dumps({
                 "success": False,
                 "error": "git blame timed out after 10 seconds",
@@ -142,6 +183,11 @@ class GitPlugin:
                 "line": line_number
             })
         except Exception as e:
+            log_operation_complete(
+                operation_name=f"git_blame_{Path(file_path).name}",
+                start_time=operation_start,
+                result_summary=f"Error: {str(e)[:50]}"
+            )
             return json.dumps({
                 "success": False,
                 "error": f"Unexpected error: {str(e)}",
@@ -171,9 +217,27 @@ class GitPlugin:
         Returns:
             JSON array of matching file paths (relative to repo root), or error object
         """
+        # Log plugin invocation
+        log_plugin_invocation(
+            plugin_name="GitPlugin",
+            function_name="find_file_in_repo",
+            parameters={"filename": filename, "repo": repo}
+        )
+        
+        # Start operation timing
+        operation_start = log_operation_start(
+            operation_name=f"git_find_{filename}",
+            details={"filename": filename, "repo": Path(repo).name}
+        )
+        
         repository = Path(repo)
         
         if not repository.exists() or not (repository / ".git").exists():
+            log_operation_complete(
+                operation_name=f"git_find_{filename}",
+                start_time=operation_start,
+                result_summary="Repository not found"
+            )
             return json.dumps({
                 "success": False,
                 "error": f"Repository not found or not a git repository: {repo}"
@@ -195,6 +259,12 @@ class GitPlugin:
                         relative_path = file_path.relative_to(repository)
                         matches.append(str(relative_path))
             
+            log_operation_complete(
+                operation_name=f"git_find_{filename}",
+                start_time=operation_start,
+                result_summary=f"{len(matches)} matches found"
+            )
+            
             return json.dumps({
                 "success": True,
                 "matches": matches,
@@ -203,6 +273,11 @@ class GitPlugin:
             }, indent=2)
         
         except Exception as e:
+            log_operation_complete(
+                operation_name=f"git_find_{filename}",
+                start_time=operation_start,
+                result_summary=f"Error: {str(e)[:50]}"
+            )
             return json.dumps({
                 "success": False,
                 "error": f"Error searching for file: {str(e)}",
