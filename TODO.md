@@ -1602,13 +1602,13 @@ llm:
   - [x] Update unit tests to verify LLM receives full conversation context
   - **Acceptance**: ✅ Pattern Analyzer delegates ALL context reading and parsing to LLM; no custom `_read_conversation_context()` method (Completed: 2025-10-17, Commit: 58dafc5, Coverage: 95.18%, 57/57 tests passing)
 
-- [ ] **REFACTOR-4** Update Code Inspector for conversational mode (LLM-Delegated)
-  - [ ] Enhance SK prompts to instruct LLM to identify repository paths from conversation history
-  - [ ] LLM reads `CONVERSATION_HISTORY` and determines repository locations mentioned by user
-  - [ ] LLM generates clarifying questions for repository discovery (interactive, via invoke)
-  - [ ] LLM uses `GitPlugin` for actual git operations (blame, find_file, extract_code_context)
-  - [ ] Update unit tests to verify LLM extracts repository paths from conversation
-  - **Acceptance**: Code Inspector delegates ALL repository discovery to LLM; no custom `_extract_repositories_from_conversation()` method
+- [x] **REFACTOR-4** Update Code Inspector for conversational mode (LLM-Delegated)
+  - [x] Enhance SK prompts to instruct LLM to identify repository paths from conversation history
+  - [x] LLM reads `CONVERSATION_HISTORY` and determines repository locations mentioned by user
+  - [x] LLM generates clarifying questions for repository discovery (interactive, via invoke)
+  - [x] LLM uses `GitPlugin` for actual git operations (blame, find_file, extract_code_context)
+  - [x] Update unit tests to verify LLM extracts repository paths from conversation
+  - **Acceptance**: ✅ Code Inspector delegates ALL repository discovery to LLM; no custom `_extract_repositories_from_conversation()` method (Completed: 2025-10-17, Commit: 5e63b9f)
 
 - [ ] **REFACTOR-5** Update Root Cause Analyst for conversational mode (LLM-Delegated)
   - [ ] Enhance SK prompts to instruct LLM to synthesize findings from entire scratchpad
