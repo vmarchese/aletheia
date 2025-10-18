@@ -242,11 +242,44 @@ class TestAletheiaHandoffOrchestration:
 class TestCreateAletheiaHandoffs:
     """Tests for create_aletheia_handoffs function."""
     
-    def test_create_aletheia_handoffs_returns_dict(self):
-        """Test that create_aletheia_handoffs returns a dict."""
-        # This is a placeholder until agents are SK-based
-        result = create_aletheia_handoffs()
-        assert isinstance(result, dict)
+    def test_create_aletheia_handoffs_with_agents(self):
+        """Test that create_aletheia_handoffs creates handoffs with agents."""
+        # Create mock agents
+        triage = Mock()
+        triage.name = "triage"
+        
+        data_fetcher = Mock()
+        data_fetcher.name = "data_fetcher"
+        
+        pattern_analyzer = Mock()
+        pattern_analyzer.name = "pattern_analyzer"
+        
+        code_inspector = Mock()
+        code_inspector.name = "code_inspector"
+        
+        root_cause_analyst = Mock()
+        root_cause_analyst.name = "root_cause_analyst"
+        
+        # Mock OrchestrationHandoffs
+        with patch('aletheia.agents.orchestration_sk.OrchestrationHandoffs') as mock_handoffs_class:
+            # Setup mock handoffs
+            mock_handoffs = Mock()
+            mock_handoffs.Add = Mock(return_value=mock_handoffs)
+            mock_handoffs_class.StartWith = Mock(return_value=mock_handoffs)
+            
+            result = create_aletheia_handoffs(
+                triage=triage,
+                data_fetcher=data_fetcher,
+                pattern_analyzer=pattern_analyzer,
+                code_inspector=code_inspector,
+                root_cause_analyst=root_cause_analyst
+            )
+            
+            # Verify StartWith was called with triage
+            mock_handoffs_class.StartWith.assert_called_once_with(triage)
+            
+            # Verify Add was called 8 times (4 hub→spoke + 4 spoke→hub)
+            assert mock_handoffs.Add.call_count == 8
 
 
 class TestCreateOrchestrationWithSKAgents:
@@ -255,6 +288,10 @@ class TestCreateOrchestrationWithSKAgents:
     def test_create_orchestration_with_agents(self, mock_scratchpad, mock_console):
         """Test creating orchestration with SK agents."""
         # Create mock agents
+        triage = Mock()
+        triage.name = "triage"
+        triage.description = "Triages problems"
+        
         data_fetcher = Mock()
         data_fetcher.name = "data_fetcher"
         data_fetcher.description = "Fetches data"
@@ -283,6 +320,7 @@ class TestCreateOrchestrationWithSKAgents:
                 mock_handoff_orch.return_value = Mock()
                 
                 orchestration = create_orchestration_with_sk_agents(
+                    triage=triage,
                     data_fetcher=data_fetcher,
                     pattern_analyzer=pattern_analyzer,
                     code_inspector=code_inspector,
@@ -294,12 +332,13 @@ class TestCreateOrchestrationWithSKAgents:
                 
                 assert isinstance(orchestration, AletheiaHandoffOrchestration)
                 assert orchestration.confirmation_level == "verbose"
-                assert len(orchestration.agents) == 4
+                assert len(orchestration.agents) == 5  # triage + 4 specialists
                 
                 # Verify handoffs were configured
-                mock_handoffs_class.StartWith.assert_called_once_with(data_fetcher)
-                # Verify Add was called (4 times for the handoff rules)
-                assert mock_handoffs.Add.call_count == 4
+                # Now starts with triage (hub-and-spoke pattern)
+                mock_handoffs_class.StartWith.assert_called_once_with(triage)
+                # Should have 8 Add calls (4 hub→spoke + 4 spoke→hub)
+                assert mock_handoffs.Add.call_count == 8
 
 
 class TestIntegration:

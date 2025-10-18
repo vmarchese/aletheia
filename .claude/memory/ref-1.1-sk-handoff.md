@@ -58,9 +58,83 @@ Replace custom orchestration logic in OrchestratorAgent with Semantic Kernel's H
 - ✅ Created branch: `feat/ref-1.1-sk-handoff`
 - ✅ Set up virtual environment with Python 3.12
 - ✅ Installed all dependencies (115 packages)
-- 🔄 Starting implementation...
 
-### Key Implementation Notes
+#### 2025-10-18 - Core Implementation Complete
+- ✅ Created `TriageAgent` class (SKBaseAgent)
+  - 171 lines of code
+  - Instructions guide LLM on routing to specialist agents
+  - No plugins - only reads scratchpad and routes
+  - No hardcoded routing logic - fully LLM-driven
+
+- ✅ Updated `orchestration_sk.py`
+  - Implemented `create_aletheia_handoffs()` with hub-and-spoke topology
+  - TriageAgent as hub, specialists as spokes
+  - 8 handoff rules (4 hub→spoke, 4 spoke→hub)
+  - Updated `create_orchestration_with_sk_agents()` to accept TriageAgent
+
+- ✅ Updated `OrchestratorAgent`
+  - Added `_execute_conversational_mode_sk()` async method
+  - Integrated with SK HandoffOrchestration
+  - Added `_create_sk_orchestration()` helper
+  - Updated `execute()` to route to SK when feature flag enabled
+  - Runtime management (start/stop)
+
+- ✅ Created comprehensive unit tests
+  - 22 tests for TriageAgent
+  - All tests passing (22/22, 100% pass rate)
+  - Tests cover: initialization, instructions, scratchpad ops, SK integration
+  - Verified no hardcoded routing logic
+  - Verified instructions mention all specialist agents
+
+- ✅ Committed changes (Commit: a215721)
+
+### Implementation Status
+
+**Completed ✅:**
+1. TriageAgent creation as SK ChatCompletionAgent
+2. OrchestrationHandoffs definition (hub-and-spoke)
+3. SK orchestration integration in OrchestratorAgent
+4. Unit tests for TriageAgent (22/22 passing)
+5. Feature flag support (`use_sk_orchestration`)
+
+**In Progress 🔄:**
+6. Integration tests for SK orchestration
+7. Update existing tests for SK pattern
+
+**Pending ⏳:**
+8. Remove deprecated methods (after validation)
+9. Update documentation
+
+### Next Steps
+
+1. **Run existing unit test suite** to ensure no regressions
+2. **Create integration tests** for SK HandoffOrchestration flow
+3. **Test orchestrator with SK feature flag** enabled
+4. **Validate agent-to-agent handoffs** work correctly
+5. **Remove deprecated methods** once SK orchestration is validated:
+   - `_understand_user_intent()` 
+   - `_decide_next_agent()`
+   - `agent_registry` (replaced by SK agent list)
+   - Manual intent handlers
+6. **Update documentation** (SPECIFICATION.md, AGENTS.md)
+
+### Testing Strategy (Next)
+
+**Integration Tests Needed:**
+- [ ] Test TriageAgent → DataFetcherAgent handoff
+- [ ] Test DataFetcherAgent → TriageAgent handoff back
+- [ ] Test complete investigation flow with SK orchestration
+- [ ] Test SK runtime start/stop lifecycle
+- [ ] Test error handling in SK orchestration
+- [ ] Test conversation history integration
+- [ ] Test human-in-the-loop interaction via SK
+- [ ] Mock all LLM responses for deterministic testing
+
+**Unit Test Updates:**
+- [ ] Update OrchestratorAgent tests to mock SK orchestration
+- [ ] Verify feature flag behavior
+- [ ] Test `_create_sk_orchestration()` method
+- [ ] Test async `_execute_conversational_mode_sk()` method
 
 **Critical Architectural Changes**:
 - This is a MAJOR refactor - we're replacing ~300 lines of custom orchestration
