@@ -29,6 +29,7 @@ class ScratchpadSection:
     CODE_INSPECTION = "CODE_INSPECTION"
     FINAL_DIAGNOSIS = "FINAL_DIAGNOSIS"
     CONVERSATION_HISTORY = "CONVERSATION_HISTORY"
+    AGENT_NOTES = "AGENT_NOTES"
 
 
 class Scratchpad:
@@ -277,3 +278,65 @@ class Scratchpad:
     def section_count(self) -> int:
         """Get number of sections with data."""
         return len(self._data)
+
+    def append_conversation(self, role: str, message: str) -> None:
+        """Append a conversation message to CONVERSATION_HISTORY.
+
+        This is a simple data accessor that appends conversation entries
+        to the CONVERSATION_HISTORY section. No parsing or transformation
+        logic is applied - messages are stored as-is.
+
+        Args:
+            role: Role of the speaker (e.g., "user", "agent", "system")
+            message: The conversation message content
+
+        Example:
+            >>> scratchpad.append_conversation("user", "Why is my service failing?")
+            >>> scratchpad.append_conversation("agent", "Let me collect data to investigate...")
+        """
+        conversation_entry = {
+            "role": role,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Get existing conversation history or initialize empty list
+        history = self.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+        if history is None:
+            history = []
+
+        # Append new entry
+        history.append(conversation_entry)
+
+        # Write back to scratchpad
+        self.write_section(ScratchpadSection.CONVERSATION_HISTORY, history)
+
+    def get_conversation_context(self) -> str:
+        """Get full conversation history as formatted string.
+
+        This is a simple data accessor that returns the conversation history
+        as a human-readable string. No parsing or extraction logic is applied.
+
+        Returns:
+            Formatted conversation history as string, or empty string if no history
+
+        Example:
+            >>> context = scratchpad.get_conversation_context()
+            >>> print(context)
+            user: Why is my service failing?
+            agent: Let me collect data to investigate...
+        """
+        history = self.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+        if not history:
+            return ""
+
+        # Format as simple role: message lines
+        lines = []
+        for entry in history:
+            role = entry.get("role", "unknown")
+            message = entry.get("message", "")
+            lines.append(f"{role}: {message}")
+
+        return "\n".join(lines)
+

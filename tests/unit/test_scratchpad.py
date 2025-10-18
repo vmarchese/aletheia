@@ -535,3 +535,213 @@ def test_none_values(scratchpad):
 
     assert result == data
     assert result["optional_field"] is None
+
+
+# Test Section: Conversational Support (REFACTOR-6)
+
+def test_append_conversation_creates_history(scratchpad):
+    """Test that append_conversation creates CONVERSATION_HISTORY section."""
+    scratchpad.append_conversation("user", "Why is my service failing?")
+
+    assert scratchpad.has_section(ScratchpadSection.CONVERSATION_HISTORY)
+    history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+    assert isinstance(history, list)
+    assert len(history) == 1
+    assert history[0]["role"] == "user"
+    assert history[0]["message"] == "Why is my service failing?"
+    assert "timestamp" in history[0]
+
+
+def test_append_conversation_multiple_messages(scratchpad):
+    """Test appending multiple conversation messages."""
+    scratchpad.append_conversation("user", "Why is my service failing?")
+    scratchpad.append_conversation("agent", "Let me collect data to investigate...")
+    scratchpad.append_conversation("user", "It started 2 hours ago")
+
+    history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+    assert len(history) == 3
+    assert history[0]["role"] == "user"
+    assert history[1]["role"] == "agent"
+    assert history[2]["role"] == "user"
+    assert history[2]["message"] == "It started 2 hours ago"
+
+
+def test_append_conversation_preserves_order(scratchpad):
+    """Test that conversation messages preserve chronological order."""
+    messages = [
+        ("user", "First message"),
+        ("agent", "Second message"),
+        ("system", "Third message"),
+        ("user", "Fourth message")
+    ]
+
+    for role, message in messages:
+        scratchpad.append_conversation(role, message)
+
+    history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+    assert len(history) == 4
+    for i, (role, message) in enumerate(messages):
+        assert history[i]["role"] == role
+        assert history[i]["message"] == message
+
+
+def test_append_conversation_includes_timestamp(scratchpad):
+    """Test that append_conversation includes ISO format timestamp."""
+    import time
+
+    scratchpad.append_conversation("user", "First message")
+    time.sleep(0.1)
+    scratchpad.append_conversation("user", "Second message")
+
+    history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+    # Both messages should have timestamps
+    assert "timestamp" in history[0]
+    assert "timestamp" in history[1]
+
+    # Parse timestamps to verify format
+    from datetime import datetime
+    ts1 = datetime.fromisoformat(history[0]["timestamp"])
+    ts2 = datetime.fromisoformat(history[1]["timestamp"])
+
+    # Second timestamp should be later
+    assert ts2 > ts1
+
+
+def test_get_conversation_context_empty(scratchpad):
+    """Test get_conversation_context returns empty string when no history."""
+    context = scratchpad.get_conversation_context()
+
+    assert context == ""
+
+
+def test_get_conversation_context_formats_messages(scratchpad):
+    """Test get_conversation_context formats messages correctly."""
+    scratchpad.append_conversation("user", "Why is my service failing?")
+    scratchpad.append_conversation("agent", "Let me investigate...")
+
+    context = scratchpad.get_conversation_context()
+
+    assert "user: Why is my service failing?" in context
+    assert "agent: Let me investigate..." in context
+    assert context.count("\n") == 1  # Two messages, one newline
+
+
+def test_get_conversation_context_multiline(scratchpad):
+    """Test get_conversation_context handles multiline messages."""
+    scratchpad.append_conversation("user", "Line 1\nLine 2\nLine 3")
+    scratchpad.append_conversation("agent", "Response")
+
+    context = scratchpad.get_conversation_context()
+
+    # Multiline message should be preserved
+    assert "Line 1\nLine 2\nLine 3" in context
+    assert "agent: Response" in context
+
+
+def test_conversation_persists_after_save_load(scratchpad, temp_session_dir, encryption_key):
+    """Test that conversation history persists through save/load."""
+    scratchpad.append_conversation("user", "First message")
+    scratchpad.append_conversation("agent", "Second message")
+    scratchpad.save()
+
+    loaded = Scratchpad.load(temp_session_dir, encryption_key)
+    history = loaded.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+    assert len(history) == 2
+    assert history[0]["message"] == "First message"
+    assert history[1]["message"] == "Second message"
+
+
+def test_conversation_context_after_load(scratchpad, temp_session_dir, encryption_key):
+    """Test get_conversation_context works after load."""
+    scratchpad.append_conversation("user", "Question")
+    scratchpad.append_conversation("agent", "Answer")
+    scratchpad.save()
+
+    loaded = Scratchpad.load(temp_session_dir, encryption_key)
+    context = loaded.get_conversation_context()
+
+    assert "user: Question" in context
+    assert "agent: Answer" in context
+
+
+def test_agent_notes_section(scratchpad):
+    """Test AGENT_NOTES section for conversational findings."""
+    notes = {
+        "data_fetcher": {
+            "finding": "Collected 200 logs with 47 errors",
+            "timestamp": "2025-10-18T10:00:00Z"
+        },
+        "pattern_analyzer": {
+            "finding": "Detected error rate spike at 08:05",
+            "timestamp": "2025-10-18T10:01:00Z"
+        }
+    }
+
+    scratchpad.write_section(ScratchpadSection.AGENT_NOTES, notes)
+
+    assert scratchpad.has_section(ScratchpadSection.AGENT_NOTES)
+    result = scratchpad.read_section(ScratchpadSection.AGENT_NOTES)
+
+    assert result == notes
+    assert "data_fetcher" in result
+    assert "pattern_analyzer" in result
+
+
+def test_agent_notes_flexible_structure(scratchpad):
+    """Test AGENT_NOTES supports flexible data structures."""
+    # Different agents can use different formats
+    scratchpad.write_section(ScratchpadSection.AGENT_NOTES, {})
+
+    # Data fetcher uses list format
+    scratchpad.append_to_section(ScratchpadSection.AGENT_NOTES, {
+        "data_fetcher": ["Found 47 errors", "Collected from 3 pods"]
+    })
+
+    # Pattern analyzer uses dict format
+    scratchpad.append_to_section(ScratchpadSection.AGENT_NOTES, {
+        "pattern_analyzer": {
+            "anomalies": 3,
+            "confidence": 0.85
+        }
+    })
+
+    result = scratchpad.read_section(ScratchpadSection.AGENT_NOTES)
+
+    assert isinstance(result["data_fetcher"], list)
+    assert isinstance(result["pattern_analyzer"], dict)
+    assert len(result["data_fetcher"]) == 2
+    assert result["pattern_analyzer"]["confidence"] == 0.85
+
+
+def test_conversation_with_special_characters(scratchpad):
+    """Test conversation handles special characters and emojis."""
+    scratchpad.append_conversation("user", "Service is down 🚨")
+    scratchpad.append_conversation("agent", "I'll investigate → checking logs")
+
+    history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+    context = scratchpad.get_conversation_context()
+
+    assert "🚨" in history[0]["message"]
+    assert "→" in history[1]["message"]
+    assert "🚨" in context
+    assert "→" in context
+
+
+def test_conversation_roles_flexible(scratchpad):
+    """Test that conversation supports various role names."""
+    roles = ["user", "agent", "system", "orchestrator", "data_fetcher", "pattern_analyzer"]
+
+    for role in roles:
+        scratchpad.append_conversation(role, f"Message from {role}")
+
+    history = scratchpad.read_section(ScratchpadSection.CONVERSATION_HISTORY)
+
+    assert len(history) == len(roles)
+    for i, role in enumerate(roles):
+        assert history[i]["role"] == role
+
