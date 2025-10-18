@@ -148,6 +148,10 @@ class OrchestratorAgent(BaseAgent):
         This is the main entry point that coordinates the entire investigation.
         Supports both guided (menu-driven) and conversational (natural language) modes.
         
+        In conversational mode, can use either:
+        1. SK HandoffOrchestration (if use_sk_orchestration=True)
+        2. Legacy custom routing (if use_sk_orchestration=False)
+        
         Args:
             **kwargs: Execution parameters (mode, initial_problem, etc.)
         
@@ -159,7 +163,13 @@ class OrchestratorAgent(BaseAgent):
         if mode == "guided":
             return self._execute_guided_mode(**kwargs)
         elif mode == "conversational":
-            return self._execute_conversational_mode(**kwargs)
+            # Check if SK orchestration should be used
+            if self.use_sk_orchestration:
+                # Use asyncio to run SK orchestration (it's async)
+                return asyncio.run(self._execute_conversational_mode_sk(**kwargs))
+            else:
+                # Use legacy custom routing
+                return self._execute_conversational_mode(**kwargs)
         else:
             raise NotImplementedError(f"Mode '{mode}' not implemented yet")
     
@@ -377,6 +387,164 @@ class OrchestratorAgent(BaseAgent):
             "conversation_length": len(conversation_history),
             "findings": findings
         }
+    
+    async def _execute_conversational_mode_sk(self, **kwargs) -> Dict[str, Any]:
+        """Execute investigation using SK HandoffOrchestration pattern.
+        
+        This replaces the custom conversational loop with Semantic Kernel's
+        HandoffOrchestration. The TriageAgent acts as the entry point and hub,
+        routing to specialist agents based on LLM reasoning.
+        
+        Args:
+            **kwargs: Execution parameters
+        
+        Returns:
+            Dictionary containing investigation results
+        """
+        if not SK_ORCHESTRATION_AVAILABLE:
+            raise RuntimeError(
+                "SK orchestration requested but not available. "
+                "Ensure semantic-kernel is installed and agents are SK-compatible."
+            )
+        
+        # Check if resuming an existing session
+        is_resume = self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
+        
+        if is_resume:
+            self.console.print("[cyan]Resuming conversational session with SK orchestration...[/cyan]")
+            # Load conversation history
+            conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY) or []
+            # Display recent conversation
+            self.conversational_ui.display_conversation(conversation_history, show_all=False, max_messages=5)
+            
+            # Build initial task from conversation history
+            initial_task = "Continue the investigation based on the conversation history."
+        else:
+            # Start new conversational session
+            conversation_history = []
+            
+            # Display welcome message
+            initial_message = kwargs.get("initial_message")
+            self.conversational_ui.display_conversation_starter(problem_description=initial_message)
+            
+            # Get initial problem description if not provided
+            if not initial_message:
+                initial_message = self.conversational_ui.get_user_input(
+                    prompt="Describe the problem you're investigating: "
+                )
+            
+            # Add user's initial message to conversation
+            conversation_history.append({
+                "role": "user",
+                "content": initial_message,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Process initial message to set up session
+            self._process_initial_message(initial_message)
+            
+            # Save conversation history
+            self.write_scratchpad(ScratchpadSection.CONVERSATION_HISTORY, conversation_history)
+            
+            # Build initial task for triage agent
+            initial_task = f"""Investigate this problem:
+
+{initial_message}
+
+Please analyze the problem and determine what actions are needed. You can:
+- Collect data from systems (logs, metrics, traces)
+- Analyze patterns and anomalies
+- Inspect source code
+- Generate a diagnosis
+
+Guide me through the investigation process."""
+        
+        # Create SK orchestration if not already created
+        if not self.sk_orchestration:
+            self.sk_orchestration = self._create_sk_orchestration()
+        
+        # Start SK runtime
+        await self.sk_orchestration.start_runtime()
+        
+        try:
+            # Invoke SK orchestration with initial task
+            # The triage agent will start, understand the problem, and route
+            # to specialist agents as needed via HandoffOrchestration
+            result = await self.sk_orchestration.invoke(task=initial_task, timeout=600.0)  # 10 minute timeout
+            
+            # Display session summary
+            self.conversational_ui.display_session_summary(
+                session_id=self.scratchpad.session_dir.name if self.scratchpad.session_dir else "unknown",
+                status="completed",
+                message_count=len(conversation_history)
+            )
+            
+            # Get final findings
+            findings = self.read_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS) or {}
+            
+            return {
+                "status": "completed",
+                "mode": "conversational_sk",
+                "orchestration_result": result,
+                "findings": findings
+            }
+        
+        except Exception as e:
+            self.console.print(f"[red]Error during SK orchestration: {e}[/red]")
+            
+            # Display session summary
+            self.conversational_ui.display_session_summary(
+                session_id=self.scratchpad.session_dir.name if self.scratchpad.session_dir else "unknown",
+                status="error",
+                message_count=len(conversation_history)
+            )
+            
+            return {
+                "status": "error",
+                "mode": "conversational_sk",
+                "error": str(e)
+            }
+        
+        finally:
+            # Always stop runtime
+            await self.sk_orchestration.stop_runtime()
+    
+    def _create_sk_orchestration(self) -> Any:
+        """Create SK HandoffOrchestration with all agents.
+        
+        Returns:
+            AletheiaHandoffOrchestration instance
+        """
+        from aletheia.agents.triage import TriageAgent
+        from aletheia.agents.orchestration_sk import create_orchestration_with_sk_agents
+        
+        # Create triage agent
+        triage = TriageAgent(self.config, self.scratchpad)
+        
+        # Get specialist agents from registry
+        # All agents should be SK-based (inherit from SKBaseAgent)
+        data_fetcher = self.agent_registry.get("data_fetcher")
+        pattern_analyzer = self.agent_registry.get("pattern_analyzer")
+        code_inspector = self.agent_registry.get("code_inspector")
+        root_cause_analyst = self.agent_registry.get("root_cause_analyst")
+        
+        if not all([data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst]):
+            raise RuntimeError(
+                "All specialist agents must be registered before creating SK orchestration. "
+                f"Registered: {list(self.agent_registry.keys())}"
+            )
+        
+        # Create orchestration with SK agents
+        return create_orchestration_with_sk_agents(
+            triage=triage._agent,  # Get SK agent from SKBaseAgent
+            data_fetcher=data_fetcher._agent,
+            pattern_analyzer=pattern_analyzer._agent,
+            code_inspector=code_inspector._agent,
+            root_cause_analyst=root_cause_analyst._agent,
+            scratchpad=self.scratchpad,
+            console=self.console,
+            confirmation_level=self.confirmation_level
+        )
     
     def _understand_user_intent(
         self,

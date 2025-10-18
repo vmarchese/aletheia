@@ -170,34 +170,91 @@ class AletheiaHandoffOrchestration:
         return value
 
 
-def create_aletheia_handoffs() -> OrchestrationHandoffs:
+def create_aletheia_handoffs(
+    triage: Agent,
+    data_fetcher: Agent,
+    pattern_analyzer: Agent,
+    code_inspector: Agent,
+    root_cause_analyst: Agent
+) -> OrchestrationHandoffs:
     """Create OrchestrationHandoffs for Aletheia agents.
     
-    Defines the routing rules between specialist agents:
-    - data_fetcher → pattern_analyzer (after data collection)
-    - pattern_analyzer → code_inspector (after pattern analysis)
-    - pattern_analyzer → root_cause_analyst (skip code inspection option)
-    - code_inspector → root_cause_analyst (after code inspection)
+    Defines the routing rules between specialist agents with TriageAgent
+    as the central hub for conversational investigations.
+    
+    **Handoff Topology (Hub-and-Spoke Pattern):**
+    
+    - triage → data_fetcher: "Transfer to data fetcher when user wants to collect logs/metrics"
+    - triage → pattern_analyzer: "Transfer to pattern analyzer when user wants to analyze patterns"
+    - triage → code_inspector: "Transfer to code inspector when user wants to inspect code"
+    - triage → root_cause_analyst: "Transfer to root cause analyst when user wants diagnosis"
+    - data_fetcher → triage: "Transfer back to triage after data collection"
+    - pattern_analyzer → triage: "Transfer back to triage after pattern analysis"
+    - code_inspector → triage: "Transfer back to triage after code inspection"
+    - root_cause_analyst → triage: "Transfer back to triage after diagnosis"
+    
+    Args:
+        triage: TriageAgent (entry point)
+        data_fetcher: DataFetcherAgent
+        pattern_analyzer: PatternAnalyzerAgent
+        code_inspector: CodeInspectorAgent
+        root_cause_analyst: RootCauseAnalystAgent
     
     Returns:
         OrchestrationHandoffs configured for Aletheia workflow
     """
-    # Note: This will be populated when agents are converted to SK
-    # For now, this shows the structure
+    # Start with triage agent as entry point
+    handoffs = OrchestrationHandoffs.StartWith(triage)
     
-    # Placeholder - actual implementation requires SK agents
-    # handoffs = OrchestrationHandoffs.StartWith(data_fetcher_agent)
-    # handoffs.Add(data_fetcher_agent, pattern_analyzer_agent, "After data collection completes")
-    # handoffs.Add(pattern_analyzer_agent, code_inspector_agent, "Analyze patterns in code")
-    # handoffs.Add(pattern_analyzer_agent, root_cause_analyst_agent, "Skip code inspection")
-    # handoffs.Add(code_inspector_agent, root_cause_analyst_agent, "After code inspection")
+    # Triage → Specialists (hub to spoke)
+    handoffs.Add(
+        triage,
+        data_fetcher,
+        "Transfer to data fetcher when user wants to collect logs, metrics, or traces from systems"
+    )
+    handoffs.Add(
+        triage,
+        pattern_analyzer,
+        "Transfer to pattern analyzer when user wants to analyze patterns, anomalies, or correlations in data"
+    )
+    handoffs.Add(
+        triage,
+        code_inspector,
+        "Transfer to code inspector when user wants to inspect source code or stack traces"
+    )
+    handoffs.Add(
+        triage,
+        root_cause_analyst,
+        "Transfer to root cause analyst when investigation is complete and user wants diagnosis"
+    )
     
-    # Return empty handoffs for now
-    # This will be properly configured when agents are SK-based
-    return {}  # type: ignore
+    # Specialists → Triage (spoke to hub)
+    handoffs.Add(
+        data_fetcher,
+        triage,
+        "Transfer back to triage after data collection completes"
+    )
+    handoffs.Add(
+        pattern_analyzer,
+        triage,
+        "Transfer back to triage after pattern analysis completes"
+    )
+    handoffs.Add(
+        code_inspector,
+        triage,
+        "Transfer back to triage after code inspection completes"
+    )
+    handoffs.Add(
+        root_cause_analyst,
+        triage,
+        "Transfer back to triage after diagnosis is complete"
+    )
+    
+    return handoffs
 
 
 def create_orchestration_with_sk_agents(
+    triage: Agent,
     data_fetcher: Agent,
     pattern_analyzer: Agent,
     code_inspector: Agent,
@@ -208,9 +265,11 @@ def create_orchestration_with_sk_agents(
 ) -> AletheiaHandoffOrchestration:
     """Create AletheiaHandoffOrchestration with SK agents.
     
-    This factory function will be used once all agents are converted to SK.
+    This factory function creates the complete SK orchestration with
+    TriageAgent as the entry point and hub for conversational routing.
     
     Args:
+        triage: SK-based TriageAgent (entry point)
         data_fetcher: SK-based DataFetcherAgent
         pattern_analyzer: SK-based PatternAnalyzerAgent  
         code_inspector: SK-based CodeInspectorAgent
@@ -222,31 +281,18 @@ def create_orchestration_with_sk_agents(
     Returns:
         Configured AletheiaHandoffOrchestration
     """
-    # Define handoff rules
-    handoffs = OrchestrationHandoffs.StartWith(data_fetcher)
-    handoffs.Add(
-        data_fetcher,
-        pattern_analyzer,
-        "Transfer to pattern analyzer after data collection completes"
-    )
-    handoffs.Add(
-        pattern_analyzer,
-        code_inspector,
-        "Transfer to code inspector to analyze source code"
-    )
-    handoffs.Add(
-        pattern_analyzer,
-        root_cause_analyst,
-        "Transfer directly to root cause analyst if code inspection not needed"
-    )
-    handoffs.Add(
-        code_inspector,
-        root_cause_analyst,
-        "Transfer to root cause analyst after code inspection completes"
+    # Define handoff rules with triage as hub
+    handoffs = create_aletheia_handoffs(
+        triage=triage,
+        data_fetcher=data_fetcher,
+        pattern_analyzer=pattern_analyzer,
+        code_inspector=code_inspector,
+        root_cause_analyst=root_cause_analyst
     )
     
     # Create and return orchestration
-    agents = [data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst]
+    # Note: All agents included, triage is the entry point
+    agents = [triage, data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst]
     
     return AletheiaHandoffOrchestration(
         agents=agents,
