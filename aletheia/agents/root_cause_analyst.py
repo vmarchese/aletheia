@@ -59,13 +59,15 @@ class RootCauseAnalystAgent(SKBaseAgent):
     def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute the root cause analysis process.
         
-        Supports both SK-based and direct analysis modes. SK mode uses the
-        ChatCompletionAgent for analysis (future), while direct mode uses
-        the analytical helper methods (current default).
+        Supports three execution modes:
+        - conversational: LLM reads all scratchpad sections including conversation history
+        - sk: SK-based analysis with structured sections
+        - direct: Direct analytical methods (original implementation)
         
         Args:
             **kwargs: Additional parameters for analysis
-                - use_sk: Optional override for SK mode
+                - mode: Execution mode ("conversational", "sk", or "direct")
+                - use_sk: Legacy parameter, if True uses "sk" mode
         
         Returns:
             Dictionary with execution results:
@@ -77,10 +79,17 @@ class RootCauseAnalystAgent(SKBaseAgent):
         Raises:
             ValueError: If required scratchpad sections are missing
         """
-        # Allow per-call override of SK mode
-        use_sk = kwargs.get("use_sk", self.use_sk)
+        # Determine execution mode
+        mode = kwargs.get("mode", "direct")
         
-        if use_sk:
+        # Legacy parameter support
+        if kwargs.get("use_sk", self.use_sk) and mode == "direct":
+            mode = "sk"
+        
+        # Route to appropriate execution method
+        if mode == "conversational":
+            return self._execute_conversational(**kwargs)
+        elif mode == "sk":
             return self._execute_with_sk(**kwargs)
         else:
             return self._execute_direct(**kwargs)
@@ -370,6 +379,123 @@ Ensure all JSON is valid and properly formatted."""
                 },
                 "recommended_actions": []
             }
+    
+    def _execute_conversational(self, **kwargs) -> Dict[str, Any]:
+        """Execute root cause analysis in conversational mode using SK agent.
+        
+        This method is designed for conversational mode where the LLM reads
+        ALL available scratchpad sections including conversation history and
+        agent notes, and performs synthesis entirely through prompt instructions.
+        
+        Args:
+            **kwargs: Additional parameters for analysis
+        
+        Returns:
+            Dictionary with execution results
+        
+        Raises:
+            ValueError: If required scratchpad sections are missing
+        """
+        try:
+            # Read ALL scratchpad sections (LLM decides what's relevant)
+            problem = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
+            conversation_history = self.read_scratchpad("CONVERSATION_HISTORY") or []
+            agent_notes = self.read_scratchpad("AGENT_NOTES") or {}
+            data_collected = self.read_scratchpad(ScratchpadSection.DATA_COLLECTED) or {}
+            pattern_analysis = self.read_scratchpad(ScratchpadSection.PATTERN_ANALYSIS) or {}
+            code_inspection = self.read_scratchpad(ScratchpadSection.CODE_INSPECTION) or {}
+            
+            # Validate required sections (at minimum: problem)
+            if not problem:
+                raise ValueError("PROBLEM_DESCRIPTION section is missing")
+            
+            # Build conversational prompt with ALL context
+            prompt = self._build_conversational_synthesis_prompt(
+                problem=problem,
+                conversation_history=conversation_history,
+                agent_notes=agent_notes,
+                collected_data=data_collected,
+                pattern_analysis=pattern_analysis,
+                code_inspection=code_inspection
+            )
+            
+            # Use conversational system prompt
+            system_prompt = get_system_prompt("root_cause_analyst_conversational")
+            
+            # Invoke SK agent with conversational context
+            response = self.invoke(prompt, system_prompt=system_prompt)
+            
+            # Parse response (same parsing logic works for conversational mode)
+            diagnosis = self._parse_sk_diagnosis_response(response)
+            
+            # Write diagnosis to scratchpad
+            self.write_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS, diagnosis)
+            
+            # Return execution results
+            return {
+                "success": True,
+                "confidence": diagnosis.get("root_cause", {}).get("confidence", 0.0),
+                "recommendations_count": len(diagnosis.get("recommended_actions", [])),
+                "root_cause_type": diagnosis.get("root_cause", {}).get("type", "unknown")
+            }
+        
+        except Exception as e:
+            # Fall back to direct mode on failure
+            print(f"Conversational analysis failed ({str(e)}), falling back to direct mode")
+            return self._execute_direct(**kwargs)
+    
+    def _build_conversational_synthesis_prompt(
+        self,
+        problem: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+        agent_notes: Dict[str, Any],
+        collected_data: Dict[str, Any],
+        pattern_analysis: Dict[str, Any],
+        code_inspection: Dict[str, Any]
+    ) -> str:
+        """Build conversational prompt for root cause synthesis.
+        
+        This prompt includes ALL scratchpad sections and instructs the LLM
+        to read everything and decide what's relevant.
+        
+        Args:
+            problem: Problem description
+            conversation_history: Full conversation history
+            agent_notes: Notes from other agents
+            collected_data: Collected observability data
+            pattern_analysis: Pattern analysis results
+            code_inspection: Code inspection results
+        
+        Returns:
+            Formatted prompt string using the conversational template
+        """
+        # Get conversational prompt template
+        prompt_template = get_user_prompt_template("root_cause_analyst_conversational")
+        
+        # Format conversation history as string
+        conversation_str = "\n".join([
+            f"[{msg.get('role', 'unknown')}]: {msg.get('content', '')}"
+            for msg in conversation_history
+        ]) if conversation_history else "No conversation history available"
+        
+        # Format sections as JSON strings (LLM will parse)
+        problem_str = json.dumps(problem, indent=2) if problem else "No problem description"
+        collected_data_str = json.dumps(collected_data, indent=2) if collected_data else "No data collected"
+        pattern_analysis_str = json.dumps(pattern_analysis, indent=2) if pattern_analysis else "No pattern analysis"
+        code_inspection_str = json.dumps(code_inspection, indent=2) if code_inspection else "No code inspection"
+        agent_notes_str = json.dumps(agent_notes, indent=2) if agent_notes else "No agent notes"
+        
+        # Format prompt
+        prompt = prompt_template.format(
+            problem_description=problem_str,
+            conversation_history=conversation_str,
+            collected_data=collected_data_str,
+            pattern_analysis=pattern_analysis_str,
+            code_inspection=code_inspection_str,
+            agent_notes=agent_notes_str
+        )
+        
+        return prompt
     
     def synthesize_findings(
         self,

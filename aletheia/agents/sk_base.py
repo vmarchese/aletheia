@@ -224,7 +224,8 @@ class SKBaseAgent:
     async def invoke_async(
         self,
         user_message: str,
-        settings: Optional[Dict[str, Any]] = None
+        settings: Optional[Dict[str, Any]] = None,
+        system_prompt: Optional[str] = None
     ) -> str:
         """Invoke the SK agent with a user message (async).
         
@@ -235,6 +236,7 @@ class SKBaseAgent:
         Args:
             user_message: User message to send to the agent
             settings: Optional execution settings for the agent
+            system_prompt: Optional custom system prompt (overrides default)
         
         Returns:
             Agent's response as string
@@ -248,6 +250,21 @@ class SKBaseAgent:
         agent_config = agents_config.get(self.agent_name, {})
         model = agent_config.get("model") or llm_config.get("default_model", "gpt-4o")
         
+        # Create custom agent if system_prompt is provided
+        if system_prompt:
+            custom_agent = ChatCompletionAgent(
+                service_id="default",
+                kernel=self.kernel,
+                name=self.agent_name,
+                instructions=system_prompt,
+            )
+            agent_to_use = custom_agent
+            # Create fresh chat history for custom prompt
+            chat_history = ChatHistory()
+        else:
+            agent_to_use = self.agent
+            chat_history = self.chat_history
+        
         # Log prompt if trace logging is enabled
         if is_trace_enabled():
             # Estimate tokens (rough approximation: 4 chars per token)
@@ -260,7 +277,7 @@ class SKBaseAgent:
             )
         
         # Add user message to history
-        self.chat_history.add_user_message(user_message)
+        chat_history.add_user_message(user_message)
         
         # Configure settings with auto function calling
         if settings is None:
@@ -274,8 +291,8 @@ class SKBaseAgent:
         )
         
         # Invoke agent
-        response = await self.agent.invoke(
-            history=self.chat_history,
+        response = await agent_to_use.invoke(
+            history=chat_history,
             settings=exec_settings
         )
         
@@ -292,7 +309,7 @@ class SKBaseAgent:
         if is_trace_enabled():
             # Estimate tokens for response
             completion_tokens = len(response_text) // 4
-            total_tokens = prompt_tokens + completion_tokens if prompt_tokens else None
+            total_tokens = prompt_tokens + completion_tokens if 'prompt_tokens' in locals() else None
             log_prompt_response(
                 agent_name=self.agent_name,
                 response=response_text,
@@ -300,15 +317,17 @@ class SKBaseAgent:
                 total_tokens=total_tokens
             )
         
-        # Add response to history
-        self.chat_history.add_assistant_message(response_text)
+        # Add response to history (only if using default agent)
+        if not system_prompt:
+            chat_history.add_assistant_message(response_text)
         
         return response_text
     
     def invoke(
         self,
         user_message: str,
-        settings: Optional[Dict[str, Any]] = None
+        settings: Optional[Dict[str, Any]] = None,
+        system_prompt: Optional[str] = None
     ) -> str:
         """Invoke the SK agent with a user message (synchronous wrapper).
         
@@ -318,11 +337,12 @@ class SKBaseAgent:
         Args:
             user_message: User message to send to the agent
             settings: Optional execution settings for the agent
+            system_prompt: Optional custom system prompt (overrides default)
         
         Returns:
             Agent's response as string
         """
-        return asyncio.run(self.invoke_async(user_message, settings))
+        return asyncio.run(self.invoke_async(user_message, settings, system_prompt))
     
     def read_scratchpad(self, section: str) -> Optional[Any]:
         """Read a section from the scratchpad.

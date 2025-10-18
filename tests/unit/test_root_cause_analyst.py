@@ -1,5 +1,6 @@
 """Unit tests for Root Cause Analyst Agent."""
 
+import json
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime
@@ -989,4 +990,385 @@ This is my conclusion.'''
             # Should use direct mode
             assert result["success"] is True
             assert mock_get_llm.called
+
+
+class TestRootCauseAnalystConversationalMode:
+    """Test suite for conversational mode execution."""
+    
+    @pytest.fixture
+    def config(self):
+        """Create test configuration."""
+        return {
+            "llm": {
+                "default_model": "gpt-4o",
+                "api_key_env": "OPENAI_API_KEY"
+            }
+        }
+    
+    @pytest.fixture
+    def scratchpad(self):
+        """Create mock scratchpad."""
+        mock_scratchpad = Mock()
+        mock_scratchpad.read_section = Mock()
+        mock_scratchpad.write_section = Mock()
+        mock_scratchpad.save = Mock()
+        return mock_scratchpad
+    
+    @pytest.fixture
+    def agent(self, config, scratchpad):
+        """Create RootCauseAnalystAgent instance."""
+        return RootCauseAnalystAgent(config, scratchpad)
+    
+    @pytest.fixture
+    def sample_problem(self):
+        """Sample problem description."""
+        return {
+            "description": "Payment API 500 errors after v1.19 deployment",
+            "time_window": "2h",
+            "affected_services": ["payments-svc"]
+        }
+    
+    @pytest.fixture
+    def sample_data_collected(self):
+        """Sample collected data."""
+        return {
+            "kubernetes": {
+                "summary": "200 logs (45 ERROR), top error: 'nil pointer dereference' (45x)",
+                "count": 200,
+                "time_range": "2025-10-14T08:00:00 - 2025-10-14T10:00:00"
+            },
+            "prometheus": {
+                "summary": "2 time series, 120 data points; spike detected: 7.30 (avg: 0.85)",
+                "count": 120,
+                "time_range": "2025-10-14T08:00:00 - 2025-10-14T10:00:00"
+            }
+        }
+    
+    @pytest.fixture
+    def sample_pattern_analysis(self):
+        """Sample pattern analysis."""
+        return {
+            "anomalies": [
+                {
+                    "type": "error_rate_spike",
+                    "timestamp": "2025-10-14T08:05:00",
+                    "severity": "critical",
+                    "description": "High error rate: 45/200 (22.5%)",
+                    "error_rate": 0.225
+                }
+            ],
+            "error_clusters": [
+                {
+                    "pattern": "nil pointer dereference at features.go:N",
+                    "count": 45,
+                    "examples": ["nil pointer dereference at features.go:57"],
+                    "stack_trace": "charge.go:112 → features.go:57"
+                }
+            ],
+            "correlations": [],
+            "timeline": []
+        }
+    
+    @pytest.fixture
+    def conversation_history(self):
+        """Sample conversation history."""
+        return [
+            {"role": "user", "content": "The payment service is failing after the v1.19 deployment"},
+            {"role": "agent", "content": "I'll collect logs from the payments-svc pod"},
+            {"role": "user", "content": "Yes, check the production namespace"},
+        ]
+    
+    @pytest.fixture
+    def agent_notes(self):
+        """Sample agent notes."""
+        return {
+            "data_fetcher": "Collected 200 logs, 45 errors found",
+            "pattern_analyzer": "Error rate spike detected at 08:05:00"
+        }
+    
+    def test_execute_conversational_mode(self, agent, scratchpad, sample_problem,
+                                        sample_data_collected, sample_pattern_analysis,
+                                        conversation_history, agent_notes):
+        """Test execute with mode='conversational'."""
+        # Setup scratchpad with ALL sections
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            "CONVERSATION_HISTORY": conversation_history,
+            "AGENT_NOTES": agent_notes,
+            ScratchpadSection.DATA_COLLECTED: sample_data_collected,
+            ScratchpadSection.PATTERN_ANALYSIS: sample_pattern_analysis,
+            ScratchpadSection.CODE_INSPECTION: {}
+        }.get(section, {})
+        
+        # Mock SK invoke
+        with patch.object(agent, 'invoke') as mock_invoke:
+            # Mock LLM response with diagnosis
+            mock_invoke.return_value = json.dumps({
+                "conversational_summary": "Root cause is nil pointer in features.go:57",
+                "root_cause": {
+                    "type": "nil_pointer_dereference",
+                    "confidence": 0.85,
+                    "description": "Nil pointer dereference in features package",
+                    "location": "features.go:57"
+                },
+                "evidence": [
+                    {
+                        "type": "error_cluster",
+                        "source": "pattern_analysis",
+                        "severity": "critical",
+                        "description": "45 nil pointer errors",
+                        "weight": 0.9
+                    }
+                ],
+                "timeline_correlation": {
+                    "deployment_mentioned": True,
+                    "first_error_time": "2025-10-14T08:05:00",
+                    "alignment": "Errors started 1 minute after deployment"
+                },
+                "recommended_actions": [
+                    {
+                        "priority": "immediate",
+                        "action": "Rollback to v1.18",
+                        "rationale": "Deployment correlation detected",
+                        "type": "rollback",
+                        "location": "payments-svc"
+                    }
+                ]
+            })
+            
+            # Execute in conversational mode
+            result = agent.execute(mode="conversational")
+            
+            # Verify execution succeeded
+            assert result["success"] is True
+            assert result["confidence"] == 0.85
+            assert result["root_cause_type"] == "nil_pointer_dereference"
+            
+            # Verify invoke was called with conversational prompt
+            assert mock_invoke.called
+            call_args = mock_invoke.call_args
+            
+            # Verify system_prompt was passed
+            assert "system_prompt" in call_args.kwargs
+            
+            # Verify prompt includes all sections
+            prompt = call_args.args[0]
+            assert "CONVERSATION HISTORY" in prompt or "CONVERSATION_HISTORY" in prompt
+            assert "AGENT NOTES" in prompt or "AGENT_NOTES" in prompt
+            assert "COLLECTED DATA" in prompt or "DATA COLLECTED" in prompt
+            assert "PATTERN ANALYSIS" in prompt
+    
+    def test_conversational_prompt_includes_all_context(self, agent, scratchpad,
+                                                        sample_problem, conversation_history):
+        """Test that conversational prompt includes all available context."""
+        # Setup minimal scratchpad
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            "CONVERSATION_HISTORY": conversation_history,
+            "AGENT_NOTES": {},
+            ScratchpadSection.DATA_COLLECTED: {"kubernetes": {"count": 100}},
+            ScratchpadSection.PATTERN_ANALYSIS: {},
+            ScratchpadSection.CODE_INSPECTION: {}
+        }.get(section, {})
+        
+        # Build prompt using the internal method
+        prompt = agent._build_conversational_synthesis_prompt(
+            problem=sample_problem,
+            conversation_history=conversation_history,
+            agent_notes={},
+            collected_data={"kubernetes": {"count": 100}},
+            pattern_analysis={},
+            code_inspection={}
+        )
+        
+        # Verify prompt structure
+        assert "PROBLEM CONTEXT" in prompt
+        assert "CONVERSATION HISTORY" in prompt
+        assert "[user]:" in prompt  # Conversation formatted
+        assert "COLLECTED DATA" in prompt
+        assert "PATTERN ANALYSIS" in prompt
+        assert "CODE INSPECTION" in prompt
+        assert "AGENT NOTES" in prompt
+    
+    def test_conversational_mode_reads_all_sections(self, agent, scratchpad):
+        """Test that conversational mode reads all scratchpad sections."""
+        # Track which sections are read
+        sections_read = []
+        
+        def track_read(section):
+            sections_read.append(section)
+            return {} if section != ScratchpadSection.PROBLEM_DESCRIPTION else {"description": "test"}
+        
+        scratchpad.read_section.side_effect = track_read
+        
+        # Mock invoke to avoid actual LLM call
+        with patch.object(agent, 'invoke') as mock_invoke:
+            mock_invoke.return_value = json.dumps({
+                "root_cause": {"type": "unknown", "confidence": 0.5, "description": "test", "location": "unknown"},
+                "evidence": [],
+                "timeline_correlation": {"deployment_mentioned": False, "first_error_time": None, "alignment": None},
+                "recommended_actions": []
+            })
+            
+            # Execute conversational mode
+            agent.execute(mode="conversational")
+            
+            # Verify all sections were read
+            assert ScratchpadSection.PROBLEM_DESCRIPTION in sections_read
+            assert "CONVERSATION_HISTORY" in sections_read
+            assert "AGENT_NOTES" in sections_read
+            assert ScratchpadSection.DATA_COLLECTED in sections_read
+            assert ScratchpadSection.PATTERN_ANALYSIS in sections_read
+            assert ScratchpadSection.CODE_INSPECTION in sections_read
+    
+    def test_conversational_mode_with_empty_sections(self, agent, scratchpad):
+        """Test conversational mode handles empty sections gracefully."""
+        # All sections empty except problem
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: {"description": "test problem"}
+        }.get(section, None)  # Return None for missing sections
+        
+        # Mock invoke
+        with patch.object(agent, 'invoke') as mock_invoke:
+            mock_invoke.return_value = json.dumps({
+                "root_cause": {"type": "unknown", "confidence": 0.3, "description": "insufficient data", "location": "unknown"},
+                "evidence": [],
+                "timeline_correlation": {"deployment_mentioned": False, "first_error_time": None, "alignment": None},
+                "recommended_actions": []
+            })
+            
+            # Should not raise, even with empty sections
+            result = agent.execute(mode="conversational")
+            
+            assert result["success"] is True
+            assert result["confidence"] == 0.3
+    
+    def test_conversational_fallback_on_error(self, agent, scratchpad, sample_problem):
+        """Test conversational mode falls back to direct mode on error."""
+        # Setup minimal data
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            ScratchpadSection.DATA_COLLECTED: {"test": "data"},
+            ScratchpadSection.PATTERN_ANALYSIS: {"anomalies": []}
+        }.get(section, {})
+        
+        # Mock invoke to raise exception
+        with patch.object(agent, 'invoke') as mock_invoke:
+            mock_invoke.side_effect = Exception("LLM failure")
+            
+            # Mock direct mode
+            with patch.object(agent, '_execute_direct') as mock_direct:
+                mock_direct.return_value = {"success": True, "confidence": 0.5, 
+                                           "recommendations_count": 0, "root_cause_type": "unknown"}
+                
+                # Execute conversational mode
+                result = agent.execute(mode="conversational")
+                
+                # Should fall back to direct mode
+                assert result["success"] is True
+                assert mock_direct.called
+    
+    def test_mode_parameter_routing(self, agent, scratchpad, sample_problem,
+                                   sample_data_collected, sample_pattern_analysis):
+        """Test that mode parameter correctly routes execution."""
+        # Setup data
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem,
+            ScratchpadSection.DATA_COLLECTED: sample_data_collected,
+            ScratchpadSection.PATTERN_ANALYSIS: sample_pattern_analysis
+        }.get(section, {})
+        
+        # Test conversational mode routing
+        with patch.object(agent, '_execute_conversational') as mock_conv:
+            mock_conv.return_value = {"success": True, "confidence": 0.8,
+                                     "recommendations_count": 3, "root_cause_type": "test"}
+            agent.execute(mode="conversational")
+            assert mock_conv.called
+        
+        # Test sk mode routing
+        with patch.object(agent, '_execute_with_sk') as mock_sk:
+            mock_sk.return_value = {"success": True, "confidence": 0.7,
+                                   "recommendations_count": 2, "root_cause_type": "test"}
+            agent.execute(mode="sk")
+            assert mock_sk.called
+        
+        # Test direct mode routing (default)
+        with patch.object(agent, '_execute_direct') as mock_direct:
+            mock_direct.return_value = {"success": True, "confidence": 0.6,
+                                       "recommendations_count": 1, "root_cause_type": "test"}
+            agent.execute(mode="direct")
+            assert mock_direct.called
+    
+    def test_conversational_diagnosis_parsing(self, agent, scratchpad, sample_problem):
+        """Test that conversational diagnosis is correctly parsed and written."""
+        # Setup data
+        scratchpad.read_section.side_effect = lambda section: {
+            ScratchpadSection.PROBLEM_DESCRIPTION: sample_problem
+        }.get(section, {})
+        
+        # Mock invoke with comprehensive diagnosis
+        diagnosis_json = {
+            "conversational_summary": "The issue is a nil pointer dereference",
+            "root_cause": {
+                "type": "nil_pointer_dereference",
+                "confidence": 0.9,
+                "description": "Detailed description",
+                "location": "features.go:57"
+            },
+            "evidence": [
+                {
+                    "type": "code_issue",
+                    "source": "code_inspection",
+                    "severity": "critical",
+                    "description": "Nil check missing",
+                    "weight": 0.95
+                }
+            ],
+            "timeline_correlation": {
+                "deployment_mentioned": True,
+                "first_error_time": "2025-10-14T08:05:00",
+                "alignment": "Strong correlation"
+            },
+            "recommended_actions": [
+                {
+                    "priority": "immediate",
+                    "action": "Rollback deployment",
+                    "rationale": "Stop error propagation",
+                    "type": "rollback",
+                    "location": "payments-svc"
+                },
+                {
+                    "priority": "high",
+                    "action": "Add nil check",
+                    "rationale": "Fix root cause",
+                    "type": "code_fix",
+                    "location": "features.go:57"
+                }
+            ],
+            "confidence_breakdown": {
+                "evidence_quality": 0.95,
+                "data_completeness": 0.85,
+                "consistency": 0.90,
+                "reasoning": "Strong evidence with code-level confirmation"
+            }
+        }
+        
+        with patch.object(agent, 'invoke') as mock_invoke:
+            mock_invoke.return_value = json.dumps(diagnosis_json)
+            
+            # Execute conversational mode
+            result = agent.execute(mode="conversational")
+            
+            # Verify diagnosis was written to scratchpad
+            assert scratchpad.write_section.called
+            write_call = scratchpad.write_section.call_args
+            assert write_call[0][0] == ScratchpadSection.FINAL_DIAGNOSIS
+            
+            # Verify written diagnosis structure
+            written_diagnosis = write_call[0][1]
+            assert written_diagnosis["root_cause"]["confidence"] == 0.9
+            assert written_diagnosis["root_cause"]["type"] == "nil_pointer_dereference"
+            assert len(written_diagnosis["recommended_actions"]) == 2
+            assert written_diagnosis["recommended_actions"][0]["priority"] == "immediate"
+
 
