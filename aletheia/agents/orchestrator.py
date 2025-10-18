@@ -33,6 +33,7 @@ from rich.table import Table
 
 from aletheia.agents.base import BaseAgent
 from aletheia.scratchpad import ScratchpadSection
+from aletheia.ui.conversation import ConversationalUI
 from aletheia.utils.logging import log_agent_transition, is_trace_enabled
 
 # SK orchestration support (optional, for future use)
@@ -91,6 +92,7 @@ class OrchestratorAgent(BaseAgent):
         """
         super().__init__(config, scratchpad, agent_name or "orchestrator")
         self.console = Console()
+        self.conversational_ui = ConversationalUI(self.console)
         self.current_phase = InvestigationPhase.INITIALIZATION
         self.agent_registry: Dict[str, BaseAgent] = {}
         
@@ -243,15 +245,21 @@ class OrchestratorAgent(BaseAgent):
             self.console.print("[cyan]Resuming conversational session...[/cyan]")
             # Load conversation history
             conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY) or []
+            # Display recent conversation
+            self.conversational_ui.display_conversation(conversation_history, show_all=False, max_messages=5)
         else:
             # Start new conversational session
-            self._display_welcome_conversational()
             conversation_history = []
             
-            # Get initial problem description
+            # Display welcome message
             initial_message = kwargs.get("initial_message")
+            self.conversational_ui.display_conversation_starter(problem_description=initial_message)
+            
+            # Get initial problem description if not provided
             if not initial_message:
-                initial_message = Prompt.ask("[bold]What would you like to investigate?[/bold]")
+                initial_message = self.conversational_ui.get_user_input(
+                    prompt="Describe the problem you're investigating: "
+                )
             
             # Add user's initial message to conversation
             conversation_history.append({
@@ -267,12 +275,22 @@ class OrchestratorAgent(BaseAgent):
         investigation_complete = False
         
         while not investigation_complete:
-            # Get user input
-            user_message = Prompt.ask("\n[bold cyan]You:[/bold cyan]")
+            # Get user input using conversational UI
+            user_message = self.conversational_ui.get_user_input()
             
+            # Handle special commands
             if user_message.lower() in ["exit", "quit", "bye"]:
                 self.console.print("[yellow]Ending investigation session.[/yellow]")
                 break
+            elif user_message.lower() == "help":
+                self.conversational_ui.display_help()
+                continue
+            elif user_message.lower() == "history":
+                self.conversational_ui.display_conversation(conversation_history, show_all=True)
+                continue
+            elif user_message.lower() == "status":
+                self._display_investigation_status()
+                continue
             
             # Add to conversation history
             conversation_history.append({
@@ -280,6 +298,9 @@ class OrchestratorAgent(BaseAgent):
                 "content": user_message,
                 "timestamp": datetime.now().isoformat()
             })
+            
+            # Show agent is thinking
+            self.conversational_ui.display_agent_thinking("Analyzing your request...")
             
             # Understand user intent using LLM
             intent_result = self._understand_user_intent(user_message, conversation_history)
@@ -302,11 +323,16 @@ class OrchestratorAgent(BaseAgent):
             response = None
             if action == "clarify":
                 # LLM determined we should clarify instead of routing to agent
-                response = suggested_response or self._generate_clarification_response(
-                    user_message, conversation_history, routing_decision.get("reasoning", "")
+                clarification_context = routing_decision.get("reasoning", "")
+                self.conversational_ui.display_clarification_request(
+                    question=suggested_response,
+                    context=clarification_context if clarification_context else None
                 )
+                # Get clarification from user immediately
+                continue
             elif action in self.agent_registry:
                 # LLM determined we should route to a specialist agent
+                self.conversational_ui.display_agent_thinking(f"Executing {action.replace('_', ' ')}...")
                 response = self._execute_agent_and_generate_response(
                     agent_name=action,
                     parameters=parameters,
@@ -319,9 +345,13 @@ class OrchestratorAgent(BaseAgent):
                 # Fallback if LLM returns unexpected action
                 response = "I'm not sure how to proceed. Could you clarify your request?"
             
-            # Display and record response
+            # Display response using conversational UI
             if response:
-                self.console.print(f"\n[bold green]Aletheia:[/bold green] {response}")
+                self.conversational_ui.format_agent_response(
+                    response=response,
+                    agent_name=action if action in self.agent_registry else None,
+                    show_agent_name=self.agent_visibility
+                )
                 conversation_history.append({
                     "role": "assistant",
                     "content": response,
@@ -331,11 +361,18 @@ class OrchestratorAgent(BaseAgent):
             # Save conversation history to scratchpad
             self.write_scratchpad(ScratchpadSection.CONVERSATION_HISTORY, conversation_history)
         
+        # Display session summary
+        self.conversational_ui.display_session_summary(
+            session_id=self.scratchpad.session_dir.name if self.scratchpad.session_dir else "unknown",
+            status="completed" if investigation_complete else "interrupted",
+            message_count=len(conversation_history)
+        )
+        
         # Get final findings
         findings = self.read_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS) or {}
         
         return {
-            "status": "completed",
+            "status": "completed" if investigation_complete else "interrupted",
             "mode": "conversational",
             "conversation_length": len(conversation_history),
             "findings": findings
@@ -523,6 +560,19 @@ class OrchestratorAgent(BaseAgent):
             state_parts.append("Root cause diagnosis available")
         
         return "\n".join(state_parts) if state_parts else "Investigation just started"
+    
+    def _display_investigation_status(self) -> None:
+        """Display the current investigation status to the user.
+        
+        This is a display-only method that shows what sections have been completed
+        and what data is available.
+        """
+        status_summary = self._get_investigation_state_summary()
+        
+        self.console.print("\n[bold cyan]Investigation Status[/bold cyan]")
+        self.console.print(f"[dim]{'─' * 50}[/dim]")
+        self.console.print(status_summary)
+        self.console.print(f"[dim]{'─' * 50}[/dim]\n")
     
     def _handle_fetch_data_intent(self, parameters: Dict[str, Any]) -> str:
         """Handle user intent to fetch data.

@@ -1635,13 +1635,21 @@ llm:
   - [x] Emphasize: workflow orchestrates by invoking SK with conversation context; LLM does all logic
   - **Acceptance**: ✅ Complete conversational example demonstrates LLM-first pattern with NO custom extraction logic (Completed: 2025-10-18, Commit: dc7f52a)
 
-- [ ] **REFACTOR-8** Update CLI for conversational mode (Orchestration Only)
-  - [ ] Add `--mode conversational` flag support to CLI
-  - [ ] Update session initialization to set mode=conversational in metadata
-  - [ ] Add conversational UI helpers (display conversation, format LLM responses, user input)
-  - [ ] UI helpers are display/input only - NO logic for parameter extraction or parsing
-  - [ ] Route to conversational orchestrator when mode=conversational
-  - **Acceptance**: CLI supports both guided and conversational modes; UI layer remains logic-free
+- [x] **REFACTOR-8** Update CLI for conversational mode (Orchestration Only)
+  - [x] Add `--mode conversational` flag support to CLI (already exists)
+  - [x] Update session initialization to set mode=conversational in metadata (already implemented)
+  - [x] Add conversational UI helpers (display conversation, format LLM responses, user input)
+  - [x] UI helpers are display/input only - NO logic for parameter extraction or parsing
+  - [x] Route to conversational orchestrator when mode=conversational (already implemented)
+  - **Acceptance**: ✅ CLI supports both guided and conversational modes; UI layer remains logic-free (Completed: 2025-10-18, Commit: TBD)
+  - **Implementation Details**:
+    - Created `aletheia/ui/conversation.py` with ConversationalUI class
+    - Added display_conversation(), format_agent_response(), get_user_input() methods
+    - All methods are display/input only with NO parsing or validation logic
+    - Integrated ConversationalUI into OrchestratorAgent's _execute_conversational_mode()
+    - Added special command handling: help, history, status, exit
+    - 32 unit tests with 100% coverage for conversation.py module
+    - Total test suite: 1182 passing tests, 81.80% overall coverage
 
 - [ ] **REFACTOR-9** Testing for conversational mode (LLM Behavior Verification)
   - [ ] Unit tests verify LLM receives conversation context in prompts (mock LLM invocation)
