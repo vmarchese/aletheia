@@ -1626,14 +1626,14 @@ llm:
   - [x] Helpers are pure data accessors - NO custom parsing, extraction, or transformation logic
   - **Acceptance**: ✅ Scratchpad supports conversational data storage; helpers are simple getters/setters only (Completed: 2025-10-18, Commit: b283b9c)
 
-- [ ] **REFACTOR-7** Create conversational flow reference (LLM-Delegated Example)
-  - [ ] Create `aletheia/agents/workflows/conversational.py` as reference implementation
-  - [ ] Document how LLM handles intent understanding (via enhanced prompts, not custom code)
-  - [ ] Document how LLM extracts parameters from conversation (via scratchpad context in prompts)
-  - [ ] Show example prompts for conversational parameter extraction
-  - [ ] Show example of LLM-generated clarifying questions
-  - [ ] Emphasize: workflow orchestrates by invoking SK with conversation context; LLM does all logic
-  - **Acceptance**: Complete conversational example demonstrates LLM-first pattern with NO custom extraction logic
+- [x] **REFACTOR-7** Create conversational flow reference (LLM-Delegated Example)
+  - [x] Create `aletheia/agents/workflows/conversational.py` as reference implementation
+  - [x] Document how LLM handles intent understanding (via enhanced prompts, not custom code)
+  - [x] Document how LLM extracts parameters from conversation (via scratchpad context in prompts)
+  - [x] Show example prompts for conversational parameter extraction
+  - [x] Show example of LLM-generated clarifying questions
+  - [x] Emphasize: workflow orchestrates by invoking SK with conversation context; LLM does all logic
+  - **Acceptance**: ✅ Complete conversational example demonstrates LLM-first pattern with NO custom extraction logic (Completed: 2025-10-18, Commit: dc7f52a)
 
 - [ ] **REFACTOR-8** Update CLI for conversational mode (Orchestration Only)
   - [ ] Add `--mode conversational` flag support to CLI
