@@ -13,7 +13,7 @@ functions for:
 
 import json
 from datetime import datetime
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List
 
 from semantic_kernel.functions import kernel_function
 
@@ -61,9 +61,9 @@ class KubernetesPlugin:
         self,
         pod: Annotated[str, "The name of the pod to fetch logs from"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-        container: Annotated[Optional[str], "Optional container name within the pod"] = None,
+        container: Annotated[str | None, "Optional container name within the pod"] = None,
         sample_size: Annotated[int, "Target number of log entries to return (default: 200)"] = 200,
-        since_minutes: Annotated[Optional[int], "Fetch logs from the last N minutes"] = None,
+        since_minutes: Annotated[int | None, "Fetch logs from the last N minutes"] = None,
     ) -> Annotated[str, "JSON string containing logs, summary, and metadata"]:
         """Fetch logs from a Kubernetes pod.
         
@@ -149,7 +149,7 @@ class KubernetesPlugin:
     def list_pods(
         self,
         namespace: Annotated[str, "The Kubernetes namespace to list pods from"] = "default",
-        selector: Annotated[Optional[str], "Optional label selector (e.g., 'app=payments-svc')"] = None,
+        selector: Annotated[str | None, "Optional label selector (e.g., 'app=payments-svc')"] = None,
     ) -> Annotated[str, "JSON array of pod names"]:
         """List pods in a Kubernetes namespace.
         

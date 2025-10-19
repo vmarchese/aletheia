@@ -27,6 +27,7 @@ from aletheia.plugins.prometheus_plugin import PrometheusPlugin
 from aletheia.scratchpad import ScratchpadSection
 from aletheia.utils.retry import retry_with_backoff
 from aletheia.utils.validation import validate_time_window
+from aletheia.utils.logging import log_info, log_error, log_prompt
 
 
 class DataFetcherAgent(SKBaseAgent):
@@ -146,9 +147,15 @@ class DataFetcherAgent(SKBaseAgent):
         # Read problem description from scratchpad
         problem = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
         
+        # Log problem data for debugging
+        log_info(f"Data Fetcher - Problem description: {problem}")
+        log_info(f"Data Fetcher - Sources requested: {sources}")
+        
         # Determine which sources to fetch from
         sources_to_fetch = self._determine_sources(sources, problem)
+        log_info(f"Data Fetcher - Sources determined: {sources_to_fetch}")
         if not sources_to_fetch:
+            log_error("No data sources specified or available")
             raise ValueError("No data sources specified or available")
         
         # Parse time window
@@ -197,6 +204,9 @@ class DataFetcherAgent(SKBaseAgent):
         # Build prompt for SK agent (includes conversation history if available)
         prompt = self._build_sk_prompt(sources, time_range, problem, **kwargs)
         
+        # Log the prompt for debugging
+        log_prompt("data_fetcher", prompt, self._model if hasattr(self, '_model') else "unknown")
+        
         # Invoke SK agent - it will automatically call plugin functions
         try:
             response = await self.invoke_async(prompt, settings={"temperature": 0.1})
@@ -221,6 +231,8 @@ class DataFetcherAgent(SKBaseAgent):
             return results
             
         except Exception as e:
+            # Log the SK error for debugging
+            log_error(f"SK agent execution failed: {str(e)}")
             # If SK fails, fall back to direct mode
             return self._execute_direct(sources, time_range, problem, **kwargs)
     
@@ -335,6 +347,14 @@ class DataFetcherAgent(SKBaseAgent):
             if affected_services:
                 description += f"\nAffected services: {', '.join(affected_services)}"
             
+            # Add pod/namespace info if available
+            if problem.get("pod"):
+                description += f"\nPod: {problem['pod']}"
+            if problem.get("namespace"):
+                description += f"\nNamespace: {problem['namespace']}"
+            if problem.get("container"):
+                description += f"\nContainer: {problem['container']}"
+            
             # Format conversation history
             if isinstance(conversation_history, list):
                 # List of message dicts
@@ -360,7 +380,7 @@ class DataFetcherAgent(SKBaseAgent):
             
             return prompt
         
-        # Guided mode: Use structured prompt with explicit parameters
+        # Guided mode: Simple prompt that relies on system instructions
         start_time = time_range[0].isoformat()
         end_time = time_range[1].isoformat()
         
@@ -368,91 +388,61 @@ class DataFetcherAgent(SKBaseAgent):
         description = problem.get("description", "")
         user_input = problem.get("user_input", {})  # Additional context from user interactions
         
-        prompt = f"""Collect observability data for troubleshooting the following issue.
+        # Build a simple, direct prompt
+        prompt = f"""Collect observability data for this issue:
 
-=== PROBLEM CONTEXT ===
-Description: {description}
-Affected services: {', '.join(affected_services) if affected_services else 'Unknown'}
-Time window: {start_time} to {end_time}
-Data sources available: {', '.join(sources)}
-"""
+{description}"""
+        
+        # Add affected services if available
+        if affected_services:
+            prompt += f"\nAffected services: {', '.join(affected_services)}"
         
         # Add user-provided context if available
         if user_input:
-            prompt += "\n=== USER-PROVIDED INFORMATION ===\n"
+            prompt += "\n\nAdditional context:"
             for key, value in user_input.items():
-                prompt += f"{key}: {value}\n"
+                prompt += f"\n- {key}: {value}"
         
-        prompt += "\n=== INSTRUCTIONS ===\n"
+        # Add explicit parameters if provided
+        explicit_params = []
+        if kwargs.get("pod"):
+            explicit_params.append(f"Pod: {kwargs['pod']}")
+        if kwargs.get("namespace"):
+            explicit_params.append(f"Namespace: {kwargs['namespace']}")
+        if kwargs.get("container"):
+            explicit_params.append(f"Container: {kwargs['container']}")
+        if kwargs.get("query"):
+            explicit_params.append(f"Prometheus query: {kwargs['query']}")
+        if kwargs.get("template"):
+            explicit_params.append(f"Prometheus template: {kwargs['template']}")
         
-        # Add source-specific parameters
-        if "kubernetes" in sources:
-            pod = kwargs.get("pod")
-            namespace = kwargs.get("namespace", "default")
-            container = kwargs.get("container")
-            
-            prompt += f"""
-KUBERNETES DATA COLLECTION:
-"""
-            
-            if pod:
-                prompt += f"- Pod: {pod} (explicitly specified)\n"
-            else:
-                prompt += """- Pod: You need to determine the pod name from the context above.
-  * Check the problem description for pod names or identifiers
-  * Check user-provided information for pod names
-  * Check affected services and use list_kubernetes_pods to discover pods
-  * Look for any mentions of specific pods in the problem context
-"""
-            
-            if namespace and namespace != "default":
-                prompt += f"- Namespace: {namespace} (explicitly specified)\n"
-            else:
-                prompt += """- Namespace: You need to determine the namespace from the context above.
-  * Check the problem description for namespace information
-  * Check user-provided information for namespace
-  * Look for environment indicators (production, staging, dev, etc.)
-  * If not found, use 'default' as fallback
-"""
-            
-            if container:
-                prompt += f"- Container: {container} (explicitly specified)\n"
-            else:
-                prompt += "- Container: Use default container unless context specifies otherwise\n"
-            
-            prompt += """- Log priorities: Focus on ERROR, FATAL, and CRITICAL level logs
-- Time window: Use the time range specified above
+        if explicit_params:
+            prompt += "\n\nExplicit parameters:\n- " + "\n- ".join(explicit_params)
+        
+        # Add time window and sources
+        prompt += f"""
 
-IMPORTANT: Carefully read the problem description and user-provided information to infer the correct
-pod name and namespace. Look for natural language mentions like "the payments pod", "in production",
-"pod payments-svc-123", "namespace: staging", etc.
-"""
-        
-        if "prometheus" in sources:
-            query = kwargs.get("query")
-            template = kwargs.get("template")
-            
-            prompt += f"""
-For Prometheus:
-- Query: {query if query else 'generate from problem description'}
-- Template: {template if template else 'error_rate (if applicable)'}
-"""
-        
-        prompt += """
-Please use the available plugins to:
-1. Fetch data from the specified sources
-2. Collect logs and metrics relevant to the problem
-3. Focus on errors and anomalies
-4. Return a JSON summary of what was collected
+Time window: {start_time} to {end_time}
+Available data sources: {', '.join(sources)}
 
-Format your response as JSON with this structure:
-{
-    "<source>": {
+Task:
+1. Determine which data sources are relevant for this specific issue
+2. Use the appropriate plugin functions to collect data (only call functions for relevant sources)
+3. Extract parameters (pod names, namespaces, services, metrics) from the description
+
+For example:
+- For Kubernetes issues: use kubernetes.fetch_kubernetes_logs(), kubernetes.list_kubernetes_pods(), etc.
+- For metrics/performance issues: use prometheus.fetch_prometheus_metrics()
+- You don't need to use ALL available sources - only the ones relevant to this issue
+
+Return your results as JSON:
+{{
+    "<source>": {{
         "count": <number of data points>,
         "summary": "<brief summary>",
-        "metadata": {<relevant metadata>}
-    }
-}
+        "metadata": {{<relevant metadata>}}
+    }}
+}}
 """
         
         return prompt

@@ -34,7 +34,14 @@ from rich.table import Table
 from aletheia.agents.base import BaseAgent
 from aletheia.scratchpad import ScratchpadSection
 from aletheia.ui.conversation import ConversationalUI
-from aletheia.utils.logging import log_agent_transition, is_trace_enabled
+from aletheia.utils.logging import (
+    log_agent_transition,
+    is_trace_enabled,
+    log_prompt,
+    log_prompt_response,
+    log_info,
+    log_error
+)
 
 # SK orchestration support (optional, for future use)
 try:
@@ -312,11 +319,17 @@ class OrchestratorAgent(BaseAgent):
             # Show agent is thinking
             self.conversational_ui.display_agent_thinking("Analyzing your request...")
             
+            # Log user message
+            log_info(f"User message: {user_message}")
+            
             # Understand user intent using LLM
             intent_result = self._understand_user_intent(user_message, conversation_history)
             intent = intent_result.get("intent")
             parameters = intent_result.get("parameters", {})
             confidence = intent_result.get("confidence", 0.0)
+            
+            # Log intent understanding result
+            log_info(f"Intent: {intent} (confidence: {confidence:.2f}), Parameters: {parameters}")
             
             # Decide routing using LLM (LLM-First: no hardcoded logic)
             routing_decision = self._decide_next_agent(
@@ -328,6 +341,9 @@ class OrchestratorAgent(BaseAgent):
             
             action = routing_decision.get("action")
             suggested_response = routing_decision.get("suggested_response", "")
+            
+            # Log routing decision
+            log_info(f"Routing decision: action={action}, reasoning={routing_decision.get('reasoning', 'N/A')}")
             
             # Execute based on LLM's routing decision
             response = None
@@ -589,15 +605,25 @@ Guide me through the investigation process."""
                 {"role": "user", "content": user_prompt}
             ]
             
+            # Log prompt for tracing
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            log_prompt("orchestrator", full_prompt, llm._llm_provider.model if hasattr(llm, '_llm_provider') else "unknown")
+            
             response = llm.complete(messages, temperature=0.3)  # Low temperature for consistent intent classification
             
-            # Parse JSON response
-            intent_data = json.loads(response)
+            # Parse JSON response (extract content from LLMResponse)
+            response_content = response.content if hasattr(response, 'content') else str(response)
+            
+            # Log response for tracing
+            log_prompt_response("orchestrator", response_content)
+            
+            intent_data = json.loads(response_content)
             
             return intent_data
         
         except (json.JSONDecodeError, Exception) as e:
             # Fallback to default intent if parsing fails
+            log_error(f"Intent understanding failed: {e}", exception=e)
             self.console.print(f"[yellow]Warning: Intent understanding failed: {e}[/yellow]")
             return {
                 "intent": UserIntent.CLARIFY.value,
@@ -657,15 +683,25 @@ Guide me through the investigation process."""
                 {"role": "user", "content": user_prompt}
             ]
             
+            # Log prompt for tracing
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            log_prompt("orchestrator", full_prompt, llm._llm_provider.model if hasattr(llm, '_llm_provider') else "unknown")
+            
             response = llm.complete(messages, temperature=0.3)
             
-            # Parse JSON response
-            routing_decision = json.loads(response)
+            # Parse JSON response (extract content from LLMResponse)
+            response_content = response.content if hasattr(response, 'content') else str(response)
+            
+            # Log response for tracing
+            log_prompt_response("orchestrator", response_content)
+            
+            routing_decision = json.loads(response_content)
             
             return routing_decision
         
         except (json.JSONDecodeError, Exception) as e:
             # Fallback to clarification if parsing fails
+            log_error(f"Agent routing decision failed: {e}", exception=e)
             self.console.print(f"[yellow]Warning: Agent routing failed: {e}[/yellow]")
             return {
                 "action": "clarify",
@@ -885,7 +921,8 @@ based on the current investigation state. Be helpful, concise, and guide them to
             ]
             
             response = llm.complete(messages, temperature=0.7)
-            return response
+            response_content = response.content if hasattr(response, 'content') else str(response)
+            return response_content
         
         except Exception as e:
             return "I'm here to help investigate your issue. What would you like to know?"
@@ -916,7 +953,7 @@ based on the current investigation state. Be helpful, concise, and guide them to
         """Update problem description with new parameters.
         
         Args:
-            parameters: Parameters to update (services, time_window, etc.)
+            parameters: Parameters to update (services, time_window, pod, namespace, etc.)
         """
         problem_data = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
         
@@ -926,6 +963,19 @@ based on the current investigation state. Be helpful, concise, and guide them to
             problem_data["time_window"] = parameters["time_window"]
         if parameters.get("keywords"):
             problem_data["keywords"] = parameters.get("keywords", [])
+        
+        # Add Kubernetes-specific parameters
+        if parameters.get("pod"):
+            problem_data["pod"] = parameters["pod"]
+        if parameters.get("namespace"):
+            problem_data["namespace"] = parameters["namespace"]
+        if parameters.get("container"):
+            problem_data["container"] = parameters["container"]
+        
+        # Add any other parameters that might be useful
+        for key in ["data_sources", "error_patterns", "metrics"]:
+            if key in parameters:
+                problem_data[key] = parameters[key]
         
         problem_data["updated_at"] = datetime.now().isoformat()
         
@@ -982,7 +1032,9 @@ Generate a helpful response that:
                 {"role": "user", "content": context}
             ]
             
-            return llm.complete(messages, temperature=0.7)
+            response = llm.complete(messages, temperature=0.7)
+            response_content = response.content if hasattr(response, 'content') else str(response)
+            return response_content
         
         except Exception as e:
             self.console.print(f"[yellow]Warning: Clarification generation failed: {e}[/yellow]")
@@ -1045,7 +1097,9 @@ Generate a natural response that:
                 {"role": "user", "content": context}
             ]
             
-            return llm.complete(messages, temperature=0.7)
+            response = llm.complete(messages, temperature=0.7)
+            response_content = response.content if hasattr(response, 'content') else str(response)
+            return response_content
         
         except Exception as e:
             self.console.print(f"[yellow]Warning: Response generation failed: {e}[/yellow]")
@@ -1193,7 +1247,14 @@ Generate a natural response that:
         
         # Execute agent with error handling
         try:
-            result = agent.execute(**kwargs)
+            # Check if execute is async
+            import inspect
+            if inspect.iscoroutinefunction(agent.execute):
+                # Run async execute with asyncio
+                import asyncio
+                result = asyncio.run(agent.execute(**kwargs))
+            else:
+                result = agent.execute(**kwargs)
             self.console.print(f"[green]✓[/green] {agent_display_name} completed successfully\n")
             return {"success": True, "result": result}
         except Exception as e:

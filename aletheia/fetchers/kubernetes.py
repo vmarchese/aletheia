@@ -1,6 +1,7 @@
 """Kubernetes data fetcher for pod logs, events, and resource status."""
 
 import json
+import logging
 import random
 import subprocess
 from datetime import datetime, timedelta
@@ -21,12 +22,22 @@ class KubernetesFetcher(BaseFetcher):
     - Random samples other levels to reach target count
     """
 
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the Kubernetes fetcher.
+
+        Args:
+            config: Configuration dictionary for the fetcher
+        """
+        self.logger = logging.getLogger(self.__class__.__name__)
+        super().__init__(config)
+
     def validate_config(self) -> None:
         """Validate Kubernetes configuration.
 
         Raises:
             ValueError: If required configuration is missing
         """
+        self.logger.debug("Starting validate_config")
         if "context" not in self.config:
             raise ValueError("Kubernetes context is required in config")
 
@@ -54,11 +65,19 @@ class KubernetesFetcher(BaseFetcher):
             ConnectionError: If kubectl command fails
             QueryError: If log parsing fails
         """
+        self.logger.debug(f"Starting fetch with time_window={time_window}, kwargs={kwargs}")
         namespace = kwargs.get("namespace", self.config.get("namespace", "default"))
         pod = kwargs.get("pod")
         container = kwargs.get("container")
         sample_size = kwargs.get("sample_size", 200)
         always_include_levels = kwargs.get("always_include_levels", ["ERROR", "FATAL"])
+
+        # Set default time window to 2 hours if not provided
+        if time_window is None:
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=2)
+            time_window = (start_time, end_time)
+            self.logger.debug(f"Using default 2-hour time window: {time_window}")
 
         # Fetch raw logs
         raw_logs = self._fetch_raw_logs(namespace, pod, container, time_window)
@@ -112,6 +131,7 @@ class KubernetesFetcher(BaseFetcher):
         Raises:
             ConnectionError: If kubectl command fails
         """
+        self.logger.debug(f"Starting _fetch_raw_logs for namespace={namespace}, pod={pod}, container={container}, time_window={time_window}")
         cmd = [
             "kubectl",
             "--context", self.config["context"],
@@ -173,6 +193,7 @@ class KubernetesFetcher(BaseFetcher):
         Raises:
             QueryError: If log parsing fails
         """
+        self.logger.debug(f"Starting _parse_logs with {len(raw_logs)} characters of raw logs")
         parsed = []
 
         for line in raw_logs.strip().split("\n"):
@@ -208,6 +229,7 @@ class KubernetesFetcher(BaseFetcher):
         Returns:
             Extracted log level or "INFO" as default
         """
+        self.logger.debug(f"Starting _extract_level_from_message for message: {message[:50]}...")
         message_upper = message.upper()
 
         # Check for common log level indicators
@@ -240,6 +262,7 @@ class KubernetesFetcher(BaseFetcher):
         Returns:
             Sampled list of log entries
         """
+        self.logger.debug(f"Starting _sample_logs with {len(logs)} logs, sample_size={sample_size}, always_include_levels={always_include_levels}")
         if len(logs) <= sample_size:
             return logs
 
@@ -285,6 +308,7 @@ class KubernetesFetcher(BaseFetcher):
         Returns:
             Tuple of (start_time, end_time) for actual log range
         """
+        self.logger.debug(f"Starting _get_time_range with {len(logs)} logs, requested_window={requested_window}")
         if not logs:
             # No logs, return requested window or current time
             if requested_window:
@@ -321,6 +345,7 @@ class KubernetesFetcher(BaseFetcher):
         Returns:
             Summary string
         """
+        self.logger.debug(f"Starting _generate_summary with {len(logs)} logs")
         if not logs:
             return "No logs found"
 
@@ -369,6 +394,7 @@ class KubernetesFetcher(BaseFetcher):
         Raises:
             ConnectionError: If kubectl command fails
         """
+        self.logger.debug(f"Starting list_pods with namespace={namespace}, selector={selector}")
         namespace = namespace or self.config.get("namespace", "default")
 
         cmd = [
@@ -410,6 +436,7 @@ class KubernetesFetcher(BaseFetcher):
         Raises:
             ConnectionError: If kubectl command fails
         """
+        self.logger.debug(f"Starting get_pod_status for pod={pod}, namespace={namespace}")
         namespace = namespace or self.config.get("namespace", "default")
 
         cmd = [
@@ -458,6 +485,7 @@ class KubernetesFetcher(BaseFetcher):
         Raises:
             ConnectionError: If connection test fails
         """
+        self.logger.debug("Starting test_connection")
         cmd = [
             "kubectl",
             "--context", self.config["context"],
@@ -484,6 +512,7 @@ class KubernetesFetcher(BaseFetcher):
         Returns:
             Dictionary describing fetcher capabilities
         """
+        self.logger.debug("Starting get_capabilities")
         return {
             "supports_time_window": True,
             "supports_streaming": False,

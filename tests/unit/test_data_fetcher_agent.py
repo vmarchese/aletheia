@@ -10,6 +10,19 @@ from aletheia.scratchpad import Scratchpad, ScratchpadSection
 from aletheia.llm.provider import LLMResponse
 
 
+# Helper to create async generator mock for SK ChatCompletionAgent.invoke()
+async def create_async_generator_response(content: str):
+    """Create an async generator that yields a mock ChatMessageContent.
+    
+    This simulates the behavior of SK's ChatCompletionAgent.invoke() which
+    returns an async generator that yields ChatMessageContent objects.
+    """
+    # Create a mock message with content attribute
+    mock_message = Mock()
+    mock_message.content = content
+    yield mock_message
+
+
 class TestDataFetcherAgentInitialization:
     """Test Data Fetcher Agent initialization."""
     
@@ -942,7 +955,8 @@ class TestKubernetesParameterExtraction:
         assert "payments-svc-abc123" in prompt
         assert "production" in prompt
         assert "crashing repeatedly" in prompt
-        assert "PROBLEM CONTEXT" in prompt
+        # Simple prompt should include description directly
+        assert "Collect observability data" in prompt
     
     def test_prompt_includes_user_input_context(self):
         """Test that SK prompt includes user-provided information."""
@@ -968,13 +982,13 @@ class TestKubernetesParameterExtraction:
         prompt = agent._build_sk_prompt(sources, time_range, problem)
         
         # Verify user input is included
-        assert "USER-PROVIDED INFORMATION" in prompt
+        assert "Additional context" in prompt
         assert "api-service-xyz789" in prompt
         assert "staging" in prompt
         assert "staging cluster" in prompt
     
     def test_prompt_guides_llm_to_infer_pod(self):
-        """Test that prompt instructs LLM to infer pod name from context."""
+        """Test that prompt provides context for LLM to extract parameters."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -991,13 +1005,13 @@ class TestKubernetesParameterExtraction:
         
         prompt = agent._build_sk_prompt(sources, time_range, problem)
         
-        # Verify LLM guidance is present
-        assert "determine the pod name from the context" in prompt.lower()
-        assert "check the problem description" in prompt.lower()
-        assert "affected services" in prompt.lower()
+        # Verify context is provided and instructions to use plugins
+        assert "Service is down" in prompt
+        assert "plugin" in prompt.lower()
+        assert "kubernetes" in prompt.lower()
     
     def test_prompt_guides_llm_to_infer_namespace(self):
-        """Test that prompt instructs LLM to infer namespace from context."""
+        """Test that prompt provides context for LLM to extract namespace."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -1014,9 +1028,9 @@ class TestKubernetesParameterExtraction:
         
         prompt = agent._build_sk_prompt(sources, time_range, problem)
         
-        # Verify namespace guidance is present
-        assert "determine the namespace from the context" in prompt.lower()
-        assert "environment indicators" in prompt.lower() or "production" in prompt.lower()
+        # Verify context is present (system prompt handles extraction)
+        assert "production" in prompt.lower()
+        assert "kubernetes" in prompt.lower()
     
     def test_explicit_kwargs_shown_in_prompt(self):
         """Test that explicitly provided kwargs are shown as specified in prompt."""
@@ -1042,10 +1056,11 @@ class TestKubernetesParameterExtraction:
             namespace="production"
         )
         
-        # Verify explicit values are marked as such
+        # Verify explicit values are in the prompt
         assert "specific-pod-123" in prompt
-        assert "explicitly specified" in prompt.lower()
         assert "production" in prompt
+        # Should be under explicit parameters section
+        assert "Explicit parameters" in prompt or "Pod: specific-pod-123" in prompt
     
     def test_fetch_kubernetes_uses_explicit_kwargs(self):
         """Test that _fetch_kubernetes uses explicitly provided kwargs."""
@@ -1129,7 +1144,7 @@ class TestKubernetesParameterExtraction:
         assert call_kwargs["pod"] == "payments-svc-pod-123"
     
     def test_prompt_provides_context_for_llm_discovery(self):
-        """Test that prompt provides rich context for LLM to discover pod via list_pods."""
+        """Test that prompt provides context for LLM to work with."""
         config = {
             "llm": {"default_model": "gpt-4o-mini"},
             "data_sources": {"kubernetes": {"context": "test"}}
@@ -1146,8 +1161,10 @@ class TestKubernetesParameterExtraction:
         
         prompt = agent._build_sk_prompt(sources, time_range, problem)
         
-        # Verify prompt suggests using list_kubernetes_pods
-        assert "list_kubernetes_pods" in prompt.lower() or "discover pods" in prompt.lower()
+        # Verify context is present
+        assert "web server" in prompt.lower()
+        assert "500 errors" in prompt or "web-server" in prompt
+        assert "plugin" in prompt.lower()
 
 
 class TestConversationalMode:
@@ -1223,9 +1240,9 @@ class TestConversationalMode:
         # No conversation history - guided mode
         prompt = agent._build_sk_prompt(sources, time_range, problem)
         
-        # Verify guided mode format
-        assert "PROBLEM CONTEXT" in prompt
-        assert "INSTRUCTIONS" in prompt
+        # Verify guided mode format (simple, direct prompt)
+        assert "Payment errors" in prompt
+        assert "Collect observability data" in prompt
         assert "CONVERSATION HISTORY" not in prompt
     
     @pytest.mark.asyncio
@@ -1248,9 +1265,10 @@ class TestConversationalMode:
         
         # Mock read_scratchpad to return conversation history
         with patch.object(agent, 'read_scratchpad', side_effect=lambda section: conversation_history if section == ScratchpadSection.CONVERSATION_HISTORY else {}):
-            # Mock SK agent invocation
+            # Mock SK agent invocation with async generator
             mock_agent = AsyncMock()
-            mock_agent.invoke = AsyncMock(return_value='{"kubernetes": {"count": 10, "summary": "10 logs collected"}}')
+            response_content = '{"kubernetes": {"count": 10, "summary": "10 logs collected"}}'
+            mock_agent.invoke = Mock(return_value=create_async_generator_response(response_content))
             agent._agent = mock_agent
             
             # Mock kernel property to avoid creating actual kernel
@@ -1286,9 +1304,10 @@ class TestConversationalMode:
         
         # Mock read_scratchpad to return conversation history
         with patch.object(agent, 'read_scratchpad', side_effect=lambda section: conversation_history if section == ScratchpadSection.CONVERSATION_HISTORY else {}):
-            # Mock SK agent
+            # Mock SK agent with async generator
             mock_agent = AsyncMock()
-            mock_agent.invoke = AsyncMock(return_value='{"kubernetes": {"count": 5, "summary": "5 logs"}}')
+            response_content = '{"kubernetes": {"count": 5, "summary": "5 logs"}}'
+            mock_agent.invoke = Mock(return_value=create_async_generator_response(response_content))
             agent._agent = mock_agent
             
             with patch.object(type(agent), 'kernel', new_callable=PropertyMock) as mock_kernel_prop:

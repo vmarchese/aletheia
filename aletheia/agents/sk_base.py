@@ -198,7 +198,6 @@ class SKBaseAgent:
             
             # Create ChatCompletionAgent
             self._agent = ChatCompletionAgent(
-                service_id="default",
                 kernel=self.kernel,
                 name=self.agent_name,
                 instructions=instructions,
@@ -269,7 +268,6 @@ class SKBaseAgent:
         # Create custom agent if system_prompt is provided
         if system_prompt:
             custom_agent = ChatCompletionAgent(
-                service_id="default",
                 kernel=self.kernel,
                 name=self.agent_name,
                 instructions=system_prompt,
@@ -313,20 +311,31 @@ class SKBaseAgent:
             function_choice_behavior=FunctionChoiceBehavior.Auto()
         )
         
-        # Invoke agent
-        response = await agent_to_use.invoke(
-            history=chat_history,
-            settings=exec_settings
+        # Invoke agent with history as positional arg and settings dict keyed by service_id
+        response_generator = agent_to_use.invoke(
+            chat_history,
+            settings={"default": exec_settings}
         )
         
-        # Extract response content
-        if isinstance(response, list):
-            # Multiple messages returned
-            response_text = "\n".join([msg.content for msg in response if hasattr(msg, 'content')])
-        elif hasattr(response, 'content'):
-            response_text = response.content
+        # Collect all responses from the async generator
+        responses = []
+        async for message in response_generator:
+            responses.append(message)
+        
+        # Extract response content from collected messages
+        if responses:
+            # Get the last response (most recent)
+            response = responses[-1] if len(responses) == 1 else responses
+            
+            if isinstance(response, list):
+                # Multiple messages returned
+                response_text = "\n".join([msg.content for msg in response if hasattr(msg, 'content')])
+            elif hasattr(response, 'content'):
+                response_text = response.content
+            else:
+                response_text = str(response)
         else:
-            response_text = str(response)
+            response_text = ""
         
         # Log response if trace logging is enabled
         if is_trace_enabled():

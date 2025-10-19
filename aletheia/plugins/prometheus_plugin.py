@@ -13,7 +13,7 @@ functions for:
 
 import json
 from datetime import datetime, timedelta
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List
 
 from semantic_kernel.functions import kernel_function
 
@@ -60,9 +60,9 @@ class PrometheusPlugin:
     def fetch_metrics(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
-        start_time: Annotated[Optional[str], "Start time in ISO format (e.g., '2024-10-15T10:00:00')"] = None,
-        end_time: Annotated[Optional[str], "End time in ISO format (e.g., '2024-10-15T12:00:00')"] = None,
-        step: Annotated[Optional[str], "Query resolution step (e.g., '1m', '5m', '1h'). If not specified, adaptive step will be used"] = None,
+        start_time: Annotated[str | None, "Start time in ISO format (e.g., '2024-10-15T10:00:00')"] = None,
+        end_time: Annotated[str | None, "End time in ISO format (e.g., '2024-10-15T12:00:00')"] = None,
+        step: Annotated[str | None, "Query resolution step (e.g., '1m', '5m', '1h'). If not specified, adaptive step will be used"] = None,
         timeout: Annotated[int, "Query timeout in seconds (default: 30)"] = 30,
     ) -> Annotated[str, "JSON string containing metrics, summary, and metadata"]:
         """Fetch metrics from Prometheus using a PromQL query.
