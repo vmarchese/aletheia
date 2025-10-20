@@ -541,10 +541,10 @@ Guide me through the investigation process."""
         # All agents should be SK-based (inherit from SKBaseAgent)
         data_fetcher = self.agent_registry.get("data_fetcher")
         pattern_analyzer = self.agent_registry.get("pattern_analyzer")
-        code_inspector = self.agent_registry.get("code_inspector")
+        # code_inspector = self.agent_registry.get("code_inspector")  # Commented out
         root_cause_analyst = self.agent_registry.get("root_cause_analyst")
         
-        if not all([data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst]):
+        if not all([data_fetcher, pattern_analyzer, root_cause_analyst]):  # code_inspector removed
             raise RuntimeError(
                 "All specialist agents must be registered before creating SK orchestration. "
                 f"Registered: {list(self.agent_registry.keys())}"
@@ -555,7 +555,7 @@ Guide me through the investigation process."""
             triage=triage._agent,  # Get SK agent from SKBaseAgent
             data_fetcher=data_fetcher._agent,
             pattern_analyzer=pattern_analyzer._agent,
-            code_inspector=code_inspector._agent,
+            # code_inspector=code_inspector._agent,  # Commented out
             root_cause_analyst=root_cause_analyst._agent,
             scratchpad=self.scratchpad,
             console=self.console,

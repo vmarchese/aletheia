@@ -174,7 +174,7 @@ def create_aletheia_handoffs(
     triage: Agent,
     data_fetcher: Agent,
     pattern_analyzer: Agent,
-    code_inspector: Agent,
+    # code_inspector: Agent,
     root_cause_analyst: Agent
 ) -> OrchestrationHandoffs:
     """Create OrchestrationHandoffs for Aletheia agents.
@@ -186,18 +186,18 @@ def create_aletheia_handoffs(
     
     - triage → data_fetcher: "Transfer to data fetcher when user wants to collect logs/metrics"
     - triage → pattern_analyzer: "Transfer to pattern analyzer when user wants to analyze patterns"
-    - triage → code_inspector: "Transfer to code inspector when user wants to inspect code"
+    # - triage → code_inspector: "Transfer to code inspector when user wants to inspect code"
     - triage → root_cause_analyst: "Transfer to root cause analyst when user wants diagnosis"
     - data_fetcher → triage: "Transfer back to triage after data collection"
     - pattern_analyzer → triage: "Transfer back to triage after pattern analysis"
-    - code_inspector → triage: "Transfer back to triage after code inspection"
+    # - code_inspector → triage: "Transfer back to triage after code inspection"
     - root_cause_analyst → triage: "Transfer back to triage after diagnosis"
     
     Args:
         triage: TriageAgent (entry point)
         data_fetcher: DataFetcherAgent
         pattern_analyzer: PatternAnalyzerAgent
-        code_inspector: CodeInspectorAgent
+        # code_inspector: CodeInspectorAgent
         root_cause_analyst: RootCauseAnalystAgent
     
     Returns:
@@ -217,11 +217,11 @@ def create_aletheia_handoffs(
         pattern_analyzer,
         "Transfer to pattern analyzer when user wants to analyze patterns, anomalies, or correlations in data"
     )
-    handoffs.Add(
-        triage,
-        code_inspector,
-        "Transfer to code inspector when user wants to inspect source code or stack traces"
-    )
+    # handoffs.Add(
+    #     triage,
+    #     code_inspector,
+    #     "Transfer to code inspector when user wants to inspect source code or stack traces"
+    # )
     handoffs.Add(
         triage,
         root_cause_analyst,
@@ -239,11 +239,11 @@ def create_aletheia_handoffs(
         triage,
         "Transfer back to triage after pattern analysis completes"
     )
-    handoffs.Add(
-        code_inspector,
-        triage,
-        "Transfer back to triage after code inspection completes"
-    )
+    # handoffs.Add(
+    #     code_inspector,
+    #     triage,
+    #     "Transfer back to triage after code inspection completes"
+    # )
     handoffs.Add(
         root_cause_analyst,
         triage,
@@ -257,7 +257,7 @@ def create_orchestration_with_sk_agents(
     triage: Agent,
     data_fetcher: Agent,
     pattern_analyzer: Agent,
-    code_inspector: Agent,
+    # code_inspector: Agent,
     root_cause_analyst: Agent,
     scratchpad: Scratchpad,
     console: Any,
@@ -272,7 +272,7 @@ def create_orchestration_with_sk_agents(
         triage: SK-based TriageAgent (entry point)
         data_fetcher: SK-based DataFetcherAgent
         pattern_analyzer: SK-based PatternAnalyzerAgent  
-        code_inspector: SK-based CodeInspectorAgent
+        # code_inspector: SK-based CodeInspectorAgent
         root_cause_analyst: SK-based RootCauseAnalystAgent
         scratchpad: Scratchpad for shared state
         console: Rich console for output
@@ -286,13 +286,13 @@ def create_orchestration_with_sk_agents(
         triage=triage,
         data_fetcher=data_fetcher,
         pattern_analyzer=pattern_analyzer,
-        code_inspector=code_inspector,
+        # code_inspector=code_inspector,
         root_cause_analyst=root_cause_analyst
     )
     
     # Create and return orchestration
     # Note: All agents included, triage is the entry point
-    agents = [triage, data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst]
+    agents = [triage, data_fetcher, pattern_analyzer, root_cause_analyst]  # code_inspector commented out
     
     return AletheiaHandoffOrchestration(
         agents=agents,

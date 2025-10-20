@@ -1552,6 +1552,52 @@ llm:
 
 ### High Priority (Consider for v1.1)
 
+- [ ] **Prompt Template Management**
+  - [ ] Create `prompts/` directory structure for storing prompt templates
+  - [ ] Define template naming convention (e.g., `<agent>_<operation>.md`)
+  - [ ] Create `.md` files for all existing hardcoded prompts:
+    - [ ] `data_fetcher_sk.md` - Data fetcher SK prompt
+    - [ ] `pattern_analyzer_sk.md` - Pattern analyzer SK prompt
+    - [ ] `code_inspector_sk.md` - Code inspector SK prompt
+    - [ ] `root_cause_analyst_sk.md` - Root cause analyst SK prompt
+    - [ ] `triage_agent_instructions.md` - Triage agent instructions
+    - [ ] `agent_routing.md` - Agent routing prompt
+    - [ ] `conversational_*.md` - All conversational mode prompts
+  - [ ] Implement `PromptTemplateLoader` class in `aletheia/llm/prompts.py`:
+    - [ ] `load_template(template_name: str) -> str` - Load template from file
+    - [ ] `load_with_variables(template_name: str, **kwargs) -> str` - Load and substitute variables
+    - [ ] Template variable substitution (e.g., `{conversation}`, `{problem}`, `{data}`)
+    - [ ] Template caching for performance
+    - [ ] Support for template inheritance/includes (optional)
+  - [ ] Update all agents to load prompts from files:
+    - [ ] Update `SKBaseAgent._build_sk_prompt()` to use template loader
+    - [ ] Update `DataFetcherAgent` conversational prompts
+    - [ ] Update `PatternAnalyzerAgent` conversational prompts
+    - [ ] Update `CodeInspectorAgent` conversational prompts
+    - [ ] Update `RootCauseAnalystAgent` conversational prompts
+    - [ ] Update `TriageAgent` instructions
+    - [ ] Update `OrchestratorAgent` routing prompts
+  - [ ] Add configuration for custom prompt directory:
+    - [ ] `llm.prompt_templates_dir` config option (default: `<package>/prompts/`)
+    - [ ] Support for user-provided custom prompt templates
+    - [ ] Fallback to built-in templates if custom not found
+  - [ ] Update unit tests:
+    - [ ] Test template loading and variable substitution
+    - [ ] Test fallback to built-in templates
+    - [ ] Test custom prompt directory configuration
+    - [ ] Test template caching
+  - [ ] Documentation:
+    - [ ] Document template syntax and variables
+    - [ ] Document how to customize prompts
+    - [ ] Add examples of custom prompt templates
+    - [ ] Update AGENTS.md with prompt template patterns
+  - **Benefits**:
+    - Easier prompt iteration without code changes
+    - Allows users to customize agent behavior via prompts
+    - Better prompt versioning and review process
+    - Separation of concerns (prompts vs code logic)
+  - **Acceptance**: All prompts loaded from .md files; agents work identically to hardcoded version
+
 - [ ] **Conversational Mode**
   - [ ] Implement natural language interaction
   - [ ] LLM-powered intent understanding
