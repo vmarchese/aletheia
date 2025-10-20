@@ -2002,100 +2002,100 @@ Implement complete test services in Golang and Java to validate Aletheia's troub
 
 ### 7.2 Java Error Test Service
 
-- [ ] **7.2.1** Implement Java service core
-  - [ ] Create `test-services/java/` directory structure
-  - [ ] Use Spring Boot 3.x framework
-  - [ ] Initialize Maven project with `pom.xml`
-  - [ ] Implement `/api/v1/error` endpoint that throws uncaught exceptions
-  - [ ] Error types to implement:
-    - [ ] NullPointerException
-    - [ ] ArrayIndexOutOfBoundsException
-    - [ ] ArithmeticException (divide by zero)
-    - [ ] JsonProcessingException
-    - [ ] SQLException (simulated)
-    - [ ] OutOfMemoryError (simulated with large allocation)
-  - [ ] Implement global exception handler that logs but does NOT catch (for testing)
-  - [ ] Use Logback with JSON layout
-  - [ ] Log format: JSON with timestamp, thread, level, logger, message, stack trace
-  - **Acceptance**: Service runs and throws intentional exceptions
+- [x] **7.2.1** Implement Java service core
+  - [x] Create `test-services/java/` directory structure
+  - [x] Use Spring Boot 3.x framework
+  - [x] Initialize Maven project with `pom.xml`
+  - [x] Implement `/api/v1/error` endpoint that throws uncaught exceptions
+  - [x] Error types to implement:
+    - [x] NullPointerException
+    - [x] ArrayIndexOutOfBoundsException
+    - [x] ArithmeticException (divide by zero)
+    - [x] JsonProcessingException
+    - [x] SQLException (simulated)
+    - [x] OutOfMemoryError (simulated with large allocation)
+  - [x] Implement global exception handler that logs but does NOT catch (for testing)
+  - [x] Use Logback with JSON layout
+  - [x] Log format: JSON with timestamp, thread, level, logger, message, stack trace
+  - **Acceptance**: ✅ Service runs and throws intentional exceptions (Completed: 2025-10-20, Commit: 791b4f7)
 
-- [ ] **7.2.2** Implement OpenMetrics exposure
-  - [ ] Add Micrometer dependencies (`micrometer-registry-prometheus`)
-  - [ ] Configure actuator endpoints
-  - [ ] Expose `/actuator/prometheus` endpoint
-  - [ ] Custom metrics to expose:
-    - [ ] `http_server_requests_seconds{method, uri, status}` - Timer
-    - [ ] `jvm_memory_used_bytes{area, id}` - Gauge
-    - [ ] `jvm_gc_pause_seconds` - Summary
-    - [ ] `error_count_total{exception_type}` - Counter
-    - [ ] `exception_thrown_total{exception_class}` - Counter
-  - [ ] Enable JVM metrics (heap, GC, threads)
-  - **Acceptance**: Prometheus endpoint returns valid metrics
+- [x] **7.2.2** Implement OpenMetrics exposure
+  - [x] Add Micrometer dependencies (`micrometer-registry-prometheus`)
+  - [x] Configure actuator endpoints
+  - [x] Expose `/actuator/prometheus` endpoint
+  - [x] Custom metrics to expose:
+    - [x] `http_server_requests_seconds{method, uri, status}` - Timer
+    - [x] `jvm_memory_used_bytes{area, id}` - Gauge
+    - [x] `jvm_gc_pause_seconds` - Summary
+    - [x] `error_count_total{exception_type}` - Counter
+    - [x] `exception_thrown_total{exception_class}` - Counter
+  - [x] Enable JVM metrics (heap, GC, threads)
+  - **Acceptance**: ✅ Prometheus endpoint returns valid metrics (Completed: 2025-10-20, Commit: 791b4f7)
 
-- [ ] **7.2.3** Implement health probes
-  - [ ] Use Spring Boot Actuator health endpoints
-  - [ ] Configure `/actuator/health/liveness` endpoint
-  - [ ] Configure `/actuator/health/readiness` endpoint:
-    - [ ] Add custom readiness indicator (check dependencies)
-    - [ ] Add configurable delay via `application.properties`
-  - [ ] Add configurable failure scenarios:
-    - [ ] `health.liveness.fail-after-seconds=30`
-    - [ ] `health.readiness.fail-after-seconds=60`
-  - [ ] Implement custom health indicators for testing
-  - **Acceptance**: Actuator health probes work correctly
+- [x] **7.2.3** Implement health probes
+  - [x] Use Spring Boot Actuator health endpoints
+  - [x] Configure `/actuator/health/liveness` endpoint
+  - [x] Configure `/actuator/health/readiness` endpoint:
+    - [x] Add custom readiness indicator (check dependencies)
+    - [x] Add configurable delay via `application.properties`
+  - [x] Add configurable failure scenarios:
+    - [x] `health.liveness.fail-after-seconds=30`
+    - [x] `health.readiness.fail-after-seconds=60`
+  - [x] Implement custom health indicators for testing
+  - **Acceptance**: ✅ Actuator health probes work correctly (Completed: 2025-10-20, Commit: 791b4f7)
 
-- [ ] **7.2.4** Implement detailed logging
-  - [ ] Configure Logback with JSON encoder (`logstash-logback-encoder`)
-  - [ ] Structured JSON logging for all requests
-  - [ ] Log fields for each request:
-    - [ ] Timestamp (ISO-8601)
-    - [ ] Thread name
-    - [ ] Log level
-    - [ ] Logger name
-    - [ ] Message
-    - [ ] Exception class (if error)
-    - [ ] Full stack trace with line numbers
-    - [ ] MDC context (request ID, correlation ID)
-  - [ ] Implement request/response logging filter
-  - [ ] Implement exception logging aspect
-  - [ ] Log to stdout (Kubernetes standard)
-  - **Acceptance**: All exceptions logged with complete stack traces
+- [x] **7.2.4** Implement detailed logging
+  - [x] Configure Logback with JSON encoder (`logstash-logback-encoder`)
+  - [x] Structured JSON logging for all requests
+  - [x] Log fields for each request:
+    - [x] Timestamp (ISO-8601)
+    - [x] Thread name
+    - [x] Log level
+    - [x] Logger name
+    - [x] Message
+    - [x] Exception class (if error)
+    - [x] Full stack trace with line numbers
+    - [x] MDC context (request ID, correlation ID)
+  - [x] Implement request/response logging filter
+  - [x] Implement exception logging aspect
+  - [x] Log to stdout (Kubernetes standard)
+  - **Acceptance**: ✅ All exceptions logged with complete stack traces (Completed: 2025-10-20, Commit: 791b4f7)
 
-- [ ] **7.2.5** Create Dockerfile for Java service
-  - [ ] Use multi-stage build:
-    - [ ] Stage 1: Build with `maven:3.9-eclipse-temurin-21`
-    - [ ] Stage 2: Runtime with `eclipse-temurin:21-jre-alpine`
-  - [ ] Copy compiled JAR from build stage
-  - [ ] Create non-root user for security
-  - [ ] Set JVM options:
-    - [ ] `-XX:+UseContainerSupport`
-    - [ ] `-XX:MaxRAMPercentage=75.0`
-    - [ ] `-XX:+HeapDumpOnOutOfMemoryError`
-  - [ ] Expose ports: 8080 (HTTP)
-  - [ ] Add health check instruction
-  - [ ] Optimize image size (~200MB final image)
-  - **Acceptance**: Docker image builds and runs successfully
+- [x] **7.2.5** Create Dockerfile for Java service
+  - [x] Use multi-stage build:
+    - [x] Stage 1: Build with `maven:3.9-eclipse-temurin-21`
+    - [x] Stage 2: Runtime with `eclipse-temurin:21-jre-alpine`
+  - [x] Copy compiled JAR from build stage
+  - [x] Create non-root user for security
+  - [x] Set JVM options:
+    - [x] `-XX:+UseContainerSupport`
+    - [x] `-XX:MaxRAMPercentage=75.0`
+    - [x] `-XX:+HeapDumpOnOutOfMemoryError`
+  - [x] Expose ports: 8080 (HTTP)
+  - [x] Add health check instruction
+  - [x] Optimize image size (~200MB final image)
+  - **Acceptance**: ✅ Docker image builds and runs successfully (Completed: 2025-10-20, Commit: 791b4f7)
 
-- [ ] **7.2.6** Create Kubernetes manifests for Java service
-  - [ ] Create `k8s/java/` directory
-  - [ ] Implement Deployment manifest:
-    - [ ] 2 replicas for availability testing
-    - [ ] Resource requests: 200m CPU, 256Mi memory
-    - [ ] Resource limits: 500m CPU, 512Mi memory
-    - [ ] Liveness probe: `/actuator/health/liveness`, 30s initial delay, 10s period
-    - [ ] Readiness probe: `/actuator/health/readiness`, 20s initial delay, 5s period
-    - [ ] Environment variables: `JAVA_OPTS`, `SPRING_PROFILES_ACTIVE`
-    - [ ] Labels for Prometheus scraping
-  - [ ] Implement Service manifest:
-    - [ ] Type: ClusterIP
-    - [ ] Port 80 → targetPort 8080
-    - [ ] Selector matching deployment labels
-  - [ ] Implement ServiceMonitor:
-    - [ ] Scrape interval: 15s
-    - [ ] Metrics path: `/actuator/prometheus`
-    - [ ] Port: 8080
-  - [ ] Add namespace: `aletheia-test`
-  - **Acceptance**: Service deploys and is discoverable in Kubernetes
+- [x] **7.2.6** Create Kubernetes manifests for Java service
+  - [x] Create `k8s/java/` directory
+  - [x] Implement Deployment manifest:
+    - [x] 2 replicas for availability testing
+    - [x] Resource requests: 200m CPU, 256Mi memory
+    - [x] Resource limits: 500m CPU, 512Mi memory
+    - [x] Liveness probe: `/actuator/health/liveness`, 30s initial delay, 10s period
+    - [x] Readiness probe: `/actuator/health/readiness`, 20s initial delay, 5s period
+    - [x] Environment variables: `JAVA_OPTS`, `SPRING_PROFILES_ACTIVE`
+    - [x] Labels for Prometheus scraping
+  - [x] Implement Service manifest:
+    - [x] Type: ClusterIP
+    - [x] Port 80 → targetPort 8080
+    - [x] Selector matching deployment labels
+  - [x] Implement ServiceMonitor:
+    - [x] Scrape interval: 15s
+    - [x] Metrics path: `/actuator/prometheus`
+    - [x] Port: 8080
+  - [x] Add namespace: `aletheia-test`
+  - **Acceptance**: ✅ Service deploys and is discoverable in Kubernetes (Completed: 2025-10-20, Commit: 791b4f7)
 
 ### 7.3 Integration and Testing Setup
 
