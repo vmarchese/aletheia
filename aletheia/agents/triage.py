@@ -8,6 +8,7 @@ using Semantic Kernel's HandoffOrchestration pattern.
 from typing import Any, Dict
 
 from aletheia.agents.sk_base import SKBaseAgent
+from aletheia.llm.prompts import load_system_prompt
 from aletheia.scratchpad import Scratchpad, ScratchpadSection
 
 
@@ -48,10 +49,18 @@ class TriageAgent(SKBaseAgent):
         These instructions guide the LLM in understanding problems and
         routing to appropriate specialist agents.
         
+        Loads instructions from triage_agent_instructions.md template file.
+        Falls back to hardcoded instructions if template not found.
+        
         Returns:
             Instructions string for SK ChatCompletionAgent
         """
-        return """You are a triage agent for technical troubleshooting investigations.
+        try:
+            # Try to load from template file
+            return load_system_prompt("triage_agent_instructions")
+        except (FileNotFoundError, ValueError):
+            # Fall back to hardcoded instructions
+            return """You are a triage agent for technical troubleshooting investigations.
 
 Your role is to understand user problems and route to appropriate specialist agents.
 

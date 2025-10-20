@@ -80,6 +80,9 @@ class LLMConfig(BaseModel):
     azure_deployment: Optional[str] = None
     azure_endpoint: Optional[str] = None
     azure_api_version: Optional[str] = None
+    
+    # Prompt templates configuration
+    prompt_templates_dir: Optional[str] = None  # Path to custom prompt templates directory
 
     def get_agent_config(self, agent_name: str) -> AgentLLMConfig:
         """Get LLM configuration for a specific agent."""
