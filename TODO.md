@@ -1906,6 +1906,327 @@ llm:
 
 ---
 
+## Phase 7: Test Services for Aletheia Validation (Post-MVP)
+
+### Overview
+
+Implement complete test services in Golang and Java to validate Aletheia's troubleshooting capabilities in a real Kubernetes environment. These services will intentionally generate errors with detailed logging, metrics, and stack traces.
+
+### 7.1 Golang Error Test Service
+
+- [ ] **7.1.1** Implement Go service core
+  - [ ] Create `test-services/golang/` directory structure
+  - [ ] Initialize Go module with `go.mod`
+  - [ ] Implement `/api/v1/error` endpoint that triggers intentional panic
+  - [ ] Error types to implement:
+    - [ ] Nil pointer dereference
+    - [ ] Array index out of bounds
+    - [ ] Divide by zero
+    - [ ] JSON unmarshaling error
+    - [ ] Database connection timeout simulation
+  - [ ] Implement detailed stack trace capture using `runtime.Stack()`
+  - [ ] Use structured logging with `log/slog` or `zap`
+  - [ ] Log format: JSON with timestamp, level, message, stack trace
+  - **Acceptance**: Service compiles and runs with intentional errors
+
+- [ ] **7.1.2** Implement OpenMetrics exposure
+  - [ ] Add Prometheus client library (`github.com/prometheus/client_golang`)
+  - [ ] Expose `/metrics` endpoint with standard Go runtime metrics
+  - [ ] Custom metrics to expose:
+    - [ ] `http_requests_total{endpoint, status}` - Counter
+    - [ ] `http_request_duration_seconds{endpoint}` - Histogram
+    - [ ] `error_count_total{error_type}` - Counter
+    - [ ] `panic_recovery_total` - Counter
+  - [ ] Implement metric labels for error categorization
+  - **Acceptance**: Metrics endpoint returns valid OpenMetrics format
+
+- [ ] **7.1.3** Implement health probes
+  - [ ] Implement `/healthz` liveness probe (always returns 200 OK)
+  - [ ] Implement `/readyz` readiness probe:
+    - [ ] Check external dependencies (simulated)
+    - [ ] Return 503 if not ready, 200 if ready
+    - [ ] Add configurable startup delay (to test pod startup issues)
+  - [ ] Add configurable failure scenarios (env vars):
+    - [ ] `FAIL_LIVENESS_AFTER=30s` - Fail liveness after duration
+    - [ ] `FAIL_READINESS_AFTER=60s` - Fail readiness after duration
+  - **Acceptance**: Probes work correctly in Kubernetes
+
+- [ ] **7.1.4** Implement detailed logging
+  - [ ] Structured JSON logging with all requests
+  - [ ] Log levels: DEBUG, INFO, WARN, ERROR, FATAL
+  - [ ] Log fields for each request:
+    - [ ] Timestamp (RFC3339)
+    - [ ] Request ID (UUID)
+    - [ ] Client IP
+    - [ ] HTTP method and path
+    - [ ] Response status
+    - [ ] Duration (milliseconds)
+    - [ ] Error message (if error)
+    - [ ] Full stack trace (if panic)
+  - [ ] Implement correlation ID propagation
+  - [ ] Log to stdout (Kubernetes standard)
+  - **Acceptance**: All errors logged with complete stack traces
+
+- [ ] **7.1.5** Create Dockerfile for Go service
+  - [ ] Use multi-stage build:
+    - [ ] Stage 1: Build with `golang:1.21-alpine`
+    - [ ] Stage 2: Runtime with `alpine:latest`
+  - [ ] Install CA certificates for HTTPS
+  - [ ] Create non-root user for security
+  - [ ] Copy binary and set entrypoint
+  - [ ] Expose ports: 8080 (HTTP), 9090 (metrics)
+  - [ ] Add health check instruction
+  - [ ] Optimize image size (<20MB final image)
+  - **Acceptance**: Docker image builds and runs successfully
+
+- [ ] **7.1.6** Create Kubernetes manifests for Go service
+  - [ ] Create `k8s/golang/` directory
+  - [ ] Implement Deployment manifest:
+    - [ ] 2 replicas for availability testing
+    - [ ] Resource requests: 50m CPU, 64Mi memory
+    - [ ] Resource limits: 100m CPU, 128Mi memory
+    - [ ] Liveness probe: `/healthz`, 10s initial delay, 5s period
+    - [ ] Readiness probe: `/readyz`, 5s initial delay, 5s period
+    - [ ] Environment variables for configuration
+    - [ ] Labels for Prometheus scraping: `prometheus.io/scrape: "true"`
+  - [ ] Implement Service manifest:
+    - [ ] Type: ClusterIP
+    - [ ] Port 80 → targetPort 8080
+    - [ ] Selector matching deployment labels
+  - [ ] Implement ServiceMonitor (for Prometheus Operator):
+    - [ ] Scrape interval: 15s
+    - [ ] Metrics path: `/metrics`
+    - [ ] Port: 9090
+  - [ ] Add namespace: `aletheia-test`
+  - **Acceptance**: Service deploys and is discoverable in Kubernetes
+
+### 7.2 Java Error Test Service
+
+- [ ] **7.2.1** Implement Java service core
+  - [ ] Create `test-services/java/` directory structure
+  - [ ] Use Spring Boot 3.x framework
+  - [ ] Initialize Maven project with `pom.xml`
+  - [ ] Implement `/api/v1/error` endpoint that throws uncaught exceptions
+  - [ ] Error types to implement:
+    - [ ] NullPointerException
+    - [ ] ArrayIndexOutOfBoundsException
+    - [ ] ArithmeticException (divide by zero)
+    - [ ] JsonProcessingException
+    - [ ] SQLException (simulated)
+    - [ ] OutOfMemoryError (simulated with large allocation)
+  - [ ] Implement global exception handler that logs but does NOT catch (for testing)
+  - [ ] Use Logback with JSON layout
+  - [ ] Log format: JSON with timestamp, thread, level, logger, message, stack trace
+  - **Acceptance**: Service runs and throws intentional exceptions
+
+- [ ] **7.2.2** Implement OpenMetrics exposure
+  - [ ] Add Micrometer dependencies (`micrometer-registry-prometheus`)
+  - [ ] Configure actuator endpoints
+  - [ ] Expose `/actuator/prometheus` endpoint
+  - [ ] Custom metrics to expose:
+    - [ ] `http_server_requests_seconds{method, uri, status}` - Timer
+    - [ ] `jvm_memory_used_bytes{area, id}` - Gauge
+    - [ ] `jvm_gc_pause_seconds` - Summary
+    - [ ] `error_count_total{exception_type}` - Counter
+    - [ ] `exception_thrown_total{exception_class}` - Counter
+  - [ ] Enable JVM metrics (heap, GC, threads)
+  - **Acceptance**: Prometheus endpoint returns valid metrics
+
+- [ ] **7.2.3** Implement health probes
+  - [ ] Use Spring Boot Actuator health endpoints
+  - [ ] Configure `/actuator/health/liveness` endpoint
+  - [ ] Configure `/actuator/health/readiness` endpoint:
+    - [ ] Add custom readiness indicator (check dependencies)
+    - [ ] Add configurable delay via `application.properties`
+  - [ ] Add configurable failure scenarios:
+    - [ ] `health.liveness.fail-after-seconds=30`
+    - [ ] `health.readiness.fail-after-seconds=60`
+  - [ ] Implement custom health indicators for testing
+  - **Acceptance**: Actuator health probes work correctly
+
+- [ ] **7.2.4** Implement detailed logging
+  - [ ] Configure Logback with JSON encoder (`logstash-logback-encoder`)
+  - [ ] Structured JSON logging for all requests
+  - [ ] Log fields for each request:
+    - [ ] Timestamp (ISO-8601)
+    - [ ] Thread name
+    - [ ] Log level
+    - [ ] Logger name
+    - [ ] Message
+    - [ ] Exception class (if error)
+    - [ ] Full stack trace with line numbers
+    - [ ] MDC context (request ID, correlation ID)
+  - [ ] Implement request/response logging filter
+  - [ ] Implement exception logging aspect
+  - [ ] Log to stdout (Kubernetes standard)
+  - **Acceptance**: All exceptions logged with complete stack traces
+
+- [ ] **7.2.5** Create Dockerfile for Java service
+  - [ ] Use multi-stage build:
+    - [ ] Stage 1: Build with `maven:3.9-eclipse-temurin-21`
+    - [ ] Stage 2: Runtime with `eclipse-temurin:21-jre-alpine`
+  - [ ] Copy compiled JAR from build stage
+  - [ ] Create non-root user for security
+  - [ ] Set JVM options:
+    - [ ] `-XX:+UseContainerSupport`
+    - [ ] `-XX:MaxRAMPercentage=75.0`
+    - [ ] `-XX:+HeapDumpOnOutOfMemoryError`
+  - [ ] Expose ports: 8080 (HTTP)
+  - [ ] Add health check instruction
+  - [ ] Optimize image size (~200MB final image)
+  - **Acceptance**: Docker image builds and runs successfully
+
+- [ ] **7.2.6** Create Kubernetes manifests for Java service
+  - [ ] Create `k8s/java/` directory
+  - [ ] Implement Deployment manifest:
+    - [ ] 2 replicas for availability testing
+    - [ ] Resource requests: 200m CPU, 256Mi memory
+    - [ ] Resource limits: 500m CPU, 512Mi memory
+    - [ ] Liveness probe: `/actuator/health/liveness`, 30s initial delay, 10s period
+    - [ ] Readiness probe: `/actuator/health/readiness`, 20s initial delay, 5s period
+    - [ ] Environment variables: `JAVA_OPTS`, `SPRING_PROFILES_ACTIVE`
+    - [ ] Labels for Prometheus scraping
+  - [ ] Implement Service manifest:
+    - [ ] Type: ClusterIP
+    - [ ] Port 80 → targetPort 8080
+    - [ ] Selector matching deployment labels
+  - [ ] Implement ServiceMonitor:
+    - [ ] Scrape interval: 15s
+    - [ ] Metrics path: `/actuator/prometheus`
+    - [ ] Port: 8080
+  - [ ] Add namespace: `aletheia-test`
+  - **Acceptance**: Service deploys and is discoverable in Kubernetes
+
+### 7.3 Integration and Testing Setup
+
+- [ ] **7.3.1** Create deployment automation
+  - [ ] Create `deploy.sh` script:
+    - [ ] Build both Docker images
+    - [ ] Tag images with version
+    - [ ] Push to registry (or load to kind/k3d)
+    - [ ] Apply Kubernetes manifests
+    - [ ] Wait for pods to be ready
+    - [ ] Verify health probes
+  - [ ] Create `undeploy.sh` script for cleanup
+  - [ ] Add Makefile with targets:
+    - [ ] `make build-go` - Build Go service
+    - [ ] `make build-java` - Build Java service
+    - [ ] `make deploy-all` - Deploy both services
+    - [ ] `make trigger-errors` - Invoke error endpoints
+    - [ ] `make logs` - Fetch logs from pods
+    - [ ] `make metrics` - Query Prometheus for metrics
+  - **Acceptance**: Automated deployment works end-to-end
+
+- [ ] **7.3.2** Create error trigger scenarios
+  - [ ] Create `scenarios/` directory with test scripts
+  - [ ] Scenario 1: Null pointer / NPE burst
+    - [ ] Script to send 50 requests causing null pointer errors
+    - [ ] Spread over 2 minutes
+    - [ ] Expected: Error spike in metrics, stack traces in logs
+  - [ ] Scenario 2: Memory leak simulation
+    - [ ] Script to trigger large allocations
+    - [ ] Expected: OOM error, heap metrics spike
+  - [ ] Scenario 3: Database timeout
+    - [ ] Script to trigger simulated DB timeout
+    - [ ] Expected: SQLException in Java, timeout in Go
+  - [ ] Scenario 4: Cascading failures
+    - [ ] Script to fail readiness probe
+    - [ ] Expected: Pod removed from service, traffic shift
+  - [ ] Create `run-scenario.sh <scenario-name>` wrapper script
+  - **Acceptance**: All scenarios trigger expected errors
+
+- [ ] **7.3.3** Create Aletheia test cases
+  - [ ] Test Case 1: Go panic investigation
+    - [ ] Deploy Go service
+    - [ ] Trigger error scenario
+    - [ ] Run Aletheia investigation: `aletheia session open --name "go-panic-test"`
+    - [ ] Expected Aletheia output:
+      - [ ] Identifies error spike in Prometheus metrics
+      - [ ] Collects logs with stack traces from Kubernetes
+      - [ ] Correlates timestamp of deployment/error
+      - [ ] Identifies file/line in Go code
+      - [ ] Provides diagnosis with confidence >0.7
+  - [ ] Test Case 2: Java exception investigation
+    - [ ] Deploy Java service
+    - [ ] Trigger exception scenario
+    - [ ] Run Aletheia investigation
+    - [ ] Expected Aletheia output:
+      - [ ] Identifies exception count spike in metrics
+      - [ ] Collects logs with Java stack traces
+      - [ ] Identifies exception class and method
+      - [ ] Provides actionable recommendations
+  - [ ] Test Case 3: Multi-service correlation
+    - [ ] Deploy both services
+    - [ ] Trigger errors in both services simultaneously
+    - [ ] Run Aletheia investigation
+    - [ ] Expected Aletheia output:
+      - [ ] Correlates errors across both services
+      - [ ] Identifies common timing pattern
+      - [ ] Differentiates root causes per service
+  - **Acceptance**: Aletheia successfully diagnoses all test cases
+
+- [ ] **7.3.4** Create validation suite
+  - [ ] Create `validate.sh` script to verify:
+    - [ ] Services are deployed and running
+    - [ ] Health probes respond correctly
+    - [ ] Metrics endpoints return valid data
+    - [ ] Logs contain expected format and fields
+    - [ ] Error endpoints trigger uncaught exceptions
+    - [ ] Prometheus is scraping both services
+  - [ ] Add smoke test script:
+    - [ ] Deploy services
+    - [ ] Trigger one error in each service
+    - [ ] Run Aletheia with mocked LLM
+    - [ ] Verify data collection works (no diagnosis needed)
+  - **Acceptance**: Validation suite passes for both services
+
+### 7.4 Documentation
+
+- [ ] **7.4.1** Create README for test services
+  - [ ] Create `test-services/README.md` with:
+    - [ ] Overview of test services purpose
+    - [ ] Architecture diagram (Go service, Java service, Prometheus, Kubernetes)
+    - [ ] Prerequisites (Docker, kubectl, kind/k3d)
+    - [ ] Quick start guide
+    - [ ] Deployment instructions
+    - [ ] How to trigger error scenarios
+    - [ ] How to validate with Aletheia
+  - **Acceptance**: README enables anyone to deploy and test
+
+- [ ] **7.4.2** Document error scenarios
+  - [ ] Create `test-services/SCENARIOS.md` with:
+    - [ ] Table of all error scenarios
+    - [ ] Expected metrics for each scenario
+    - [ ] Expected log patterns for each scenario
+    - [ ] Expected Aletheia diagnosis for each scenario
+    - [ ] Troubleshooting tips
+  - **Acceptance**: All scenarios documented
+
+- [ ] **7.4.3** Create Aletheia validation guide
+  - [ ] Create `test-services/VALIDATION.md` with:
+    - [ ] Step-by-step Aletheia testing procedure
+    - [ ] Expected data collection output
+    - [ ] Expected pattern analysis output
+    - [ ] Expected code inspection output (if repos provided)
+    - [ ] Expected final diagnosis
+    - [ ] Troubleshooting failed investigations
+  - **Acceptance**: Guide enables Aletheia validation
+
+### 7.5 Phase 7 Completion Checklist
+
+- [ ] Go service implemented and deployed
+- [ ] Java service implemented and deployed
+- [ ] Both services expose valid OpenMetrics
+- [ ] Both services have working health probes
+- [ ] Both services generate detailed logs with stack traces
+- [ ] Error scenarios trigger expected behaviors
+- [ ] Aletheia successfully diagnoses all test cases
+- [ ] Validation suite passes
+- [ ] Documentation complete
+- **Phase Gate**: Test services ready for continuous Aletheia validation
+
+---
+
 ## Development Best Practices
 
 ### Code Quality Standards
