@@ -13,15 +13,16 @@ Conversation Context:
 Available Agents and Their Prerequisites:
 - data_fetcher: Collects logs/metrics (requires: problem description)
 - pattern_analyzer: Analyzes data for patterns (requires: data collected)
-- code_inspector: Maps errors to code (requires: patterns analyzed)
 - root_cause_analyst: Generates diagnosis (requires: data collected minimum)
+
+Note: code_inspector is currently not used in the workflow
 
 Decision Guidelines:
 1. If prerequisites NOT met: Return "clarify" and explain what's missing
 2. If user asked a question: Return "clarify" and provide helpful response
 3. If user wants to modify scope: Return "clarify" and confirm changes
 4. If prerequisites met: Return the appropriate agent name
-5. Consider the natural flow: data → patterns → code → diagnosis
+5. Consider the natural flow: data → patterns → diagnosis
 
 Respond ONLY with a JSON object in this exact format:
 {{

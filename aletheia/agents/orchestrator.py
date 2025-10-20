@@ -748,24 +748,28 @@ Guide me through the investigation process."""
         Returns:
             Response message to user
         """
-        # Check dependencies
-        if not self.scratchpad.has_section(ScratchpadSection.PATTERN_ANALYSIS):
-            return "I should analyze patterns first to identify code locations. Shall I do that?"
+        # NOTE: Code inspector is currently not used in the workflow
+        # Routing directly to diagnosis instead
+        return "Code inspection is currently not available. I can provide a diagnosis based on the collected data and patterns. Would you like me to proceed with the diagnosis?"
         
-        # Update with repository paths if provided
-        if parameters.get("repositories"):
-            # Store repository paths for code inspector
-            pass
-        
-        # Route to code inspector
-        result = self.route_to_agent("code_inspector")
-        
-        if result.get("success"):
-            return "I've inspected the relevant code. Would you like me to provide a root cause diagnosis?"
-        else:
-            if result.get("skipped"):
-                return "Code inspection was skipped. I can still provide a diagnosis based on the available data."
-            return f"I encountered an issue inspecting code: {result.get('error', 'Unknown error')}"
+        # # Check dependencies
+        # if not self.scratchpad.has_section(ScratchpadSection.PATTERN_ANALYSIS):
+        #     return "I should analyze patterns first to identify code locations. Shall I do that?"
+        # 
+        # # Update with repository paths if provided
+        # if parameters.get("repositories"):
+        #     # Store repository paths for code inspector
+        #     pass
+        # 
+        # # Route to code inspector
+        # result = self.route_to_agent("code_inspector")
+        # 
+        # if result.get("success"):
+        #     return "I've inspected the relevant code. Would you like me to provide a root cause diagnosis?"
+        # else:
+        #     if result.get("skipped"):
+        #         return "Code inspection was skipped. I can still provide a diagnosis based on the available data."
+        #     return f"I encountered an issue inspecting code: {result.get('error', 'Unknown error')}"
     
     def _handle_diagnose_intent(self, parameters: Dict[str, Any]) -> str:
         """Handle user intent to get diagnosis.
@@ -1068,9 +1072,10 @@ Generate a natural response that:
                     anomaly_count = len(data.get("anomalies", []))
                     return f"Found {anomaly_count} anomalies/patterns"
             return "Analysis complete"
-        elif agent_name == "code_inspector":
-            findings = data.get("findings", []) if isinstance(data, dict) else []
-            return f"Inspected {len(findings)} code location(s)"
+        # NOTE: code_inspector is currently not used in the workflow
+        # elif agent_name == "code_inspector":
+        #     findings = data.get("findings", []) if isinstance(data, dict) else []
+        #     return f"Inspected {len(findings)} code location(s)"
         elif agent_name == "root_cause_analyst":
             root_cause = data.get("root_cause", {}) if isinstance(data, dict) else {}
             confidence = root_cause.get("confidence", 0.0)

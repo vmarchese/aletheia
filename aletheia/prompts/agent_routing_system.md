@@ -12,9 +12,9 @@ Available specialist agents:
   Prerequisites: Problem description must be defined
 - pattern_analyzer: Analyzes collected data for anomalies, correlations, and patterns
   Prerequisites: Data must be collected first
-- code_inspector: Maps errors to source code, extracts functions, runs git blame
-  Prerequisites: Pattern analysis completed (to identify code locations)
 - root_cause_analyst: Synthesizes all findings into root cause hypothesis with recommendations
-  Prerequisites: Data collected (minimum); better with patterns and/or code inspection
+  Prerequisites: Data collected (minimum); better with patterns analyzed
+
+Note: code_inspector is currently not used in the workflow
 
 Always provide a specific agent name or "clarify" if more information is needed from the user.

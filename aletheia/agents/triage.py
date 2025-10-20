@@ -71,17 +71,12 @@ Your role is to understand user problems and route to appropriate specialist age
    - Can fetch from Kubernetes (kubectl), Prometheus, Elasticsearch
    - Extracts and summarizes relevant data
 
-2. **pattern_analyzer**: Analyzes data for patterns, anomalies, and correlations
+2. **pattern_analyzer**: Analyzes collected data for patterns
    - Use when data has been collected and needs analysis
    - Identifies error patterns, metric spikes, correlations
    - Builds incident timelines
 
-3. **code_inspector**: Inspects source code related to errors
-   - Use when stack traces or error messages point to code
-   - Requires git repository access
-   - Performs git blame, code extraction, caller analysis
-
-4. **root_cause_analyst**: Synthesizes all findings into diagnosis
+3. **root_cause_analyst**: Synthesizes all findings into diagnosis
    - Use when all investigation data is collected and analyzed
    - Generates root cause hypothesis with confidence score
    - Provides actionable recommendations
@@ -90,7 +85,6 @@ Your role is to understand user problems and route to appropriate specialist age
 
 - Start with data_fetcher if no data has been collected yet
 - Route to pattern_analyzer after data collection completes
-- Route to code_inspector if error messages contain stack traces
 - Route to root_cause_analyst when investigation is complete
 - You can route back to data_fetcher if more data is needed
 
@@ -177,12 +171,13 @@ Remember: You are the conductor of the investigation orchestra. Route wisely!"""
         else:
             summary_parts.append("⚠ Patterns not analyzed")
         
-        # Check code inspection status
-        code = self.read_scratchpad(ScratchpadSection.CODE_INSPECTION)
-        if code:
-            summary_parts.append("✓ Code inspected")
-        else:
-            summary_parts.append("⚠ Code not inspected")
+        # NOTE: Code inspection is currently not used in the workflow
+        # # Check code inspection status
+        # code = self.read_scratchpad(ScratchpadSection.CODE_INSPECTION)
+        # if code:
+        #     summary_parts.append("✓ Code inspected")
+        # else:
+        #     summary_parts.append("⚠ Code not inspected")
         
         # Check diagnosis status
         diagnosis = self.read_scratchpad(ScratchpadSection.FINAL_DIAGNOSIS)
