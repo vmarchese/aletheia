@@ -1552,6 +1552,20 @@ llm:
 
 ### High Priority (Consider for v1.1)
 
+- [ ] **Remove Guided Mode Completely**
+  - [ ] Remove all guided mode code from orchestrator (`_execute_guided_mode()`, phase-based routing)
+  - [ ] Remove guided mode UI components (`ui/workflow.py`, menus, numbered choices)
+  - [ ] Remove guided mode prompts and templates
+  - [ ] Remove guided mode configuration options from config schema
+  - [ ] Update CLI to remove `--mode` flag (conversational becomes the only mode)
+  - [ ] Remove guided mode from session metadata (or make conversational the default)
+  - [ ] Remove all guided mode tests and test fixtures
+  - [ ] Update documentation to remove all references to guided mode
+  - [ ] Search codebase for remaining "guided" references and clean up
+  - [ ] Bump version to reflect breaking change (v2.0.0)
+  - **Benefits**: Simplified codebase (~500-1000 LOC reduction), single interaction pattern, reduced maintenance burden, clearer architecture
+  - **Acceptance**: Guided mode completely removed; conversational mode is the only available mode; all tests pass; documentation updated
+
 - [x] **Prompt Template Management** ✅ COMPLETE (2025-10-20, Commit: c4652f8)
   - [x] Create `prompts/` directory structure for storing prompt templates
   - [x] Define template naming convention (e.g., `<agent>_<operation>.md`)
