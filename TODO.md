@@ -1914,91 +1914,91 @@ Implement complete test services in Golang and Java to validate Aletheia's troub
 
 ### 7.1 Golang Error Test Service
 
-- [ ] **7.1.1** Implement Go service core
-  - [ ] Create `test-services/golang/` directory structure
-  - [ ] Initialize Go module with `go.mod`
-  - [ ] Implement `/api/v1/error` endpoint that triggers intentional panic
-  - [ ] Error types to implement:
-    - [ ] Nil pointer dereference
-    - [ ] Array index out of bounds
-    - [ ] Divide by zero
-    - [ ] JSON unmarshaling error
-    - [ ] Database connection timeout simulation
-  - [ ] Implement detailed stack trace capture using `runtime.Stack()`
-  - [ ] Use structured logging with `log/slog` or `zap`
-  - [ ] Log format: JSON with timestamp, level, message, stack trace
-  - **Acceptance**: Service compiles and runs with intentional errors
+- [x] **7.1.1** Implement Go service core
+  - [x] Create `test-services/golang/` directory structure
+  - [x] Initialize Go module with `go.mod`
+  - [x] Implement `/api/v1/error` endpoint that triggers intentional panic
+  - [x] Error types to implement:
+    - [x] Nil pointer dereference
+    - [x] Array index out of bounds
+    - [x] Divide by zero
+    - [x] JSON unmarshaling error
+    - [x] Database connection timeout simulation
+  - [x] Implement detailed stack trace capture using `runtime.Stack()`
+  - [x] Use structured logging with `log/slog` or `zap`
+  - [x] Log format: JSON with timestamp, level, message, stack trace
+  - **Acceptance**: ✅ Service compiles and runs with intentional errors
 
-- [ ] **7.1.2** Implement OpenMetrics exposure
-  - [ ] Add Prometheus client library (`github.com/prometheus/client_golang`)
-  - [ ] Expose `/metrics` endpoint with standard Go runtime metrics
-  - [ ] Custom metrics to expose:
-    - [ ] `http_requests_total{endpoint, status}` - Counter
-    - [ ] `http_request_duration_seconds{endpoint}` - Histogram
-    - [ ] `error_count_total{error_type}` - Counter
-    - [ ] `panic_recovery_total` - Counter
-  - [ ] Implement metric labels for error categorization
-  - **Acceptance**: Metrics endpoint returns valid OpenMetrics format
+- [x] **7.1.2** Implement OpenMetrics exposure
+  - [x] Add Prometheus client library (`github.com/prometheus/client_golang`)
+  - [x] Expose `/metrics` endpoint with standard Go runtime metrics
+  - [x] Custom metrics to expose:
+    - [x] `http_requests_total{endpoint, status}` - Counter
+    - [x] `http_request_duration_seconds{endpoint}` - Histogram
+    - [x] `error_count_total{error_type}` - Counter
+    - [x] `panic_recovery_total` - Counter
+  - [x] Implement metric labels for error categorization
+  - **Acceptance**: ✅ Metrics endpoint returns valid OpenMetrics format
 
-- [ ] **7.1.3** Implement health probes
-  - [ ] Implement `/healthz` liveness probe (always returns 200 OK)
-  - [ ] Implement `/readyz` readiness probe:
-    - [ ] Check external dependencies (simulated)
-    - [ ] Return 503 if not ready, 200 if ready
-    - [ ] Add configurable startup delay (to test pod startup issues)
-  - [ ] Add configurable failure scenarios (env vars):
-    - [ ] `FAIL_LIVENESS_AFTER=30s` - Fail liveness after duration
-    - [ ] `FAIL_READINESS_AFTER=60s` - Fail readiness after duration
-  - **Acceptance**: Probes work correctly in Kubernetes
+- [x] **7.1.3** Implement health probes
+  - [x] Implement `/healthz` liveness probe (always returns 200 OK)
+  - [x] Implement `/readyz` readiness probe:
+    - [x] Check external dependencies (simulated)
+    - [x] Return 503 if not ready, 200 if ready
+    - [x] Add configurable startup delay (to test pod startup issues)
+  - [x] Add configurable failure scenarios (env vars):
+    - [x] `FAIL_LIVENESS_AFTER=30s` - Fail liveness after duration
+    - [x] `FAIL_READINESS_AFTER=60s` - Fail readiness after duration
+  - **Acceptance**: ✅ Probes work correctly in Kubernetes
 
-- [ ] **7.1.4** Implement detailed logging
-  - [ ] Structured JSON logging with all requests
-  - [ ] Log levels: DEBUG, INFO, WARN, ERROR, FATAL
-  - [ ] Log fields for each request:
-    - [ ] Timestamp (RFC3339)
-    - [ ] Request ID (UUID)
-    - [ ] Client IP
-    - [ ] HTTP method and path
-    - [ ] Response status
-    - [ ] Duration (milliseconds)
-    - [ ] Error message (if error)
-    - [ ] Full stack trace (if panic)
-  - [ ] Implement correlation ID propagation
-  - [ ] Log to stdout (Kubernetes standard)
-  - **Acceptance**: All errors logged with complete stack traces
+- [x] **7.1.4** Implement detailed logging
+  - [x] Structured JSON logging with all requests
+  - [x] Log levels: DEBUG, INFO, WARN, ERROR, FATAL
+  - [x] Log fields for each request:
+    - [x] Timestamp (RFC3339)
+    - [x] Request ID (UUID)
+    - [x] Client IP
+    - [x] HTTP method and path
+    - [x] Response status
+    - [x] Duration (milliseconds)
+    - [x] Error message (if error)
+    - [x] Full stack trace (if panic)
+  - [x] Implement correlation ID propagation
+  - [x] Log to stdout (Kubernetes standard)
+  - **Acceptance**: ✅ All errors logged with complete stack traces
 
-- [ ] **7.1.5** Create Dockerfile for Go service
-  - [ ] Use multi-stage build:
-    - [ ] Stage 1: Build with `golang:1.21-alpine`
-    - [ ] Stage 2: Runtime with `alpine:latest`
-  - [ ] Install CA certificates for HTTPS
-  - [ ] Create non-root user for security
-  - [ ] Copy binary and set entrypoint
-  - [ ] Expose ports: 8080 (HTTP), 9090 (metrics)
-  - [ ] Add health check instruction
-  - [ ] Optimize image size (<20MB final image)
-  - **Acceptance**: Docker image builds and runs successfully
+- [x] **7.1.5** Create Dockerfile for Go service
+  - [x] Use multi-stage build:
+    - [x] Stage 1: Build with `golang:1.21-alpine`
+    - [x] Stage 2: Runtime with `alpine:latest`
+  - [x] Install CA certificates for HTTPS
+  - [x] Create non-root user for security
+  - [x] Copy binary and set entrypoint
+  - [x] Expose ports: 8080 (HTTP), 9090 (metrics)
+  - [x] Add health check instruction
+  - [x] Optimize image size (<20MB final image)
+  - **Acceptance**: ✅ Docker image builds and runs successfully
 
-- [ ] **7.1.6** Create Kubernetes manifests for Go service
-  - [ ] Create `k8s/golang/` directory
-  - [ ] Implement Deployment manifest:
-    - [ ] 2 replicas for availability testing
-    - [ ] Resource requests: 50m CPU, 64Mi memory
-    - [ ] Resource limits: 100m CPU, 128Mi memory
-    - [ ] Liveness probe: `/healthz`, 10s initial delay, 5s period
-    - [ ] Readiness probe: `/readyz`, 5s initial delay, 5s period
-    - [ ] Environment variables for configuration
-    - [ ] Labels for Prometheus scraping: `prometheus.io/scrape: "true"`
-  - [ ] Implement Service manifest:
-    - [ ] Type: ClusterIP
-    - [ ] Port 80 → targetPort 8080
-    - [ ] Selector matching deployment labels
-  - [ ] Implement ServiceMonitor (for Prometheus Operator):
-    - [ ] Scrape interval: 15s
-    - [ ] Metrics path: `/metrics`
-    - [ ] Port: 9090
-  - [ ] Add namespace: `aletheia-test`
-  - **Acceptance**: Service deploys and is discoverable in Kubernetes
+- [x] **7.1.6** Create Kubernetes manifests for Go service
+  - [x] Create `k8s/golang/` directory
+  - [x] Implement Deployment manifest:
+    - [x] 2 replicas for availability testing
+    - [x] Resource requests: 50m CPU, 64Mi memory
+    - [x] Resource limits: 100m CPU, 128Mi memory
+    - [x] Liveness probe: `/healthz`, 10s initial delay, 5s period
+    - [x] Readiness probe: `/readyz`, 5s initial delay, 5s period
+    - [x] Environment variables for configuration
+    - [x] Labels for Prometheus scraping: `prometheus.io/scrape: "true"`
+  - [x] Implement Service manifest:
+    - [x] Type: ClusterIP
+    - [x] Port 80 → targetPort 8080
+    - [x] Selector matching deployment labels
+  - [x] Implement ServiceMonitor (for Prometheus Operator):
+    - [x] Scrape interval: 15s
+    - [x] Metrics path: `/metrics`
+    - [x] Port: 9090
+  - [x] Add namespace: `aletheia-test`
+  - **Acceptance**: ✅ Service deploys and is discoverable in Kubernetes
 
 ### 7.2 Java Error Test Service
 
