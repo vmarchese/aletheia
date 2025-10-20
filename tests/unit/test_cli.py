@@ -40,7 +40,6 @@ class TestSessionOpenCommand:
         # Mock session creation
         mock_metadata = MagicMock()
         mock_metadata.name = "session-1234"
-        mock_metadata.mode = "guided"
         
         mock_session = MagicMock()
         mock_session.session_id = "INC-1234"
@@ -53,7 +52,7 @@ class TestSessionOpenCommand:
         assert result.exit_code == 0
         assert "INC-1234" in result.stdout
         assert "created" in result.stdout
-        mock_create.assert_called_once_with(name=None, password="test-password", mode="guided", verbose=False)
+        mock_create.assert_called_once_with(name=None, password="test-password", verbose=False)
         mock_start_investigation.assert_called_once()
 
     @patch("aletheia.cli._start_investigation")
@@ -65,7 +64,6 @@ class TestSessionOpenCommand:
 
         mock_metadata = MagicMock()
         mock_metadata.name = "production-outage"
-        mock_metadata.mode = "guided"
         
         mock_session = MagicMock()
         mock_session.session_id = "INC-5678"
@@ -81,47 +79,9 @@ class TestSessionOpenCommand:
         assert "INC-5678" in result.stdout
         assert "production-outage" in result.stdout
         mock_create.assert_called_once_with(
-            name="production-outage", password="test-password", mode="guided", verbose=False
+            name="production-outage", password="test-password", verbose=False
         )
         mock_start_investigation.assert_called_once()
-
-    @patch("aletheia.cli._start_investigation")
-    @patch("aletheia.cli.Session.create")
-    @patch("aletheia.cli.getpass.getpass")
-    def test_session_open_with_mode(self, mock_getpass, mock_create, mock_start_investigation):
-        """Test session creation with conversational mode."""
-        mock_getpass.side_effect = ["test-password", "test-password"]
-
-        mock_metadata = MagicMock()
-        mock_metadata.name = "session-abcd"
-        mock_metadata.mode = "conversational"
-        
-        mock_session = MagicMock()
-        mock_session.session_id = "INC-ABCD"
-        mock_session.session_path = Path("/home/user/.aletheia/sessions/INC-ABCD")
-        mock_session.get_metadata.return_value = mock_metadata
-        mock_create.return_value = mock_session
-
-        result = runner.invoke(
-            app, ["session", "open", "--mode", "conversational"]
-        )
-
-        assert result.exit_code == 0
-        mock_create.assert_called_once_with(
-            name=None, mode="conversational", password="test-password", verbose=False
-        )
-        mock_start_investigation.assert_called_once()
-
-    @patch("aletheia.cli.getpass.getpass")
-    def test_session_open_invalid_mode(self, mock_getpass):
-        """Test session creation with invalid mode."""
-        mock_getpass.side_effect = ["test-password", "test-password"]
-
-        result = runner.invoke(app, ["session", "open", "--mode", "invalid"])
-
-        assert result.exit_code == 1
-        assert "Error" in result.stderr
-        assert "guided" in result.stderr or "conversational" in result.stderr
 
     @patch("aletheia.cli.getpass.getpass")
     def test_session_open_password_mismatch(self, mock_getpass):

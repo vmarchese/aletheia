@@ -45,7 +45,6 @@ class TestConfigSchema:
         assert config.llm.default_model == "gpt-4o"
         assert config.llm.api_key_env == "OPENAI_API_KEY"
         assert config.ui.confirmation_level == "normal"
-        assert config.ui.default_mode == "guided"
         assert config.session.auto_save_interval == 300
         assert config.encryption.pbkdf2_iterations == 100000
 
@@ -235,12 +234,10 @@ class TestConfigSchema:
         """Test UI configuration."""
         config = UIConfig(
             confirmation_level="verbose",
-            default_mode="conversational",
             agent_visibility=True,
         )
 
         assert config.confirmation_level == "verbose"
-        assert config.default_mode == "conversational"
         assert config.agent_visibility is True
 
     def test_session_config(self):
@@ -319,7 +316,6 @@ class TestConfigLoader:
             assert config.llm.api_key_env == "MY_API_KEY"
             assert config.ui.confirmation_level == "verbose"
             # Other fields should have defaults
-            assert config.ui.default_mode == "guided"
         finally:
             loader.CONFIG_PATHS = original_paths
 
@@ -343,7 +339,7 @@ class TestConfigLoader:
         # User config (medium precedence)
         with open(user_config, "w") as f:
             yaml.dump(
-                {"llm": {"default_model": "gpt-4"}, "ui": {"default_mode": "conversational"}},
+                {"llm": {"default_model": "gpt-4"}},
                 f,
             )
 
@@ -361,8 +357,6 @@ class TestConfigLoader:
 
             # Project config should override (highest precedence)
             assert config.llm.default_model == "gpt-4o"
-            # User config value should be present (not overridden by project)
-            assert config.ui.default_mode == "conversational"
             # System config value should be present (not overridden)
             assert config.ui.confirmation_level == "normal"
         finally:

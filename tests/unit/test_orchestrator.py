@@ -21,11 +21,13 @@ from aletheia.scratchpad import Scratchpad, ScratchpadSection
 @pytest.fixture
 def mock_scratchpad():
     """Create a mock scratchpad."""
+    from pathlib import Path
     scratchpad = Mock(spec=Scratchpad)
     scratchpad.read_section = Mock(return_value=None)
     scratchpad.write_section = Mock()
     scratchpad.append_to_section = Mock()
     scratchpad.save = Mock()
+    scratchpad.session_dir = Path("/tmp/test-session")
     return scratchpad
 
 
@@ -382,46 +384,6 @@ class TestConfirmationLevels:
         orchestrator.confirmation_level = "normal"
         
         result = orchestrator._should_confirm("Continue?")
-        
-        assert result is True
-
-
-class TestPhaseRouting:
-    """Test phase-specific routing."""
-    
-    @patch('aletheia.agents.orchestrator.Confirm.ask')
-    def test_route_data_collection(self, mock_confirm, orchestrator):
-        """Test data collection routing."""
-        mock_confirm.return_value = True
-        
-        mock_agent = Mock()
-        mock_agent.execute = Mock(return_value={})
-        orchestrator.register_agent("data_fetcher", mock_agent)
-        
-        with patch.object(orchestrator, 'route_to_agent') as mock_route:
-            mock_route.return_value = {"success": True}
-            result = orchestrator._route_data_collection()
-        
-        assert result is True
-        mock_route.assert_called_once_with("data_fetcher")
-    
-    def test_route_code_inspection_skip(self, orchestrator):
-        """Test code inspection with skip option."""
-        with patch.object(orchestrator, '_display_menu') as mock_menu:
-            mock_menu.return_value = "Skip code inspection and proceed to diagnosis"
-            result = orchestrator._route_code_inspection()
-        
-        assert result is True
-    
-    def test_route_root_cause_analysis(self, orchestrator):
-        """Test root cause analysis routing."""
-        mock_agent = Mock()
-        mock_agent.execute = Mock(return_value={})
-        orchestrator.register_agent("root_cause_analyst", mock_agent)
-        
-        with patch.object(orchestrator, 'route_to_agent') as mock_route:
-            mock_route.return_value = {"success": True}
-            result = orchestrator._route_root_cause_analysis()
         
         assert result is True
 
