@@ -1,0 +1,40 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: aletheia-java-test-service
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      service: java-test-service
+    export:
+      prometheus:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.aletheia.testservice: DEBUG
+  pattern:
+    console: ""

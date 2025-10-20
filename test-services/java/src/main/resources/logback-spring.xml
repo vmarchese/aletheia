@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeContext>true</includeContext>
+            <includeMdc>true</includeMdc>
+            <includeStructuredArguments>true</includeStructuredArguments>
+            <includeTags>true</includeTags>
+            <fieldNames>
+                <timestamp>timestamp</timestamp>
+                <version>[ignore]</version>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+            <customFields>{"service":"aletheia-java-test-service"}</customFields>
+        </encoder>
+    </appender>
+
+    <logger name="com.aletheia.testservice" level="DEBUG"/>
+    <logger name="org.springframework.web" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

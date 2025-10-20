@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-test-service
+  namespace: aletheia-test
+  labels:
+    app: java-test-service
+    service: test
+    language: java
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: java-test-service
+  template:
+    metadata:
+      labels:
+        app: java-test-service
+        service: test
+        language: java
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      containers:
+        - name: java-test-service
+          image: aletheia/java-test-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+HeapDumpOnOutOfMemoryError"
+            - name: SPRING_PROFILES_ACTIVE
+              value: "production"
+            # Uncomment to test health probe failures
+            # - name: FAIL_LIVENESS_AFTER
+            #   value: "5m"
+            # - name: FAIL_READINESS_AFTER
+            #   value: "3m"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+      restartPolicy: Always
