@@ -440,7 +440,6 @@ class TestSKBaseAgentAgent:
         
         # Verify agent was created with correct config
         mock_agent_cls.assert_called_once_with(
-            service_id="default",
             kernel=mock_kernel,
             name="testsk",
             instructions="You are a test agent.",
