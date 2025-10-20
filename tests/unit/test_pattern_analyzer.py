@@ -1048,27 +1048,6 @@ class TestConversationalMode:
         assert "logs_collected" in prompt
     
     @patch('aletheia.agents.pattern_analyzer.PatternAnalyzerAgent.invoke')
-    def test_build_sk_prompt_guided_mode(self, mock_invoke):
-        """Test building SK prompt in guided mode (no conversational elements)."""
-        config = {"llm": {"default_model": "gpt-4o"}}
-        scratchpad = Mock(spec=Scratchpad)
-        agent = PatternAnalyzerAgent(config, scratchpad)
-        
-        collected_data = {"kubernetes": {"count": 150}}
-        problem = {"description": "Payment failures"}
-        
-        prompt = agent._build_sk_analysis_prompt(collected_data, problem, conversational_mode=False)
-        
-        # Verify guided mode format
-        assert "Problem Context:" in prompt
-        assert "Collected Data:" in prompt
-        assert "Anomaly Detection" in prompt
-        assert "Error Clustering" in prompt
-        # Should NOT have conversational elements
-        assert "CONVERSATION HISTORY" not in prompt
-        assert "AGENT NOTES" not in prompt
-    
-    @patch('aletheia.agents.pattern_analyzer.PatternAnalyzerAgent.invoke')
     def test_execute_with_sk_auto_detect_conversational_mode(self, mock_invoke):
         """Test SK execution auto-detects conversational mode."""
         config = {"llm": {"default_model": "gpt-4o"}}
@@ -1153,7 +1132,7 @@ class TestConversationalMode:
         assert len(analysis["anomalies"]) == 1
     
     def test_parse_sk_response_without_conversational_fields(self):
-        """Test parsing SK response without conversational fields (guided mode)."""
+        """Test parsing SK response with minimal fields."""
         config = {"llm": {"default_model": "gpt-4o"}}
         scratchpad = Mock(spec=Scratchpad)
         agent = PatternAnalyzerAgent(config, scratchpad)

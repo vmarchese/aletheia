@@ -285,7 +285,6 @@ class TestSessionVerboseMetadata:
         session = Session.create(
             name="test_session",
             password="test_password",
-            mode="guided",
             session_dir=tmp_path / "sessions",
             verbose=True
         )
@@ -298,7 +297,6 @@ class TestSessionVerboseMetadata:
         session = Session.create(
             name="test_session",
             password="test_password",
-            mode="guided",
             session_dir=tmp_path / "sessions",
             verbose=False
         )
@@ -315,8 +313,7 @@ class TestSessionVerboseMetadata:
             "created": "2025-10-17T10:00:00",
             "updated": "2025-10-17T10:00:00",
             "status": "active",
-            "salt": "dGVzdHNhbHQ=",
-            "mode": "guided"
+            "salt": "dGVzdHNhbHQ="
         }
         
         # Should default to False
