@@ -271,15 +271,15 @@ class TestCreateAletheiaHandoffs:
                 triage=triage,
                 data_fetcher=data_fetcher,
                 pattern_analyzer=pattern_analyzer,
-                code_inspector=code_inspector,
+                # code_inspector parameter removed
                 root_cause_analyst=root_cause_analyst
             )
             
             # Verify StartWith was called with triage
             mock_handoffs_class.StartWith.assert_called_once_with(triage)
             
-            # Verify Add was called 8 times (4 hub→spoke + 4 spoke→hub)
-            assert mock_handoffs.Add.call_count == 8
+            # Verify Add was called 6 times (3 hub→spoke + 3 spoke→hub, code_inspector commented out)
+            assert mock_handoffs.Add.call_count == 6
 
 
 class TestCreateOrchestrationWithSKAgents:
@@ -323,7 +323,7 @@ class TestCreateOrchestrationWithSKAgents:
                     triage=triage,
                     data_fetcher=data_fetcher,
                     pattern_analyzer=pattern_analyzer,
-                    code_inspector=code_inspector,
+                    # code_inspector=code_inspector,  # Removed
                     root_cause_analyst=root_cause_analyst,
                     scratchpad=mock_scratchpad,
                     console=mock_console,
@@ -332,13 +332,13 @@ class TestCreateOrchestrationWithSKAgents:
                 
                 assert isinstance(orchestration, AletheiaHandoffOrchestration)
                 assert orchestration.confirmation_level == "verbose"
-                assert len(orchestration.agents) == 5  # triage + 4 specialists
+                assert len(orchestration.agents) == 4  # triage + 3 specialists (code_inspector removed)
                 
                 # Verify handoffs were configured
                 # Now starts with triage (hub-and-spoke pattern)
                 mock_handoffs_class.StartWith.assert_called_once_with(triage)
-                # Should have 8 Add calls (4 hub→spoke + 4 spoke→hub)
-                assert mock_handoffs.Add.call_count == 8
+                # Should have 6 Add calls (3 hub→spoke + 3 spoke→hub, code_inspector removed)
+                assert mock_handoffs.Add.call_count == 6
 
 
 class TestIntegration:
