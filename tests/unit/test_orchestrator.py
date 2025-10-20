@@ -14,7 +14,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch, call
 from datetime import datetime
 
-from aletheia.agents.orchestrator import OrchestratorAgent, InvestigationPhase, UserIntent
+from aletheia.agents.orchestrator import OrchestratorAgent, UserIntent
 from aletheia.scratchpad import Scratchpad, ScratchpadSection
 
 
@@ -65,7 +65,6 @@ class TestOrchestratorInitialization:
         assert orchestrator.config == config
         assert orchestrator.scratchpad == mock_scratchpad
         assert orchestrator.agent_name == "orchestrator"
-        assert orchestrator.current_phase == InvestigationPhase.INITIALIZATION
         assert orchestrator.agent_registry == {}
     
     def test_init_with_custom_name(self, config, mock_scratchpad):
