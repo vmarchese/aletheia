@@ -1,6 +1,10 @@
 # Stage 1: Build
 FROM golang:1.21-alpine AS builder
 
+# Build arguments for platform selection
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
 WORKDIR /app
 
 # Install build dependencies
@@ -15,8 +19,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o main .
+# Build the application for the target platform
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -installsuffix cgo -o main .
 
 # Stage 2: Runtime
 FROM alpine:latest

@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
       - name: golang-test-service
-        image: registry.localhost:5000/aletheia/golang-test-service:latest
+        image: registry.localhost:5000/aletheia/golang-test-service:latest-arm64
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
