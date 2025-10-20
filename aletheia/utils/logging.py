@@ -151,20 +151,23 @@ def log_prompt(
 
 def log_prompt_response(
     agent_name: str,
-    response: str,
+    response: Any,
     completion_tokens: Optional[int] = None,
     total_tokens: Optional[int] = None
 ) -> None:
-    """Log an LLM response with metadata.
+    """Log LLM response to trace log and console.
     
     Args:
         agent_name: Name of the agent receiving the response
-        response: The response text
+        response: The response text (will be converted to string if needed)
         completion_tokens: Completion token count (optional)
         total_tokens: Total token count (optional)
     """
     if not _TRACE_ENABLED or not _TRACE_LOGGER:
         return
+    
+    # Ensure response is a string
+    response_str = str(response) if response is not None else ""
     
     timestamp = datetime.now().isoformat()
     
@@ -177,7 +180,7 @@ def log_prompt_response(
     if total_tokens:
         _TRACE_LOGGER.info(f"Total tokens: {total_tokens}")
     _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(response)
+    _TRACE_LOGGER.info(response_str)
     _TRACE_LOGGER.info("-" * 80)
     
     # Log to console
@@ -194,10 +197,10 @@ def log_prompt_response(
         _console.print(f"[dim]Time: {timestamp}[/dim]")
     
     # Show truncated response in console
-    if len(response) > 500:
-        _console.print(f"{response[:500]}[dim]... (truncated, see trace log for full response)[/dim]\n")
+    if len(response_str) > 500:
+        _console.print(f"{response_str[:500]}[dim]... (truncated, see trace log for full response)[/dim]\n")
     else:
-        _console.print(f"{response}\n")
+        _console.print(f"{response_str}\n")
 
 
 def log_command(

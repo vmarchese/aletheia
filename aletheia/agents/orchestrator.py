@@ -1137,8 +1137,20 @@ Generate a natural response that:
             sources = list(data.keys()) if isinstance(data, dict) else []
             return f"Collected data from {len(sources)} source(s): {', '.join(sources)}"
         elif agent_name == "pattern_analyzer":
-            anomaly_count = len(data.get("anomalies", [])) if isinstance(data, dict) else 0
-            return f"Found {anomaly_count} anomalies/patterns"
+            if isinstance(data, dict):
+                # Use the actual analysis summary if available
+                summary = data.get("summary", "")
+                key_findings = data.get("key_findings", [])
+                
+                if summary:
+                    result = f"Analysis: {summary}"
+                    if key_findings:
+                        result += "\n\nKey findings:\n" + "\n".join(f"- {finding}" for finding in key_findings[:5])
+                    return result
+                else:
+                    anomaly_count = len(data.get("anomalies", []))
+                    return f"Found {anomaly_count} anomalies/patterns"
+            return "Analysis complete"
         elif agent_name == "code_inspector":
             findings = data.get("findings", []) if isinstance(data, dict) else []
             return f"Inspected {len(findings)} code location(s)"

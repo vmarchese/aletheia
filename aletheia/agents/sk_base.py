@@ -324,16 +324,20 @@ class SKBaseAgent:
         
         # Extract response content from collected messages
         if responses:
-            # Get the last response (most recent)
-            response = responses[-1] if len(responses) == 1 else responses
-            
-            if isinstance(response, list):
-                # Multiple messages returned
-                response_text = "\n".join([msg.content for msg in response if hasattr(msg, 'content')])
-            elif hasattr(response, 'content'):
-                response_text = response.content
+            # Get the last response (most recent) if single message, otherwise join all
+            if len(responses) == 1:
+                # Single message - extract content directly
+                message = responses[0]
+                if hasattr(message, 'content'):
+                    response_text = str(message.content) if message.content is not None else ""
+                else:
+                    response_text = str(message)
             else:
-                response_text = str(response)
+                # Multiple messages - join their content
+                response_text = "\n".join([
+                    str(msg.content) if hasattr(msg, 'content') and msg.content is not None else str(msg)
+                    for msg in responses
+                ])
         else:
             response_text = ""
         
