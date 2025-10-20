@@ -219,8 +219,8 @@ class CodeInspectorAgent(SKBaseAgent):
         """Execute code inspection using SK agent with GitPlugin.
         
         This mode uses the SK ChatCompletionAgent which can automatically
-        invoke GitPlugin functions for git operations. It supports both
-        guided and conversational modes based on scratchpad content.
+        invoke GitPlugin functions for git operations, using conversational
+        mode based on scratchpad content.
         
         Args:
             pattern_analysis: Pattern analysis data from scratchpad
@@ -228,41 +228,18 @@ class CodeInspectorAgent(SKBaseAgent):
         Returns:
             Dictionary with execution results
         """
-        # Auto-detect conversational mode by checking for CONVERSATION_HISTORY
+        # Check for conversational mode by checking for CONVERSATION_HISTORY
         conversation_history = self.read_scratchpad(ScratchpadSection.CONVERSATION_HISTORY)
         conversational_mode = bool(conversation_history)
         
         # Prepare context for SK agent
         stack_traces = self._extract_stack_traces(pattern_analysis)
         
-        if not stack_traces and not conversational_mode:
-            # No stack traces found in guided mode, write empty result
-            inspection = {
-                "suspect_files": [],
-                "related_code": [],
-                "note": "No stack traces found in pattern analysis"
-            }
-            self.write_scratchpad(ScratchpadSection.CODE_INSPECTION, inspection)
-            return {
-                "success": True,
-                "suspect_files_found": 0,
-                "git_blame_executed": 0,
-                "repositories_searched": len(self.repositories),
-                "sk_used": True,
-                "conversational_mode": False
-            }
-        
-        # Build prompt based on mode
-        if conversational_mode:
-            user_message = self._build_sk_conversational_prompt(
-                pattern_analysis,
-                conversation_history
-            )
-            # Note: system prompt for conversational mode is set during agent initialization
-            # via the agent_name parameter which looks up "code_inspector_conversational"
-            # For now, we use the default system prompt and rely on the comprehensive user prompt
-        else:
-            user_message = self._build_sk_guided_prompt(stack_traces)
+        # Build prompt for conversational mode
+        user_message = self._build_sk_conversational_prompt(
+            pattern_analysis,
+            conversation_history or []
+        )
         
         # Invoke SK agent
         response = self.invoke(
@@ -286,46 +263,6 @@ class CodeInspectorAgent(SKBaseAgent):
             "needs_clarification": inspection.get("needs_clarification", False)
         }
     
-    def _build_sk_guided_prompt(self, stack_traces: List[str]) -> str:
-        """Build guided mode prompt for SK agent.
-        
-        Args:
-            stack_traces: List of stack traces to analyze
-        
-        Returns:
-            Prompt string for SK agent
-        """
-        return f"""
-Analyze the following stack traces and perform code inspection:
-
-Stack Traces:
-{json.dumps(stack_traces, indent=2)}
-
-Repositories to search:
-{json.dumps([str(repo) for repo in self.repositories], indent=2)}
-
-For each stack trace:
-1. Map file references to actual files in the repositories using find_file_in_repo
-2. Extract code context using extract_code_context
-3. Run git blame on suspect lines using git_blame
-4. Analyze the code and git blame information
-
-Provide your analysis in JSON format with this structure:
-{{
-    "suspect_files": [
-        {{
-            "file": "path/to/file",
-            "line": 123,
-            "function": "function_name",
-            "repository": "/path/to/repo",
-            "snippet": "code snippet",
-            "analysis": "your analysis",
-            "git_blame": {{ git blame info }}
-        }}
-    ],
-    "related_code": []
-}}
-"""
     
     def _build_sk_conversational_prompt(
         self,

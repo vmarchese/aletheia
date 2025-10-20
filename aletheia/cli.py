@@ -14,7 +14,6 @@ import getpass
 
 from aletheia.session import Session
 from aletheia.config import ConfigLoader
-from aletheia.ui.workflow import InvestigationWorkflow
 from aletheia.agents.orchestrator import OrchestratorAgent
 from aletheia.agents.data_fetcher import DataFetcherAgent
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
@@ -76,10 +75,6 @@ def _start_investigation(session: Session, console: Console) -> None:
                 encryption_key=session._get_key()
             )
         
-        # Get session mode
-        metadata = session.get_metadata()
-        mode = metadata.mode
-        
         # Initialize orchestrator
         orchestrator = OrchestratorAgent(
             config=config,
@@ -97,9 +92,9 @@ def _start_investigation(session: Session, console: Console) -> None:
         orchestrator.register_agent("code_inspector", code_inspector)
         orchestrator.register_agent("root_cause_analyst", root_cause_analyst)
         
-        # Start investigation based on mode
-        console.print(f"\n[cyan]Starting {mode} investigation...[/cyan]\n")
-        result = orchestrator.execute(mode=mode)
+        # Start investigation in conversational mode
+        console.print(f"\n[cyan]Starting conversational investigation...[/cyan]\n")
+        result = orchestrator.execute()
         
         # Display completion message
         if result.get("status") == "completed":
@@ -127,11 +122,10 @@ def version() -> None:
 @session_app.command("open")
 def session_open(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Session name"),
-    mode: str = typer.Option("guided", "--mode", "-m", help="Session mode (guided or conversational)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
     very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
 ) -> None:
-    """Open a new troubleshooting session."""
+    """Open a new troubleshooting session in conversational mode."""
     # Enable very-verbose mode (implies verbose)
     if very_verbose:
         verbose = True
@@ -143,10 +137,6 @@ def session_open(
     
     if very_verbose:
         console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
-    
-    if mode not in ["guided", "conversational"]:
-        typer.echo("Error: Mode must be 'guided' or 'conversational'", err=True)
-        raise typer.Exit(1)
     
     # Get password
     password = getpass.getpass("Enter password: ")
@@ -164,7 +154,6 @@ def session_open(
         session = Session.create(
             name=name,
             password=password,
-            mode=mode,
             verbose=very_verbose,
         )
         
@@ -176,7 +165,6 @@ def session_open(
         metadata = session.get_metadata()
         console.print(f"[green]Session '{metadata.name}' created successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
-        console.print(f"Mode: {metadata.mode}")
         
         # Start investigation workflow
         _start_investigation(session, console)

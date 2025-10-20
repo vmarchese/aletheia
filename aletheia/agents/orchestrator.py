@@ -3,16 +3,15 @@
 This module provides the OrchestratorAgent class which manages the overall
 investigation workflow, including:
 - Session initialization
-- User interaction (guided and conversational modes)
+- User interaction via conversational mode
 - Routing to specialist agents
 - Presenting findings to the user
 - Error handling and recovery
 
-The orchestrator supports two interaction modes:
-1. Guided mode: Menu-driven workflow with phase-based routing
-2. Conversational mode: Natural language interaction with intent-based routing
+The orchestrator uses conversational mode with natural language interaction
+and intent-based routing.
 
-And two routing strategies:
+Routing strategies:
 1. Custom routing (legacy): Direct agent-to-agent routing
 2. SK HandoffOrchestration: Using Semantic Kernel's orchestration pattern
 """
@@ -51,16 +50,6 @@ except ImportError:
     SK_ORCHESTRATION_AVAILABLE = False
 
 
-class InvestigationPhase(Enum):
-    """Phases of the investigation workflow."""
-    INITIALIZATION = "initialization"
-    DATA_COLLECTION = "data_collection"
-    PATTERN_ANALYSIS = "pattern_analysis"
-    CODE_INSPECTION = "code_inspection"
-    ROOT_CAUSE_ANALYSIS = "root_cause_analysis"
-    COMPLETED = "completed"
-
-
 class UserIntent(Enum):
     """User intents in conversational mode."""
     FETCH_DATA = "fetch_data"
@@ -78,14 +67,13 @@ class OrchestratorAgent(BaseAgent):
     
     The orchestrator is responsible for:
     - Initializing investigation sessions
-    - Managing user interaction in guided mode
+    - Managing user interaction in conversational mode
     - Routing to appropriate specialist agents
     - Presenting findings to users
     - Handling errors and recovery
     
     Attributes:
         console: Rich console for formatted output
-        current_phase: Current phase of the investigation
         agent_registry: Dictionary mapping agent names to agent instances
     """
     
@@ -100,7 +88,6 @@ class OrchestratorAgent(BaseAgent):
         super().__init__(config, scratchpad, agent_name or "orchestrator")
         self.console = Console()
         self.conversational_ui = ConversationalUI(self.console)
-        self.current_phase = InvestigationPhase.INITIALIZATION
         self.agent_registry: Dict[str, BaseAgent] = {}
         
         # Get UI configuration
@@ -153,95 +140,25 @@ class OrchestratorAgent(BaseAgent):
         """Execute the orchestration workflow.
         
         This is the main entry point that coordinates the entire investigation.
-        Supports both guided (menu-driven) and conversational (natural language) modes.
+        Uses conversational (natural language) mode with intent-based routing.
         
-        In conversational mode, can use either:
+        Can use either:
         1. SK HandoffOrchestration (if use_sk_orchestration=True)
         2. Legacy custom routing (if use_sk_orchestration=False)
         
         Args:
-            **kwargs: Execution parameters (mode, initial_problem, etc.)
+            **kwargs: Execution parameters (initial_problem, etc.)
         
         Returns:
             Dictionary containing investigation results
         """
-        mode = kwargs.get("mode", "guided")
-        
-        if mode == "guided":
-            return self._execute_guided_mode(**kwargs)
-        elif mode == "conversational":
-            # Check if SK orchestration should be used
-            if self.use_sk_orchestration:
-                # Use asyncio to run SK orchestration (it's async)
-                return asyncio.run(self._execute_conversational_mode_sk(**kwargs))
-            else:
-                # Use legacy custom routing
-                return self._execute_conversational_mode(**kwargs)
+        # Check if SK orchestration should be used
+        if self.use_sk_orchestration:
+            # Use asyncio to run SK orchestration (it's async)
+            return asyncio.run(self._execute_conversational_mode_sk(**kwargs))
         else:
-            raise NotImplementedError(f"Mode '{mode}' not implemented yet")
-    
-    def _execute_guided_mode(self, **kwargs) -> Dict[str, Any]:
-        """Execute investigation in guided (menu-driven) mode.
-        
-        Args:
-            **kwargs: Execution parameters
-        
-        Returns:
-            Dictionary containing investigation results
-        """
-        # Check if resuming an existing session
-        is_resume = self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
-        
-        if is_resume:
-            # Restore phase from scratchpad or determine from completed sections
-            self._restore_phase_from_scratchpad()
-            self.console.print("[cyan]Resuming investigation...[/cyan]")
-            session_info = self.read_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION) or {}
-        else:
-            # Start new session
-            self._display_welcome()
-            session_info = self.start_session(**kwargs)
-        
-        # Main investigation loop
-        continue_investigation = True
-        while continue_investigation:
-            # Show current phase
-            self._display_phase_status()
-            
-            # Route based on current phase
-            if self.current_phase == InvestigationPhase.DATA_COLLECTION:
-                success = self._route_data_collection()
-                if success:
-                    self.current_phase = InvestigationPhase.PATTERN_ANALYSIS
-            
-            elif self.current_phase == InvestigationPhase.PATTERN_ANALYSIS:
-                success = self._route_pattern_analysis()
-                if success:
-                    self.current_phase = InvestigationPhase.CODE_INSPECTION
-            
-            elif self.current_phase == InvestigationPhase.CODE_INSPECTION:
-                success = self._route_code_inspection()
-                if success:
-                    self.current_phase = InvestigationPhase.ROOT_CAUSE_ANALYSIS
-            
-            elif self.current_phase == InvestigationPhase.ROOT_CAUSE_ANALYSIS:
-                success = self._route_root_cause_analysis()
-                if success:
-                    self.current_phase = InvestigationPhase.COMPLETED
-                    continue_investigation = False
-            
-            elif self.current_phase == InvestigationPhase.COMPLETED:
-                continue_investigation = False
-        
-        # Present final findings
-        findings = self.present_findings()
-        
-        return {
-            "status": "completed",
-            "phase": self.current_phase.value,
-            "session_info": session_info,
-            "findings": findings
-        }
+            # Use legacy custom routing
+            return self._execute_conversational_mode(**kwargs)
     
     def _execute_conversational_mode(self, **kwargs) -> Dict[str, Any]:
         """Execute investigation in conversational (natural language) mode.
@@ -1208,14 +1125,11 @@ Generate a natural response that:
             "description": problem_description,
             "time_window": time_window,
             "affected_services": affected_services,
-            "interaction_mode": kwargs.get("mode", "guided"),
+            "interaction_mode": "conversational",
             "started_at": datetime.now().isoformat()
         }
         
         self.write_scratchpad(ScratchpadSection.PROBLEM_DESCRIPTION, problem_data)
-        
-        # Move to data collection phase
-        self.current_phase = InvestigationPhase.DATA_COLLECTION
         
         self.console.print("[green]✓[/green] Session initialized successfully")
         
@@ -1249,7 +1163,7 @@ Generate a natural response that:
             log_agent_transition(
                 from_agent=from_agent,
                 to_agent=agent_name,
-                reason=f"Phase: {self.current_phase.value if hasattr(self, 'current_phase') else 'unknown'}"
+                reason="Conversational routing"
             )
             self._last_agent = agent_name
         
@@ -1342,59 +1256,6 @@ Generate a natural response that:
             return self._handle_manual_intervention(agent_name)
         else:  # abort
             raise error
-    
-    def _restore_phase_from_scratchpad(self) -> None:
-        """Restore investigation phase from scratchpad state.
-        
-        Determines the current phase based on which sections have been completed
-        in the scratchpad.
-        """
-        # Check which sections exist in the scratchpad
-        has_problem = self.scratchpad.has_section(ScratchpadSection.PROBLEM_DESCRIPTION)
-        has_data = self.scratchpad.has_section(ScratchpadSection.DATA_COLLECTED)
-        has_patterns = self.scratchpad.has_section(ScratchpadSection.PATTERN_ANALYSIS)
-        has_code = self.scratchpad.has_section(ScratchpadSection.CODE_INSPECTION)
-        has_diagnosis = self.scratchpad.has_section(ScratchpadSection.FINAL_DIAGNOSIS)
-        
-        # Determine phase based on completed sections
-        if has_diagnosis:
-            self.current_phase = InvestigationPhase.COMPLETED
-        elif has_code:
-            self.current_phase = InvestigationPhase.ROOT_CAUSE_ANALYSIS
-        elif has_patterns:
-            self.current_phase = InvestigationPhase.CODE_INSPECTION
-        elif has_data:
-            self.current_phase = InvestigationPhase.PATTERN_ANALYSIS
-        elif has_problem:
-            self.current_phase = InvestigationPhase.DATA_COLLECTION
-        else:
-            # Shouldn't reach here, but default to initialization
-            self.current_phase = InvestigationPhase.INITIALIZATION
-    
-    def _display_welcome(self) -> None:
-        """Display welcome message."""
-        panel = Panel(
-            "[bold]Aletheia Investigation Assistant[/bold]\n\n"
-            "I'll guide you through investigating production incidents.",
-            title="Welcome",
-            border_style="cyan"
-        )
-        self.console.print(panel)
-        self.console.print()
-    
-    def _display_phase_status(self) -> None:
-        """Display current investigation phase."""
-        phase_names = {
-            InvestigationPhase.INITIALIZATION: "Initialization",
-            InvestigationPhase.DATA_COLLECTION: "Data Collection",
-            InvestigationPhase.PATTERN_ANALYSIS: "Pattern Analysis",
-            InvestigationPhase.CODE_INSPECTION: "Code Inspection",
-            InvestigationPhase.ROOT_CAUSE_ANALYSIS: "Root Cause Analysis",
-            InvestigationPhase.COMPLETED: "Completed"
-        }
-        
-        phase_name = phase_names.get(self.current_phase, "Unknown")
-        self.console.print(f"\n[bold cyan]Phase: {phase_name}[/bold cyan]\n")
     
     def _display_menu(
         self,
@@ -1507,68 +1368,6 @@ Generate a natural response that:
             return []
         
         return [s.strip() for s in services_str.split(",") if s.strip()]
-    
-    def _route_data_collection(self) -> bool:
-        """Route to data collection phase.
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        # Check if we should collect data
-        if self._should_confirm("Collect data from sources?"):
-            result = self.route_to_agent("data_fetcher")
-            return result.get("success", False)
-        else:
-            return False
-    
-    def _route_pattern_analysis(self) -> bool:
-        """Route to pattern analysis phase.
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        if self._should_confirm("Analyze patterns in collected data?"):
-            result = self.route_to_agent("pattern_analyzer")
-            return result.get("success", False)
-        else:
-            return False
-    
-    def _route_code_inspection(self) -> bool:
-        """Route to code inspection phase.
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        # Check if user wants to skip code inspection
-        choice = self._display_menu(
-            "[bold]Code inspection:[/bold]",
-            [
-                "Inspect code (requires repository access)",
-                "Skip code inspection and proceed to diagnosis"
-            ]
-        )
-        
-        if "Skip" in choice:
-            return True  # Skip to next phase
-        
-        result = self.route_to_agent("code_inspector")
-        return result.get("success", False)
-    
-    def _route_root_cause_analysis(self) -> bool:
-        """Route to root cause analysis phase.
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.console
-        ) as progress:
-            progress.add_task("Synthesizing findings...", total=None)
-            result = self.route_to_agent("root_cause_analyst")
-        
-        return result.get("success", False)
     
     def _should_confirm(self, prompt_text: str) -> bool:
         """Check if confirmation is needed based on configuration.

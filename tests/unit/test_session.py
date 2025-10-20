@@ -49,7 +49,6 @@ class TestSessionMetadata:
             updated="2025-01-01T00:00:00",
             status="active",
             salt="dGVzdHNhbHQ=",
-            mode="guided",
         )
 
         result = metadata.to_dict()
@@ -57,7 +56,6 @@ class TestSessionMetadata:
         assert result["id"] == "INC-TEST"
         assert result["name"] == "Test Session"
         assert result["status"] == "active"
-        assert result["mode"] == "guided"
 
     def test_from_dict(self):
         """Test creation from dictionary."""
@@ -68,7 +66,6 @@ class TestSessionMetadata:
             "updated": "2025-01-01T00:00:00",
             "status": "active",
             "salt": "dGVzdHNhbHQ=",
-            "mode": "guided",
         }
 
         metadata = SessionMetadata.from_dict(data)
@@ -76,7 +73,6 @@ class TestSessionMetadata:
         assert metadata.id == "INC-TEST"
         assert metadata.name == "Test Session"
         assert metadata.status == "active"
-        assert metadata.mode == "guided"
 
 
 class TestSessionCreation:
@@ -86,7 +82,6 @@ class TestSessionCreation:
         """Test creating a new session."""
         session = Session.create(
             name="Test Session",
-            mode="guided",
             password=test_password,
             session_dir=temp_session_dir,
         )
@@ -379,7 +374,6 @@ class TestSessionMetadataOperations:
         assert metadata.id == session.session_id
         assert metadata.name == "Test"
         assert metadata.status == "active"
-        assert metadata.mode == "guided"
 
     def test_update_status(self, temp_session_dir, test_password):
         """Test updating session status."""
@@ -425,9 +419,8 @@ class TestSessionEncryption:
         with open(session.metadata_file, "rb") as f:
             content = f.read()
 
-        # Should not contain plaintext session ID or name
+        # Should not contain plaintext session ID
         assert session.session_id.encode() not in content
-        assert b"guided" not in content
 
     def test_different_passwords_different_encryption(
         self, temp_session_dir, test_password

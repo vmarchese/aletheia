@@ -1,7 +1,7 @@
 """
 User interface components for Aletheia.
 
-Provides guided mode menus, input handling, confirmations, and rich output formatting.
+Provides menus, input handling, confirmations, and rich output formatting for conversational mode.
 """
 
 from aletheia.ui.menu import Menu, MenuItem, create_menu

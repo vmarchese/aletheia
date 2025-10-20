@@ -318,9 +318,8 @@ class DataFetcherAgent(SKBaseAgent):
     ) -> str:
         """Build a prompt for the SK agent to collect data.
         
-        This method supports both guided and conversational modes:
-        - Guided mode: Uses structured parameters
-        - Conversational mode: Includes conversation history for LLM to extract parameters
+        This method uses conversational mode with conversation history
+        for the LLM to extract parameters naturally.
         
         Args:
             sources: Data sources to use

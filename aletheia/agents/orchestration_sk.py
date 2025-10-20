@@ -106,8 +106,7 @@ class AletheiaHandoffOrchestration:
     def _human_response_function(self) -> ChatMessageContent:
         """Callback for human-in-the-loop interaction.
         
-        This is called when an agent needs user input. In guided mode,
-        we prompt the user for their response.
+        This is called when an agent needs user input.
         
         Returns:
             ChatMessageContent with user input

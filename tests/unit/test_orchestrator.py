@@ -118,8 +118,7 @@ class TestSessionStart:
         result = orchestrator.start_session(
             problem_description="API errors",
             time_window="2h",
-            affected_services=["payments-svc"],
-            mode="guided"
+            affected_services=["payments-svc"]
         )
         
         assert result["problem_description"] == "API errors"
@@ -135,11 +134,7 @@ class TestSessionStart:
         assert problem_data["description"] == "API errors"
         assert problem_data["time_window"] == "2h"
         assert problem_data["affected_services"] == ["payments-svc"]
-        assert problem_data["interaction_mode"] == "guided"
         assert "started_at" in problem_data
-        
-        # Verify phase transition
-        assert orchestrator.current_phase == InvestigationPhase.DATA_COLLECTION
     
     @patch('aletheia.agents.orchestrator.Prompt.ask')
     def test_start_session_interactive(self, mock_ask, orchestrator):
@@ -390,34 +385,6 @@ class TestConfirmationLevels:
         result = orchestrator._should_confirm("Continue?")
         
         assert result is True
-
-
-class TestGuidedModeExecution:
-    """Test guided mode execution."""
-    
-    def test_execute_guided_mode_components(self, orchestrator):
-        """Test guided mode execution components separately."""
-        # Test that _execute_guided_mode exists and can be mocked
-        assert hasattr(orchestrator, '_execute_guided_mode')
-        
-        # Mock the entire guided mode execution
-        mock_result = {
-            "status": "completed",
-            "phase": InvestigationPhase.COMPLETED.value,
-            "session_info": {"problem_description": "Test"},
-            "findings": {}
-        }
-        
-        with patch.object(orchestrator, '_execute_guided_mode', return_value=mock_result):
-            result = orchestrator.execute(mode="guided")
-        
-        assert result["status"] == "completed"
-        assert result["phase"] == InvestigationPhase.COMPLETED.value
-    
-    def test_execute_unsupported_mode(self, orchestrator):
-        """Test execution with unsupported mode."""
-        with pytest.raises(NotImplementedError, match="Mode 'invalid_mode' not implemented"):
-            orchestrator.execute(mode="invalid_mode")
 
 
 class TestPhaseRouting:

@@ -95,7 +95,6 @@ class UIConfig(BaseModel):
     """User interface configuration."""
 
     confirmation_level: Literal["verbose", "normal", "minimal"] = "normal"
-    default_mode: Literal["guided", "conversational"] = "guided"
     agent_visibility: bool = False
 
 
