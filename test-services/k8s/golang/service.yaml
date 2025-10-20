@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: golang-test-service
+  namespace: aletheia-test
+  labels:
+    app: golang-test-service
+    component: test-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: golang-test-service
