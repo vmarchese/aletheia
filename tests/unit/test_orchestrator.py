@@ -724,7 +724,7 @@ class TestConversationalMode:
             with patch.object(orchestrator, '_display_welcome_conversational'):
                 result = orchestrator._execute_conversational_mode()
         
-        assert result["status"] == "completed"
+        assert result["status"] == "interrupted"  # User typed 'exit'
         assert result["mode"] == "conversational"
         assert result["conversation_length"] > 0
 
