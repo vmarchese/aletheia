@@ -57,6 +57,7 @@ class KubernetesDataFetcher(SKBaseAgent):
             config: Configuration dictionary with data_sources.kubernetes and llm sections
             scratchpad: Scratchpad instance for agent communication
         """
+        log_info("KubernetesDataFetcher::__init__:: Initializing Kubernetes Data Fetcher Agent")
         super().__init__(config, scratchpad, agent_name="kubernetes_data_fetcher")
         
         # Initialize Kubernetes fetcher (for direct access if needed)
@@ -68,6 +69,7 @@ class KubernetesDataFetcher(SKBaseAgent):
     
     def _initialize_fetcher(self) -> None:
         """Initialize Kubernetes fetcher from configuration."""
+        log_info("KubernetesDataFetcher::_initialize_fetcher:: Initializing Kubernetes fetcher")
         data_sources_config = self.config.get("data_sources", {})
         
         if "kubernetes" in data_sources_config:
@@ -81,6 +83,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         This registers the KubernetesPlugin so the SK agent can automatically
         invoke its functions via FunctionChoiceBehavior.Auto().
         """
+        log_info("KubernetesDataFetcher::_register_plugin:: Registering Kubernetes SK plugin")
         if self._plugin_registered:
             return
         
@@ -124,6 +127,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         Raises:
             ValueError: If Kubernetes is not configured
         """
+        log_info("KubernetesDataFetcher::execute:: Starting execution of Kubernetes Data Fetcher")
         if not self.fetcher and not self._plugin_registered:
             raise ValueError("Kubernetes data source is not configured")
         
@@ -167,6 +171,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         Returns:
             Dictionary with execution results
         """
+        log_info("KubernetesDataFetcher::_execute_with_sk:: Executing with SK agent")
         # Register plugin with kernel
         self._register_plugin()
         
@@ -256,6 +261,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         Returns:
             Dictionary with execution results
         """
+        log_info("KubernetesDataFetcher::_execute_direct:: Executing with direct fetcher calls")
         if not self.fetcher:
             raise ValueError("Kubernetes fetcher not available")
         
@@ -363,6 +369,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         Returns:
             Prompt string for SK agent
         """
+        log_info("KubernetesDataFetcher::_build_sk_prompt:: Building SK prompt")
         # Check if this is conversational mode (has conversation history)
         conversation_history = kwargs.get("conversation_history", [])
         use_conversational = bool(conversation_history)
@@ -459,6 +466,7 @@ Return your results as JSON:
         Returns:
             Dictionary with Kubernetes data (count, summary, metadata)
         """
+        log_info("KubernetesDataFetcher::_parse_sk_response:: Parsing SK response")
         # Try to parse as JSON
         try:
             json_match = re.search(r'\{[\s\S]*\}', response)
@@ -495,6 +503,7 @@ Return your results as JSON:
         Returns:
             Tuple of (start_time, end_time)
         """
+        log_info("KubernetesDataFetcher::_parse_time_window:: Parsing time window")
         # Get time window from parameter, problem, or default
         window_str = (
             time_window
@@ -528,6 +537,7 @@ Return your results as JSON:
         Returns:
             FetchResult with Kubernetes logs
         """
+        log_info("KubernetesDataFetcher::_fetch_kubernetes:: Fetching Kubernetes logs")
         # Extract parameters from kwargs or problem description
         pod = kwargs.get("pod") or self._extract_pod_from_problem(problem)
         namespace = kwargs.get("namespace") or self._extract_namespace_from_problem(problem) or fetcher.config.get("namespace", "default")
@@ -576,6 +586,7 @@ Return your results as JSON:
         Returns:
             Pod name if found, None otherwise
         """
+        log_info("KubernetesDataFetcher::_extract_pod_from_problem:: Extracting pod from problem")
         # Check explicit pod field first
         if problem.get("pod"):
             return problem["pod"]
@@ -601,6 +612,7 @@ Return your results as JSON:
         Returns:
             Namespace if found, None otherwise
         """
+        log_info("KubernetesDataFetcher::_extract_namespace_from_problem:: Extracting namespace from problem")
         # Check explicit namespace field first
         if problem.get("namespace"):
             return problem["namespace"]
@@ -624,6 +636,7 @@ Return your results as JSON:
         Returns:
             Human-readable summary string
         """
+        log_info("KubernetesDataFetcher::_summarize_logs:: Summarizing fetched logs")
         summarizer = LogSummarizer()
         summary_dict = summarizer.summarize(fetch_result.data)
         return summary_dict.get("summary", "No summary available")
