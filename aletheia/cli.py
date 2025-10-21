@@ -241,7 +241,6 @@ def session_resume(
         
         console.print(f"[green]Session '{metadata.name}' resumed successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
-        console.print(f"Mode: {metadata.mode}")
         
         # Resume investigation workflow
         _start_investigation(session, console)
@@ -373,7 +372,6 @@ def session_view(
         console.print(f"Status: {metadata.status}")
         console.print(f"Created: {metadata.created}")
         console.print(f"Updated: {metadata.updated}")
-        console.print(f"Mode: {metadata.mode}")
         
         # Display scratchpad contents
         console.print(f"\n[bold cyan]Scratchpad Contents:[/bold cyan]\n")

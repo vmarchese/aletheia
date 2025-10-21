@@ -2401,4 +2401,171 @@ Implement complete test services in Golang and Java to validate Aletheia's troub
 
 ---
 
+## Simplification
+
+**Priority**: HIGH - Architecture simplification to improve clarity and maintainability
+**Rationale**: Current DataFetcherAgent handles both Kubernetes and Prometheus data collection, creating a single point of complexity. Separating into specialized fetchers improves:
+- **Single Responsibility**: Each agent focuses on one data source
+- **Maintainability**: Easier to debug and enhance individual fetchers
+- **Testability**: Isolated testing per data source
+- **Scalability**: Easier to add new data sources (Elasticsearch, Jaeger) in future
+- **Orchestration Clarity**: Explicit agent routing in HandoffOrchestration
+
+### Tasks
+
+- [ ] **SIMPLIFY-1** Separate DataFetcherAgent into specialized agents
+  - [ ] **SIMPLIFY-1.1** Create KubernetesDataFetcher agent
+    - [ ] Create `aletheia/agents/kubernetes_data_fetcher.py` 
+    - [ ] Inherit from `SKBaseAgent`
+    - [ ] Extract K8s-specific logic from current DataFetcherAgent:
+      - [ ] `_fetch_kubernetes()` method
+      - [ ] `_build_sk_prompt()` K8s-specific prompt logic
+      - [ ] KubernetesPlugin integration
+    - [ ] Update agent instructions to focus exclusively on K8s data collection
+    - [ ] Register with handoff name: "kubernetes_data_fetcher"
+    - [ ] Write unit tests (target: >85% coverage)
+    - **Acceptance**: KubernetesDataFetcher successfully collects K8s logs in isolation
+  
+  - [ ] **SIMPLIFY-1.2** Create PrometheusDataFetcher agent
+    - [ ] Create `aletheia/agents/prometheus_data_fetcher.py`
+    - [ ] Inherit from `SKBaseAgent`
+    - [ ] Extract Prometheus-specific logic from current DataFetcherAgent:
+      - [ ] `_fetch_prometheus()` method
+      - [ ] `_build_sk_prompt()` Prometheus-specific prompt logic
+      - [ ] PrometheusPlugin integration
+    - [ ] Update agent instructions to focus exclusively on metrics collection
+    - [ ] Register with handoff name: "prometheus_data_fetcher"
+    - [ ] Write unit tests (target: >85% coverage)
+    - **Acceptance**: PrometheusDataFetcher successfully collects metrics in isolation
+  
+  - [ ] **SIMPLIFY-1.3** Deprecate original DataFetcherAgent
+    - [ ] Mark `aletheia/agents/data_fetcher.py` as deprecated
+    - [ ] Add deprecation warnings in code
+    - [ ] Update documentation to reference new specialized agents
+    - [ ] Maintain backward compatibility for one release cycle (if needed)
+    - [ ] Plan removal in future release (e.g., v2.1.0)
+    - **Acceptance**: Original DataFetcherAgent marked deprecated with clear migration path
+
+- [ ] **SIMPLIFY-2** Update TriageAgent to support multiple data fetchers
+  - [ ] **SIMPLIFY-2.1** Update TriageAgent instructions
+    - [ ] Modify `get_instructions()` to mention both KubernetesDataFetcher and PrometheusDataFetcher
+    - [ ] Update handoff descriptions:
+      - [ ] "Transfer to kubernetes_data_fetcher when user needs Kubernetes logs or pod information"
+      - [ ] "Transfer to prometheus_data_fetcher when user needs metrics, dashboards, or time-series data"
+    - [ ] Add guidance on when to route to each fetcher based on user intent
+    - **Acceptance**: TriageAgent instructions clearly differentiate between K8s and Prometheus data sources
+  
+  - [ ] **SIMPLIFY-2.2** Update TriageAgent prompt templates
+    - [ ] Update `prompts/triage_agent_instructions.md` with specialist fetcher descriptions
+    - [ ] Add examples of user queries that should route to each fetcher
+    - [ ] Document how to handle requests requiring both data sources
+    - **Acceptance**: Prompt templates guide LLM to route correctly to specialist fetchers
+
+- [ ] **SIMPLIFY-3** Update HandoffOrchestration for multiple data fetchers
+  - [ ] **SIMPLIFY-3.1** Update OrchestrationHandoffs configuration
+    - [ ] Add handoff rule: `TriageAgent → KubernetesDataFetcher`
+      - [ ] Description: "Transfer to kubernetes_data_fetcher for K8s logs/pod data"
+    - [ ] Add handoff rule: `TriageAgent → PrometheusDataFetcher`
+      - [ ] Description: "Transfer to prometheus_data_fetcher for metrics/time-series"
+    - [ ] Add return handoff rules:
+      - [ ] `KubernetesDataFetcher → TriageAgent`: "Transfer back after K8s data collection"
+      - [ ] `PrometheusDataFetcher → TriageAgent`: "Transfer back after metrics collection"
+    - [ ] Update existing `TriageAgent → DataFetcherAgent` handoff to be removed
+    - **Acceptance**: HandoffOrchestration topology includes both specialized fetchers
+  
+  - [ ] **SIMPLIFY-3.2** Update AletheiaHandoffOrchestration initialization
+    - [ ] Update `orchestration_sk.py` to instantiate both fetchers:
+      ```python
+      kubernetes_fetcher = KubernetesDataFetcher(config, scratchpad)
+      prometheus_fetcher = PrometheusDataFetcher(config, scratchpad)
+      ```
+    - [ ] Add both fetchers to agents list in HandoffOrchestration
+    - [ ] Update handoff rules to include new topology
+    - [ ] Ensure backward compatibility flag for old DataFetcherAgent (if needed)
+    - **Acceptance**: Orchestration initializes and manages both specialist fetchers
+  
+  - [ ] **SIMPLIFY-3.3** Update OrchestratorAgent initialization
+    - [ ] Update `orchestrator.py` to create both fetchers in `_execute_conversational_mode_sk()`
+    - [ ] Update agent registry in legacy mode (if preserved):
+      ```python
+      self.agent_registry = {
+          "kubernetes_data_fetcher": KubernetesDataFetcher(...),
+          "prometheus_data_fetcher": PrometheusDataFetcher(...),
+          ...
+      }
+      ```
+    - [ ] Remove or deprecate single "data_fetcher" registry entry
+    - **Acceptance**: Orchestrator correctly initializes both specialized fetchers
+
+- [ ] **SIMPLIFY-4** Update tests for multiple data fetchers
+  - [ ] **SIMPLIFY-4.1** Update orchestration unit tests
+    - [ ] Update `tests/agents/test_orchestration_sk.py`:
+      - [ ] Test 7 agents in topology (triage + 2 fetchers + pattern + code + root)
+      - [ ] Test handoff from triage to kubernetes_data_fetcher
+      - [ ] Test handoff from triage to prometheus_data_fetcher
+      - [ ] Test return handoffs from fetchers to triage
+    - [ ] Update agent count assertions (5 → 6 or 7 depending on deprecation)
+    - **Acceptance**: All orchestration tests pass with new topology
+  
+  - [ ] **SIMPLIFY-4.2** Update TriageAgent tests
+    - [ ] Update `tests/agents/test_triage.py`:
+      - [ ] Test that instructions mention both kubernetes_data_fetcher and prometheus_data_fetcher
+      - [ ] Test routing decisions for K8s-related queries
+      - [ ] Test routing decisions for metrics-related queries
+    - [ ] Coverage target: >90%
+    - **Acceptance**: TriageAgent tests verify correct routing to specialist fetchers
+  
+  - [ ] **SIMPLIFY-4.3** Update integration tests
+    - [ ] Update `tests/integration/test_orchestration_flow.py`:
+      - [ ] Test scenario with K8s data collection only
+      - [ ] Test scenario with Prometheus data collection only
+      - [ ] Test scenario requiring both data sources
+      - [ ] Verify scratchpad sections populated correctly by each fetcher
+    - [ ] Coverage target: >80%
+    - **Acceptance**: E2E tests demonstrate both fetchers working in real flow
+
+- [ ] **SIMPLIFY-5** Update documentation
+  - [ ] **SIMPLIFY-5.1** Update SPECIFICATION.md
+    - [ ] Update agent architecture section (2.3) to show 6 agents instead of 5
+    - [ ] Document KubernetesDataFetcher responsibilities
+    - [ ] Document PrometheusDataFetcher responsibilities
+    - [ ] Update orchestration flow diagram
+    - **Acceptance**: Architecture docs reflect new agent topology
+  
+  - [ ] **SIMPLIFY-5.2** Update AGENTS.md
+    - [ ] Add section for KubernetesDataFetcher patterns
+    - [ ] Add section for PrometheusDataFetcher patterns
+    - [ ] Update orchestration examples with multiple fetchers
+    - [ ] Document when to create specialized vs general-purpose agents
+    - **Acceptance**: Developer guide shows how to use specialist fetchers
+  
+  - [ ] **SIMPLIFY-5.3** Update README.md
+    - [ ] Update agent list to show both fetchers
+    - [ ] Update example scenarios to demonstrate routing to correct fetcher
+    - [ ] Update architecture diagram if present
+    - **Acceptance**: User-facing docs reflect new architecture
+
+### Simplification Completion Checklist
+
+- [ ] KubernetesDataFetcher implemented and tested (>85% coverage)
+- [ ] PrometheusDataFetcher implemented and tested (>85% coverage)
+- [ ] TriageAgent updated to route to both fetchers
+- [ ] HandoffOrchestration topology updated with 6+ agents
+- [ ] All unit tests passing (orchestration, triage, fetchers)
+- [ ] All integration tests passing (E2E flow with both fetchers)
+- [ ] Documentation updated (SPECIFICATION, AGENTS, README)
+- [ ] Original DataFetcherAgent deprecated with migration path
+- **Phase Gate**: Architecture simplified, all tests passing, documentation complete
+
+### Benefits of Simplification
+
+- **Reduced Complexity**: Each agent has single, clear responsibility
+- **Better Testing**: Isolated unit tests per data source
+- **Easier Debugging**: Smaller agents with focused logic
+- **Future-Proof**: Easy to add new data source agents (Elasticsearch, Jaeger, Datadog)
+- **Clearer Orchestration**: Explicit handoff rules per data source
+- **LLM Performance**: More focused prompts per agent (less context switching)
+
+---
+
 **END OF TODO LIST**

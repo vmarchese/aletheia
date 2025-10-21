@@ -36,6 +36,7 @@ uv pip sync requirements.txt
 - Use a memory file to store information between interactions. The memory file should be named `.claude/memory/<task-id>-<task-description>.md` where `<task-id>` is the id of the task you are working on (example: `./claude/memory/2.4-prometheus-fetcher-16.md`)
 - NEVER change files outside the current worktree. 
 - When updating `TODO.md` and `.claude/memory/<task-id>-<task-description>.md` ALWAYS use the workingtree you are working in
+- ALWAYS keep the code simple and clean, DO NOT overengineer
 
 ### 1. Start of Session - Feature Branch Setup
 
@@ -1007,6 +1008,7 @@ uv pip install -r requirements.txt -r requirements-dev.txt
 - Ask for feature name and create worktree with task id and feature name
 - ALWAYS be sure to `cd` in the created worktree
 - ALWAYS create and activate the python virtual environment
+- ALWAYS keep the code simple and clean, DO NOT overengineer
 2. **End:** 
 - Run ALL tests and verify they pass
 - update `worktrees/feat/<task-id>-<feat-name>/TODO.md` and `worktrees/feat/<task-id>-<feat-name>/.claude/memory/*.md`
