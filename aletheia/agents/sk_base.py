@@ -73,7 +73,7 @@ class SKBaseAgent:
         Raises:
             ValueError: If required configuration is missing
         """
-        log_info("SKBaseAgent::__init__:: - Initializing agent")
+        log_info(f"SKBaseAgent[{agent_name}]::__init__:: - Initializing agent")
         self.config = config
         self.scratchpad = scratchpad
         self.agent_name = agent_name or self.__class__.__name__.lower().replace("agent", "")
@@ -92,7 +92,7 @@ class SKBaseAgent:
         Raises:
             ValueError: If required configuration is missing
         """
-        log_info("SKBaseAgent::_validate_config:: - Validating configuration")
+        log_info(f"SKBaseAgent[{self.agent_name}]::_validate_config:: - Validating configuration")
         if "llm" not in self.config:
             raise ValueError("Missing 'llm' configuration")
     
@@ -110,7 +110,7 @@ class SKBaseAgent:
         Returns:
             Configured Semantic Kernel instance
         """
-        log_info("SKBaseAgent::kernel:: - Accessing kernel")
+        log_info(f"SKBaseAgent[{self.agent_name}]::kernel:: - Accessing kernel")
         if self._kernel is None:
             # Get configuration
             llm_config = self.config.get("llm", {})
@@ -196,7 +196,7 @@ class SKBaseAgent:
         Returns:
             Configured ChatCompletionAgent instance
         """
-        log_info("SKBaseAgent::agent:: - Accessing agent")
+        log_info(f"SKBaseAgent[{self.agent_name}]::agent:: - Accessing agent")
         if self._agent is None:
             # Get system instructions
             instructions = get_system_prompt(self.agent_name)
@@ -217,7 +217,7 @@ class SKBaseAgent:
         Returns:
             ChatHistory instance for conversation tracking
         """
-        log_info("SKBaseAgent::chat_history:: - Accessing chat history")
+        log_info(f"SKBaseAgent[{self.agent_name}]::chat_history:: - Accessing chat history")
         if self._chat_history is None:
             self._chat_history = ChatHistory()
         return self._chat_history
@@ -265,7 +265,7 @@ class SKBaseAgent:
         Raises:
             Exception: If agent invocation fails
         """
-        log_info("SKBaseAgent::invoke_async:: - Invoking agent asynchronously")
+        log_info(f"SKBaseAgent[{self.agent_name}]::invoke_async:: - Invoking agent asynchronously")
         # Get model name for logging
         llm_config = self.config.get("llm", {})
         agents_config = llm_config.get("agents", {})
@@ -385,7 +385,7 @@ class SKBaseAgent:
         Returns:
             Agent's response as string
         """
-        log_info("SKBaseAgent::invoke:: - Invoking agent synchronously")
+        log_info(f"SKBaseAgent[{self.agent_name}]::invoke:: - Invoking agent synchronously")
         return asyncio.run(self.invoke_async(user_message, settings, system_prompt))
     
     def read_scratchpad(self, section: str) -> Optional[Any]:
@@ -397,7 +397,7 @@ class SKBaseAgent:
         Returns:
             Section data, or None if section doesn't exist
         """
-        log_info("SKBaseAgent::read_scratchpad:: - Reading scratchpad section")
+        log_info(f"SKBaseAgent[{self.agent_name}]::read_scratchpad:: - Reading scratchpad section")
         data = self.scratchpad.read_section(section)
         
         # Log scratchpad read operation
@@ -419,7 +419,7 @@ class SKBaseAgent:
             section: Section name to write
             data: Data to write to the section
         """
-        log_info("SKBaseAgent::write_scratchpad:: - Writing scratchpad section")
+        log_info(f"SKBaseAgent[{self.agent_name}]::write_scratchpad:: - Writing scratchpad section")
         self.scratchpad.write_section(section, data)
         self.scratchpad.save()
         
@@ -440,7 +440,7 @@ class SKBaseAgent:
             section: Section name to append to
             data: Data to append to the section
         """
-        log_info("SKBaseAgent::append_scratchpad:: - Appending to scratchpad section")
+        log_info(f"SKBaseAgent[{self.agent_name}]::append_scratchpad:: - Appending to scratchpad section")
         self.scratchpad.append_to_section(section, data)
         
         # Log scratchpad append operation
@@ -474,7 +474,7 @@ class SKBaseAgent:
         Returns:
             LLMProvider instance for backward compatibility
         """
-        log_info("SKBaseAgent::get_llm:: - Accessing LLM provider for legacy compatibility")
+        log_info(f"SKBaseAgent[{self.agent_name}]::get_llm:: - Accessing LLM provider for legacy compatibility")
         from aletheia.llm.provider import LLMFactory
         
         if not hasattr(self, '_llm_provider') or self._llm_provider is None:
@@ -504,5 +504,5 @@ class SKBaseAgent:
     
     def __repr__(self) -> str:
         """Return string representation of the agent."""
-        log_info("SKBaseAgent::__repr__:: - Generating string representation")
+        log_info(f"SKBaseAgent[{self.agent_name}]::__repr__:: - Generating string representation")
         return f"{self.__class__.__name__}(agent_name='{self.agent_name}')"
