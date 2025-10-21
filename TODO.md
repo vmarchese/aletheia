@@ -2461,41 +2461,31 @@ Implement complete test services in Golang and Java to validate Aletheia's troub
     - [x] Document how to handle requests requiring both data sources
     - **Acceptance**: ✅ Prompt templates guide LLM to route correctly to specialist fetchers
 
-- [ ] **SIMPLIFY-3** Update HandoffOrchestration for multiple data fetchers
-  - [ ] **SIMPLIFY-3.1** Update OrchestrationHandoffs configuration
-    - [ ] Add handoff rule: `TriageAgent → KubernetesDataFetcher`
-      - [ ] Description: "Transfer to kubernetes_data_fetcher for K8s logs/pod data"
-    - [ ] Add handoff rule: `TriageAgent → PrometheusDataFetcher`
-      - [ ] Description: "Transfer to prometheus_data_fetcher for metrics/time-series"
-    - [ ] Add return handoff rules:
-      - [ ] `KubernetesDataFetcher → TriageAgent`: "Transfer back after K8s data collection"
-      - [ ] `PrometheusDataFetcher → TriageAgent`: "Transfer back after metrics collection"
-    - [ ] Update existing `TriageAgent → DataFetcherAgent` handoff to be removed
-    - **Acceptance**: HandoffOrchestration topology includes both specialized fetchers
+- [x] **SIMPLIFY-3** Update HandoffOrchestration for multiple data fetchers ✅ **(COMPLETE - 2025-10-21, Commit: 88f266c)**
+  - [x] **SIMPLIFY-3.1** Update OrchestrationHandoffs configuration
+    - [x] Add handoff rule: `TriageAgent → KubernetesDataFetcher`
+      - [x] Description: "Transfer to kubernetes_data_fetcher for K8s logs/pod data"
+    - [x] Add handoff rule: `TriageAgent → PrometheusDataFetcher`
+      - [x] Description: "Transfer to prometheus_data_fetcher for metrics/time-series"
+    - [x] Add return handoff rules:
+      - [x] `KubernetesDataFetcher → TriageAgent`: "Transfer back after K8s data collection"
+      - [x] `PrometheusDataFetcher → TriageAgent`: "Transfer back after metrics collection"
+    - [x] Update existing `TriageAgent → DataFetcherAgent` handoff to be removed
+    - **Acceptance**: ✅ HandoffOrchestration topology includes both specialized fetchers (8 handoff rules)
   
-  - [ ] **SIMPLIFY-3.2** Update AletheiaHandoffOrchestration initialization
-    - [ ] Update `orchestration_sk.py` to instantiate both fetchers:
-      ```python
-      kubernetes_fetcher = KubernetesDataFetcher(config, scratchpad)
-      prometheus_fetcher = PrometheusDataFetcher(config, scratchpad)
-      ```
-    - [ ] Add both fetchers to agents list in HandoffOrchestration
-    - [ ] Update handoff rules to include new topology
-    - [ ] Ensure backward compatibility flag for old DataFetcherAgent (if needed)
-    - **Acceptance**: Orchestration initializes and manages both specialist fetchers
+  - [x] **SIMPLIFY-3.2** Update AletheiaHandoffOrchestration initialization
+    - [x] Update `orchestration_sk.py` to accept both fetchers in create_orchestration_with_sk_agents()
+    - [x] Add both fetchers to agents list in HandoffOrchestration (5 agents total)
+    - [x] Update handoff rules to include new topology (8 rules)
+    - [x] Ensure backward compatibility with fallback logic in orchestrator
+    - **Acceptance**: ✅ Orchestration initializes and manages both specialist fetchers
   
-  - [ ] **SIMPLIFY-3.3** Update OrchestratorAgent initialization
-    - [ ] Update `orchestrator.py` to create both fetchers in `_execute_conversational_mode_sk()`
-    - [ ] Update agent registry in legacy mode (if preserved):
-      ```python
-      self.agent_registry = {
-          "kubernetes_data_fetcher": KubernetesDataFetcher(...),
-          "prometheus_data_fetcher": PrometheusDataFetcher(...),
-          ...
-      }
-      ```
-    - [ ] Remove or deprecate single "data_fetcher" registry entry
-    - **Acceptance**: Orchestrator correctly initializes both specialized fetchers
+  - [x] **SIMPLIFY-3.3** Update OrchestratorAgent initialization
+    - [x] Update `orchestrator.py` _create_sk_orchestration() to look for specialized fetchers
+    - [x] Update CLI to register both KubernetesDataFetcher and PrometheusDataFetcher
+    - [x] Add backward compatibility by also registering generic data_fetcher
+    - [x] All 12 orchestration_sk tests passing with new topology
+    - **Acceptance**: ✅ Orchestrator correctly initializes both specialized fetchers with fallback support
 
 - [ ] **SIMPLIFY-4** Update tests for multiple data fetchers
   - [ ] **SIMPLIFY-4.1** Update orchestration unit tests
