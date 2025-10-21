@@ -14,6 +14,13 @@ from aletheia.utils.logging import (
     log_prompt_response,
     log_agent_transition,
 )
+from aletheia.utils.session_persistence import (
+    save_logs_to_session,
+    save_metrics_to_session,
+    save_traces_to_session,
+    sanitize_filename,
+    generate_timestamp,
+)
 
 __all__ = [
     "set_verbose_commands",
@@ -26,4 +33,9 @@ __all__ = [
     "log_prompt",
     "log_prompt_response",
     "log_agent_transition",
+    "save_logs_to_session",
+    "save_metrics_to_session",
+    "save_traces_to_session",
+    "sanitize_filename",
+    "generate_timestamp",
 ]

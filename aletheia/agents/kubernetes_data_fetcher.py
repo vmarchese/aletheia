@@ -26,6 +26,7 @@ from aletheia.scratchpad import ScratchpadSection
 from aletheia.utils.retry import retry_with_backoff
 from aletheia.utils.validation import validate_time_window
 from aletheia.utils.logging import log_info, log_error, log_prompt
+from aletheia.utils.session_persistence import save_logs_to_session
 
 
 class KubernetesDataFetcher(SKBaseAgent):
@@ -96,6 +97,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         self,
         time_window: Optional[str] = None,
         use_sk: bool = True,
+        session: Optional[Any] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """Execute the Kubernetes data fetching process.
@@ -108,6 +110,7 @@ class KubernetesDataFetcher(SKBaseAgent):
             time_window: Time window string (e.g., "2h", "30m")
                         If None, uses session default or problem description
             use_sk: If True, uses SK agent with plugin. If False, uses direct fetcher calls.
+            session: Optional Session object for persisting logs to session folder
             **kwargs: Additional parameters (pod, namespace, container, conversation_history, etc.)
         
         Returns:
@@ -135,14 +138,15 @@ class KubernetesDataFetcher(SKBaseAgent):
         
         # Choose execution mode
         if use_sk:
-            return await self._execute_with_sk(time_range, problem, **kwargs)
+            return await self._execute_with_sk(time_range, problem, session=session, **kwargs)
         else:
-            return self._execute_direct(time_range, problem, **kwargs)
+            return self._execute_direct(time_range, problem, session=session, **kwargs)
     
     async def _execute_with_sk(
         self,
         time_range: Tuple[datetime, datetime],
         problem: Dict[str, Any],
+        session: Optional[Any] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """Execute Kubernetes data fetching using SK agent with automatic plugin invocation.
@@ -157,6 +161,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         Args:
             time_range: Time range tuple (start, end)
             problem: Problem description from scratchpad
+            session: Optional Session object for persisting logs
             **kwargs: Additional parameters (may include conversation_history, pod, namespace, etc.)
         
         Returns:
@@ -184,6 +189,31 @@ class KubernetesDataFetcher(SKBaseAgent):
             # Parse the response to extract collected data
             collected_data = self._parse_sk_response(response)
             
+            # Save logs to session folder if session is provided
+            if session and collected_data.get("data"):
+                try:
+                    pod_name = problem.get("pod") or kwargs.get("pod") or "unknown"
+                    namespace = problem.get("namespace") or kwargs.get("namespace") or "default"
+                    identifier = f"{pod_name}_{namespace}"
+                    
+                    metadata = collected_data.get("metadata", {})
+                    metadata["pod"] = pod_name
+                    metadata["namespace"] = namespace
+                    metadata["time_range"] = [time_range[0].isoformat(), time_range[1].isoformat()]
+                    
+                    file_path = save_logs_to_session(
+                        session.data_dir,
+                        collected_data.get("data", []),
+                        metadata,
+                        source="kubernetes",
+                        identifier=identifier,
+                    )
+                    collected_data["path"] = str(file_path)
+                    log_info(f"Saved Kubernetes logs to {file_path}")
+                except Exception as save_error:
+                    log_error(f"Failed to save logs to session: {save_error}")
+                    # Continue even if save fails
+            
             # Build results summary
             results = {
                 "success": True,
@@ -204,12 +234,13 @@ class KubernetesDataFetcher(SKBaseAgent):
             # Log the SK error for debugging
             log_error(f"SK agent execution failed: {str(e)}")
             # If SK fails, fall back to direct mode
-            return self._execute_direct(time_range, problem, **kwargs)
+            return self._execute_direct(time_range, problem, session=session, **kwargs)
     
     def _execute_direct(
         self,
         time_range: Tuple[datetime, datetime],
         problem: Dict[str, Any],
+        session: Optional[Any] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """Execute Kubernetes data fetching using direct fetcher calls (backward compatibility).
@@ -219,6 +250,7 @@ class KubernetesDataFetcher(SKBaseAgent):
         Args:
             time_range: Time range tuple (start, end)
             problem: Problem description from scratchpad
+            session: Optional Session object for persisting logs
             **kwargs: Additional parameters (pod, namespace, container, etc.)
         
         Returns:
@@ -247,6 +279,34 @@ class KubernetesDataFetcher(SKBaseAgent):
                 "summary": summary,
                 "metadata": fetch_result.metadata,
             }
+            
+            # Save logs to session folder if session is provided
+            if session and fetch_result.data:
+                try:
+                    pod_name = kwargs.get("pod") or self._extract_pod_from_problem(problem) or "unknown"
+                    namespace = kwargs.get("namespace") or self._extract_namespace_from_problem(problem) or "default"
+                    identifier = f"{pod_name}_{namespace}"
+                    
+                    metadata = {
+                        "pod": pod_name,
+                        "namespace": namespace,
+                        "container": kwargs.get("container"),
+                        "time_range": [fetch_result.time_range[0].isoformat(), fetch_result.time_range[1].isoformat()],
+                        **fetch_result.metadata,
+                    }
+                    
+                    file_path = save_logs_to_session(
+                        session.data_dir,
+                        fetch_result.data,
+                        metadata,
+                        source="kubernetes",
+                        identifier=identifier,
+                    )
+                    collected_data["path"] = str(file_path)
+                    log_info(f"Saved Kubernetes logs to {file_path}")
+                except Exception as save_error:
+                    log_error(f"Failed to save logs to session: {save_error}")
+                    # Continue even if save fails
             
             # Write to scratchpad
             existing_data = self.read_scratchpad(ScratchpadSection.DATA_COLLECTED) or {}
