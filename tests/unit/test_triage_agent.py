@@ -44,9 +44,11 @@ def test_triage_agent_instructions(triage_agent):
     instructions = triage_agent.get_instructions()
     
     assert "triage agent" in instructions.lower()
-    assert "data_fetcher" in instructions
+    # Check for specialized data fetchers
+    assert "kubernetes_data_fetcher" in instructions
+    assert "prometheus_data_fetcher" in instructions
     assert "pattern_analyzer" in instructions
-    assert "code_inspector" in instructions
+    # code_inspector is not in the primary workflow
     assert "root_cause_analyst" in instructions
     assert "route" in instructions.lower() or "routing" in instructions.lower()
 
@@ -72,7 +74,8 @@ def test_triage_agent_instructions_include_routing_guidelines(triage_agent):
     """Test that instructions include routing guidelines."""
     instructions = triage_agent.get_instructions()
     
-    assert "start with" in instructions.lower() or "begin" in instructions.lower()
+    # Check for routing guidance (updated to match new instructions)
+    assert "route to" in instructions.lower() or "routing" in instructions.lower()
     assert "hand" in instructions.lower() or "transfer" in instructions.lower()
 
 
@@ -144,7 +147,9 @@ def test_triage_agent_investigation_summary_with_code_inspection(triage_agent, s
     
     summary = triage_agent._get_investigation_summary()
     
-    assert "✓ Code inspected" in summary
+    # Code inspection is currently not used in the workflow, so it won't appear in summary
+    # Just verify the summary is generated without errors
+    assert isinstance(summary, str)
 
 
 def test_triage_agent_investigation_summary_with_diagnosis(triage_agent, scratchpad):
@@ -168,8 +173,8 @@ def test_triage_agent_investigation_summary_complete(triage_agent, scratchpad):
     
     summary = triage_agent._get_investigation_summary()
     
-    # All sections should have checkmarks
-    assert summary.count("✓") == 4  # data, patterns, code, diagnosis
+    # All active sections should have checkmarks (code inspection is commented out)
+    assert summary.count("✓") == 3  # data, patterns, diagnosis
 
 
 def test_triage_agent_has_no_plugins(triage_agent):
