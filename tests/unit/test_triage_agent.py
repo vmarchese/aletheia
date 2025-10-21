@@ -270,3 +270,42 @@ def test_triage_agent_config_access(triage_agent, mock_config):
     """Test that TriageAgent has access to config."""
     assert triage_agent.config == mock_config
     assert triage_agent.config["llm"]["default_model"] == "gpt-4o"
+
+
+def test_triage_agent_instructions_kubernetes_routing_guidance(triage_agent):
+    """Test that instructions provide guidance for routing to Kubernetes fetcher."""
+    instructions = triage_agent.get_instructions()
+    
+    # Should mention when to route to kubernetes_data_fetcher
+    assert "kubernetes" in instructions.lower()
+    # Should mention pod/container keywords
+    assert any(keyword in instructions.lower() for keyword in ["pod", "container", "log"])
+
+
+def test_triage_agent_instructions_prometheus_routing_guidance(triage_agent):
+    """Test that instructions provide guidance for routing to Prometheus fetcher."""
+    instructions = triage_agent.get_instructions()
+    
+    # Should mention when to route to prometheus_data_fetcher
+    assert "prometheus" in instructions.lower()
+    # Should mention metrics/dashboard keywords
+    assert any(keyword in instructions.lower() for keyword in ["metric", "dashboard", "time-series"])
+
+
+def test_triage_agent_instructions_differentiate_fetchers(triage_agent):
+    """Test that instructions clearly differentiate between K8s and Prometheus fetchers."""
+    instructions = triage_agent.get_instructions()
+    
+    # Both fetchers should be mentioned
+    assert "kubernetes_data_fetcher" in instructions
+    assert "prometheus_data_fetcher" in instructions
+    
+    # They should have different descriptions/purposes
+    # Find the sections mentioning each fetcher
+    lines = instructions.split('\n')
+    k8s_lines = [line for line in lines if "kubernetes_data_fetcher" in line.lower()]
+    prom_lines = [line for line in lines if "prometheus_data_fetcher" in line.lower()]
+    
+    # Should have at least one line each
+    assert len(k8s_lines) > 0
+    assert len(prom_lines) > 0

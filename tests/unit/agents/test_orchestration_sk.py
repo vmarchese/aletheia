@@ -257,9 +257,6 @@ class TestCreateAletheiaHandoffs:
         pattern_analyzer = Mock()
         pattern_analyzer.name = "pattern_analyzer"
         
-        code_inspector = Mock()
-        code_inspector.name = "code_inspector"
-        
         root_cause_analyst = Mock()
         root_cause_analyst.name = "root_cause_analyst"
         
@@ -275,15 +272,14 @@ class TestCreateAletheiaHandoffs:
                 kubernetes_fetcher=kubernetes_fetcher,
                 prometheus_fetcher=prometheus_fetcher,
                 pattern_analyzer=pattern_analyzer,
-                # code_inspector parameter removed
                 root_cause_analyst=root_cause_analyst
             )
             
             # Verify StartWith was called with triage
             mock_handoffs_class.StartWith.assert_called_once_with(triage)
             
-            # Verify Add was called 8 times (4 hub→spoke + 4 spoke→hub, code_inspector commented out)
-            # Now includes both kubernetes_fetcher and prometheus_fetcher
+            # Verify Add was called 8 times (4 hub→spoke + 4 spoke→hub)
+            # Now includes both kubernetes_fetcher and prometheus_fetcher (code_inspector commented out)
             assert mock_handoffs.Add.call_count == 8
 
 
@@ -309,10 +305,6 @@ class TestCreateOrchestrationWithSKAgents:
         pattern_analyzer.name = "pattern_analyzer"
         pattern_analyzer.description = "Analyzes patterns"
         
-        code_inspector = Mock()
-        code_inspector.name = "code_inspector"
-        code_inspector.description = "Inspects code"
-        
         root_cause_analyst = Mock()
         root_cause_analyst.name = "root_cause_analyst"
         root_cause_analyst.description = "Analyzes root cause"
@@ -333,7 +325,6 @@ class TestCreateOrchestrationWithSKAgents:
                     kubernetes_fetcher=kubernetes_fetcher,
                     prometheus_fetcher=prometheus_fetcher,
                     pattern_analyzer=pattern_analyzer,
-                    # code_inspector=code_inspector,  # Removed
                     root_cause_analyst=root_cause_analyst,
                     scratchpad=mock_scratchpad,
                     console=mock_console,
@@ -342,12 +333,12 @@ class TestCreateOrchestrationWithSKAgents:
                 
                 assert isinstance(orchestration, AletheiaHandoffOrchestration)
                 assert orchestration.confirmation_level == "verbose"
-                assert len(orchestration.agents) == 5  # triage + 2 fetchers + 2 analyzers (code_inspector removed)
+                assert len(orchestration.agents) == 5  # triage + 2 fetchers + pattern analyzer + root cause analyst (code_inspector commented out)
                 
                 # Verify handoffs were configured
                 # Now starts with triage (hub-and-spoke pattern)
                 mock_handoffs_class.StartWith.assert_called_once_with(triage)
-                # Should have 8 Add calls (4 hub→spoke + 4 spoke→hub, code_inspector removed)
+                # Should have 8 Add calls (4 hub→spoke + 4 spoke→hub, code_inspector commented out)
                 assert mock_handoffs.Add.call_count == 8
 
 
