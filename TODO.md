@@ -2446,20 +2446,20 @@ Implement complete test services in Golang and Java to validate Aletheia's troub
     - [ ] Plan removal in future release (e.g., v2.1.0)
     - **Acceptance**: Original DataFetcherAgent marked deprecated with clear migration path
 
-- [ ] **SIMPLIFY-2** Update TriageAgent to support multiple data fetchers
-  - [ ] **SIMPLIFY-2.1** Update TriageAgent instructions
-    - [ ] Modify `get_instructions()` to mention both KubernetesDataFetcher and PrometheusDataFetcher
-    - [ ] Update handoff descriptions:
-      - [ ] "Transfer to kubernetes_data_fetcher when user needs Kubernetes logs or pod information"
-      - [ ] "Transfer to prometheus_data_fetcher when user needs metrics, dashboards, or time-series data"
-    - [ ] Add guidance on when to route to each fetcher based on user intent
-    - **Acceptance**: TriageAgent instructions clearly differentiate between K8s and Prometheus data sources
+- [x] **SIMPLIFY-2** Update TriageAgent to support multiple data fetchers ✅ **(COMPLETE - 2025-10-21, Commit: 6cb72ac)**
+  - [x] **SIMPLIFY-2.1** Update TriageAgent instructions
+    - [x] Modify `get_instructions()` to mention both KubernetesDataFetcher and PrometheusDataFetcher
+    - [x] Update handoff descriptions:
+      - [x] "Transfer to kubernetes_data_fetcher when user needs Kubernetes logs or pod information"
+      - [x] "Transfer to prometheus_data_fetcher when user needs metrics, dashboards, or time-series data"
+    - [x] Add guidance on when to route to each fetcher based on user intent
+    - **Acceptance**: ✅ TriageAgent instructions clearly differentiate between K8s and Prometheus data sources (22/22 tests passing)
   
-  - [ ] **SIMPLIFY-2.2** Update TriageAgent prompt templates
-    - [ ] Update `prompts/triage_agent_instructions.md` with specialist fetcher descriptions
-    - [ ] Add examples of user queries that should route to each fetcher
-    - [ ] Document how to handle requests requiring both data sources
-    - **Acceptance**: Prompt templates guide LLM to route correctly to specialist fetchers
+  - [x] **SIMPLIFY-2.2** Update TriageAgent prompt templates
+    - [x] Update `prompts/triage_agent_instructions.md` with specialist fetcher descriptions
+    - [x] Add examples of user queries that should route to each fetcher (keywords: pods/containers → K8s, metrics/dashboards → Prometheus)
+    - [x] Document how to handle requests requiring both data sources
+    - **Acceptance**: ✅ Prompt templates guide LLM to route correctly to specialist fetchers
 
 - [ ] **SIMPLIFY-3** Update HandoffOrchestration for multiple data fetchers
   - [ ] **SIMPLIFY-3.1** Update OrchestrationHandoffs configuration
