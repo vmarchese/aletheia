@@ -45,16 +45,16 @@ You can use these templates with prometheus.build_promql_from_template():
 After collecting the metrics, summarize your findings in natural language and include a JSON structure:
 
 ```json
-{
+{{
     "count": <number of data points collected>,
     "summary": "<brief summary of what you found - mention any spikes or anomalies>",
-    "metadata": {
+    "metadata": {{
         "queries_executed": ["<list of PromQL queries used>"],
         "services_analyzed": ["<services you looked at>"],
         "time_range": "<time range used>",
         "anomalies_detected": ["<list of any anomalies found>"]
-    }
-}
+    }}
+}}
 ```
 
 Now proceed to extract the parameters and collect the Prometheus metrics.

@@ -35,16 +35,16 @@ You are a specialized Kubernetes data collector. Your task is to collect logs an
 After collecting the data, summarize your findings in natural language and include a JSON structure:
 
 ```json
-{
+{{
     "count": <number of log lines collected>,
     "summary": "<brief summary of what you found>",
-    "metadata": {
+    "metadata": {{
         "pod": "<pod name used>",
         "namespace": "<namespace used>",
         "error_count": <number of errors found>,
         "time_range": "<time range used>"
-    }
-}
+    }}
+}}
 ```
 
 Now proceed to extract the parameters and collect the Kubernetes logs.
