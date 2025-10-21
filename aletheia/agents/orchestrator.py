@@ -456,12 +456,24 @@ Guide me through the investigation process."""
         
         # Get specialist agents from registry
         # All agents should be SK-based (inherit from SKBaseAgent)
-        data_fetcher = self.agent_registry.get("data_fetcher")
+        # Try to get specialized fetchers first, fallback to generic data_fetcher
+        kubernetes_fetcher = self.agent_registry.get("kubernetes_data_fetcher")
+        prometheus_fetcher = self.agent_registry.get("prometheus_data_fetcher")
+        
+        # Fallback: if specialized fetchers not found, use generic data_fetcher
+        # This maintains backward compatibility during transition
+        if not kubernetes_fetcher or not prometheus_fetcher:
+            data_fetcher = self.agent_registry.get("data_fetcher")
+            if data_fetcher:
+                # Use generic fetcher for both (temporary compatibility)
+                kubernetes_fetcher = kubernetes_fetcher or data_fetcher
+                prometheus_fetcher = prometheus_fetcher or data_fetcher
+        
         pattern_analyzer = self.agent_registry.get("pattern_analyzer")
         # code_inspector = self.agent_registry.get("code_inspector")  # Commented out
         root_cause_analyst = self.agent_registry.get("root_cause_analyst")
         
-        if not all([data_fetcher, pattern_analyzer, root_cause_analyst]):  # code_inspector removed
+        if not all([kubernetes_fetcher, prometheus_fetcher, pattern_analyzer, root_cause_analyst]):  # code_inspector removed
             raise RuntimeError(
                 "All specialist agents must be registered before creating SK orchestration. "
                 f"Registered: {list(self.agent_registry.keys())}"
@@ -470,7 +482,8 @@ Guide me through the investigation process."""
         # Create orchestration with SK agents
         return create_orchestration_with_sk_agents(
             triage=triage._agent,  # Get SK agent from SKBaseAgent
-            data_fetcher=data_fetcher._agent,
+            kubernetes_fetcher=kubernetes_fetcher._agent,
+            prometheus_fetcher=prometheus_fetcher._agent,
             pattern_analyzer=pattern_analyzer._agent,
             # code_inspector=code_inspector._agent,  # Commented out
             root_cause_analyst=root_cause_analyst._agent,

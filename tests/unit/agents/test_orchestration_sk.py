@@ -248,8 +248,11 @@ class TestCreateAletheiaHandoffs:
         triage = Mock()
         triage.name = "triage"
         
-        data_fetcher = Mock()
-        data_fetcher.name = "data_fetcher"
+        kubernetes_fetcher = Mock()
+        kubernetes_fetcher.name = "kubernetes_data_fetcher"
+        
+        prometheus_fetcher = Mock()
+        prometheus_fetcher.name = "prometheus_data_fetcher"
         
         pattern_analyzer = Mock()
         pattern_analyzer.name = "pattern_analyzer"
@@ -269,7 +272,8 @@ class TestCreateAletheiaHandoffs:
             
             result = create_aletheia_handoffs(
                 triage=triage,
-                data_fetcher=data_fetcher,
+                kubernetes_fetcher=kubernetes_fetcher,
+                prometheus_fetcher=prometheus_fetcher,
                 pattern_analyzer=pattern_analyzer,
                 # code_inspector parameter removed
                 root_cause_analyst=root_cause_analyst
@@ -278,8 +282,9 @@ class TestCreateAletheiaHandoffs:
             # Verify StartWith was called with triage
             mock_handoffs_class.StartWith.assert_called_once_with(triage)
             
-            # Verify Add was called 6 times (3 hub→spoke + 3 spoke→hub, code_inspector commented out)
-            assert mock_handoffs.Add.call_count == 6
+            # Verify Add was called 8 times (4 hub→spoke + 4 spoke→hub, code_inspector commented out)
+            # Now includes both kubernetes_fetcher and prometheus_fetcher
+            assert mock_handoffs.Add.call_count == 8
 
 
 class TestCreateOrchestrationWithSKAgents:
@@ -292,9 +297,13 @@ class TestCreateOrchestrationWithSKAgents:
         triage.name = "triage"
         triage.description = "Triages problems"
         
-        data_fetcher = Mock()
-        data_fetcher.name = "data_fetcher"
-        data_fetcher.description = "Fetches data"
+        kubernetes_fetcher = Mock()
+        kubernetes_fetcher.name = "kubernetes_data_fetcher"
+        kubernetes_fetcher.description = "Fetches Kubernetes data"
+        
+        prometheus_fetcher = Mock()
+        prometheus_fetcher.name = "prometheus_data_fetcher"
+        prometheus_fetcher.description = "Fetches Prometheus metrics"
         
         pattern_analyzer = Mock()
         pattern_analyzer.name = "pattern_analyzer"
@@ -321,7 +330,8 @@ class TestCreateOrchestrationWithSKAgents:
                 
                 orchestration = create_orchestration_with_sk_agents(
                     triage=triage,
-                    data_fetcher=data_fetcher,
+                    kubernetes_fetcher=kubernetes_fetcher,
+                    prometheus_fetcher=prometheus_fetcher,
                     pattern_analyzer=pattern_analyzer,
                     # code_inspector=code_inspector,  # Removed
                     root_cause_analyst=root_cause_analyst,
@@ -332,13 +342,13 @@ class TestCreateOrchestrationWithSKAgents:
                 
                 assert isinstance(orchestration, AletheiaHandoffOrchestration)
                 assert orchestration.confirmation_level == "verbose"
-                assert len(orchestration.agents) == 4  # triage + 3 specialists (code_inspector removed)
+                assert len(orchestration.agents) == 5  # triage + 2 fetchers + 2 analyzers (code_inspector removed)
                 
                 # Verify handoffs were configured
                 # Now starts with triage (hub-and-spoke pattern)
                 mock_handoffs_class.StartWith.assert_called_once_with(triage)
-                # Should have 6 Add calls (3 hub→spoke + 3 spoke→hub, code_inspector removed)
-                assert mock_handoffs.Add.call_count == 6
+                # Should have 8 Add calls (4 hub→spoke + 4 spoke→hub, code_inspector removed)
+                assert mock_handoffs.Add.call_count == 8
 
 
 class TestIntegration:

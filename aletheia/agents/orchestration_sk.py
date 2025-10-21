@@ -171,7 +171,8 @@ class AletheiaHandoffOrchestration:
 
 def create_aletheia_handoffs(
     triage: Agent,
-    data_fetcher: Agent,
+    kubernetes_fetcher: Agent,
+    prometheus_fetcher: Agent,
     pattern_analyzer: Agent,
     # code_inspector: Agent,
     root_cause_analyst: Agent
@@ -183,18 +184,21 @@ def create_aletheia_handoffs(
     
     **Handoff Topology (Hub-and-Spoke Pattern):**
     
-    - triage → data_fetcher: "Transfer to data fetcher when user wants to collect logs/metrics"
+    - triage → kubernetes_fetcher: "Transfer to kubernetes fetcher for K8s logs/pod data"
+    - triage → prometheus_fetcher: "Transfer to prometheus fetcher for metrics/time-series"
     - triage → pattern_analyzer: "Transfer to pattern analyzer when user wants to analyze patterns"
     # - triage → code_inspector: "Transfer to code inspector when user wants to inspect code"
     - triage → root_cause_analyst: "Transfer to root cause analyst when user wants diagnosis"
-    - data_fetcher → triage: "Transfer back to triage after data collection"
+    - kubernetes_fetcher → triage: "Transfer back to triage after K8s data collection"
+    - prometheus_fetcher → triage: "Transfer back to triage after metrics collection"
     - pattern_analyzer → triage: "Transfer back to triage after pattern analysis"
     # - code_inspector → triage: "Transfer back to triage after code inspection"
     - root_cause_analyst → triage: "Transfer back to triage after diagnosis"
     
     Args:
         triage: TriageAgent (entry point)
-        data_fetcher: DataFetcherAgent
+        kubernetes_fetcher: KubernetesDataFetcher
+        prometheus_fetcher: PrometheusDataFetcher
         pattern_analyzer: PatternAnalyzerAgent
         # code_inspector: CodeInspectorAgent
         root_cause_analyst: RootCauseAnalystAgent
@@ -208,8 +212,13 @@ def create_aletheia_handoffs(
     # Triage → Specialists (hub to spoke)
     handoffs.Add(
         triage,
-        data_fetcher,
-        "Transfer to data fetcher when user wants to collect logs, metrics, or traces from systems"
+        kubernetes_fetcher,
+        "Transfer to kubernetes_data_fetcher when user needs Kubernetes logs, pod information, or container data"
+    )
+    handoffs.Add(
+        triage,
+        prometheus_fetcher,
+        "Transfer to prometheus_data_fetcher when user needs metrics, dashboards, time-series data, or PromQL queries"
     )
     handoffs.Add(
         triage,
@@ -229,9 +238,14 @@ def create_aletheia_handoffs(
     
     # Specialists → Triage (spoke to hub)
     handoffs.Add(
-        data_fetcher,
+        kubernetes_fetcher,
         triage,
-        "Transfer back to triage after data collection completes"
+        "Transfer back to triage after Kubernetes data collection completes"
+    )
+    handoffs.Add(
+        prometheus_fetcher,
+        triage,
+        "Transfer back to triage after Prometheus metrics collection completes"
     )
     handoffs.Add(
         pattern_analyzer,
@@ -254,7 +268,8 @@ def create_aletheia_handoffs(
 
 def create_orchestration_with_sk_agents(
     triage: Agent,
-    data_fetcher: Agent,
+    kubernetes_fetcher: Agent,
+    prometheus_fetcher: Agent,
     pattern_analyzer: Agent,
     # code_inspector: Agent,
     root_cause_analyst: Agent,
@@ -269,7 +284,8 @@ def create_orchestration_with_sk_agents(
     
     Args:
         triage: SK-based TriageAgent (entry point)
-        data_fetcher: SK-based DataFetcherAgent
+        kubernetes_fetcher: SK-based KubernetesDataFetcher
+        prometheus_fetcher: SK-based PrometheusDataFetcher
         pattern_analyzer: SK-based PatternAnalyzerAgent  
         # code_inspector: SK-based CodeInspectorAgent
         root_cause_analyst: SK-based RootCauseAnalystAgent
@@ -283,7 +299,8 @@ def create_orchestration_with_sk_agents(
     # Define handoff rules with triage as hub
     handoffs = create_aletheia_handoffs(
         triage=triage,
-        data_fetcher=data_fetcher,
+        kubernetes_fetcher=kubernetes_fetcher,
+        prometheus_fetcher=prometheus_fetcher,
         pattern_analyzer=pattern_analyzer,
         # code_inspector=code_inspector,
         root_cause_analyst=root_cause_analyst
@@ -291,7 +308,7 @@ def create_orchestration_with_sk_agents(
     
     # Create and return orchestration
     # Note: All agents included, triage is the entry point
-    agents = [triage, data_fetcher, pattern_analyzer, root_cause_analyst]  # code_inspector commented out
+    agents = [triage, kubernetes_fetcher, prometheus_fetcher, pattern_analyzer, root_cause_analyst]  # code_inspector commented out
     
     return AletheiaHandoffOrchestration(
         agents=agents,

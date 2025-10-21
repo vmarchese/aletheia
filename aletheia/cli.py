@@ -82,15 +82,26 @@ def _start_investigation(session: Session, console: Console) -> None:
         )
         
         # Initialize and register specialist agents
-        data_fetcher = DataFetcherAgent(config=config, scratchpad=scratchpad)
+        # SIMPLIFY-3: Use specialized data fetchers instead of generic DataFetcherAgent
+        from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
+        from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
+        
+        kubernetes_fetcher = KubernetesDataFetcher(config=config, scratchpad=scratchpad)
+        prometheus_fetcher = PrometheusDataFetcher(config=config, scratchpad=scratchpad)
         pattern_analyzer = PatternAnalyzerAgent(config=config, scratchpad=scratchpad)
         code_inspector = CodeInspectorAgent(config=config, scratchpad=scratchpad)
         root_cause_analyst = RootCauseAnalystAgent(config=config, scratchpad=scratchpad)
         
-        orchestrator.register_agent("data_fetcher", data_fetcher)
+        orchestrator.register_agent("kubernetes_data_fetcher", kubernetes_fetcher)
+        orchestrator.register_agent("prometheus_data_fetcher", prometheus_fetcher)
         orchestrator.register_agent("pattern_analyzer", pattern_analyzer)
         orchestrator.register_agent("code_inspector", code_inspector)
         orchestrator.register_agent("root_cause_analyst", root_cause_analyst)
+        
+        # Also register generic data_fetcher for backward compatibility
+        # This will be removed once SIMPLIFY-1.3 (deprecation) is complete
+        data_fetcher = DataFetcherAgent(config=config, scratchpad=scratchpad)
+        orchestrator.register_agent("data_fetcher", data_fetcher)
         
         # Start investigation in conversational mode
         console.print(f"\n[cyan]Starting conversational investigation...[/cyan]\n")
