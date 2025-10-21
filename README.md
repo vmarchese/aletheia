@@ -11,7 +11,7 @@
 ## 🌟 Key Features
 
 - **🔍 Systematic Investigation**: Structured workflow from problem description to root cause analysis
-- **📊 Multi-Source Correlation**: Integrates logs (Kubernetes), metrics (Prometheus), and code (Git) in a unified investigation
+- **📊 Multi-Source Correlation**: Integrates logs (Kubernetes), metrics (Prometheus), and code (Git) via specialized data fetcher agents
 - **🔐 Secure by Design**: Encrypted session data and credential management using AES-256
 - **📝 Auditable Process**: Complete investigation trail preserved in encrypted scratchpad format
 - **⏸️ Resume Capability**: Interrupted sessions can be resumed without data loss
@@ -690,10 +690,16 @@ repositories:
 
 Aletheia uses **Microsoft Semantic Kernel** to orchestrate specialized AI agents:
 
-### Data Fetcher Agent
-- **Role**: Collects observability data
-- **Plugins**: KubernetesPlugin, PrometheusPlugin
-- **Capabilities**: Fetches logs, queries metrics, samples data intelligently
+### Kubernetes Data Fetcher Agent
+- **Role**: Collects Kubernetes logs and pod information
+- **Plugins**: KubernetesPlugin
+- **Capabilities**: Fetches pod logs, lists pods, gets pod status, samples logs intelligently
+- **Model**: gpt-4o (function calling)
+
+### Prometheus Data Fetcher Agent
+- **Role**: Collects metrics and time-series data
+- **Plugins**: PrometheusPlugin
+- **Capabilities**: Executes PromQL queries, uses query templates, samples metrics with adaptive resolution
 - **Model**: gpt-4o (function calling)
 
 ### Pattern Analyzer Agent

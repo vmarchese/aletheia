@@ -575,6 +575,212 @@ self.kernel.add_plugin(git_plugin, plugin_name="git")
 # - extract_code_context(file_path, line_number, context_lines)
 ```
 
+### Specialized Data Fetcher Agents
+
+Aletheia uses **specialized data fetcher agents** for better separation of concerns and maintainability:
+
+#### When to Create Specialized vs General-Purpose Agents
+
+**Create Specialized Agents When**:
+- Each data source has distinct configuration and authentication
+- Different plugins are needed for each source (KubernetesPlugin vs PrometheusPlugin)
+- Query patterns and sampling strategies differ significantly
+- Testing isolation is beneficial (mock K8s separately from Prometheus)
+- LLM context becomes clearer with focused agent instructions
+
+**Benefits of Specialized Agents**:
+- **Single Responsibility**: Each agent focuses on one data source
+- **Easier Testing**: Mock and test each data source in isolation
+- **Better Prompts**: More focused instructions lead to better LLM performance
+- **Scalability**: Easy to add new data sources (Elasticsearch, Jaeger, Datadog)
+- **Clear Orchestration**: Explicit routing via HandoffOrchestration
+
+#### Kubernetes Data Fetcher Agent
+
+**Purpose**: Collect Kubernetes logs and pod information exclusively.
+
+**Implementation Pattern**:
+```python
+from aletheia.agents.sk_base import SKBaseAgent
+from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
+
+class KubernetesDataFetcher(SKBaseAgent):
+    \"\"\"SK-based agent specialized for Kubernetes data collection.\"\"\"
+    
+    def __init__(self, config: Dict[str, Any], scratchpad: Scratchpad):
+        super().__init__(config, scratchpad, agent_name=\"kubernetes_data_fetcher\")
+        
+        # Register only Kubernetes plugin
+        self.kernel.add_plugin(
+            KubernetesPlugin(config),
+            plugin_name=\"kubernetes\"
+        )
+    
+    async def execute(self) -> Dict[str, Any]:
+        \"\"\"Collect Kubernetes logs and pod data.\"\"\"
+        problem = self.read_scratchpad(\"PROBLEM_DESCRIPTION\")
+        
+        # Build focused prompt for K8s data collection
+        task = f\"\"\"
+        Collect Kubernetes logs for this problem:
+        {problem}
+        
+        Use kubernetes plugin to:
+        1. Extract pod name and namespace from problem description
+        2. Fetch logs using fetch_kubernetes_logs()
+        3. Summarize findings
+        \"\"\"
+        
+        response = await self.invoke(task)
+        
+        # Write results to scratchpad under \"kubernetes\" key
+        self.write_scratchpad(\"DATA_COLLECTED\", {
+            \"kubernetes\": {
+                \"summary\": response,
+                \"source\": \"kubernetes\"
+            }
+        })
+        
+        return {\"status\": \"success\"}
+```
+
+**Key Points**:
+- Registers **only** KubernetesPlugin (focused scope)
+- Agent name: `\"kubernetes_data_fetcher\"` (for HandoffOrchestration routing)
+- Writes results under `\"kubernetes\"` key in DATA_COLLECTED section
+- LLM receives focused instructions about K8s operations
+
+#### Prometheus Data Fetcher Agent
+
+**Purpose**: Collect metrics and time-series data from Prometheus exclusively.
+
+**Implementation Pattern**:
+```python
+from aletheia.agents.sk_base import SKBaseAgent
+from aletheia.plugins.prometheus_plugin import PrometheusPlugin
+
+class PrometheusDataFetcher(SKBaseAgent):
+    \"\"\"SK-based agent specialized for Prometheus metrics collection.\"\"\"
+    
+    def __init__(self, config: Dict[str, Any], scratchpad: Scratchpad):
+        super().__init__(config, scratchpad, agent_name=\"prometheus_data_fetcher\")
+        
+        # Register only Prometheus plugin
+        self.kernel.add_plugin(
+            PrometheusPlugin(config),
+            plugin_name=\"prometheus\"
+        )
+    
+    async def execute(self) -> Dict[str, Any]:
+        \"\"\"Collect Prometheus metrics.\"\"\"
+        problem = self.read_scratchpad(\"PROBLEM_DESCRIPTION\")
+        
+        # Build focused prompt for metrics collection
+        task = f\"\"\"
+        Collect Prometheus metrics for this problem:
+        {problem}
+        
+        Use prometheus plugin to:
+        1. Build PromQL queries using templates or custom queries
+        2. Fetch metrics using fetch_prometheus_metrics()
+        3. Identify metric spikes and anomalies
+        \"\"\"
+        
+        response = await self.invoke(task)
+        
+        # Write results to scratchpad under \"prometheus\" key
+        self.write_scratchpad(\"DATA_COLLECTED\", {
+            \"prometheus\": {
+                \"summary\": response,
+                \"source\": \"prometheus\"
+            }
+        })
+        
+        return {\"status\": \"success\"}
+```
+
+**Key Points**:
+- Registers **only** PrometheusPlugin (focused scope)
+- Agent name: `\"prometheus_data_fetcher\"` (for HandoffOrchestration routing)
+- Writes results under `\"prometheus\"` key in DATA_COLLECTED section
+- LLM receives focused instructions about metrics and PromQL
+
+#### Orchestration with Specialized Fetchers
+
+**HandoffOrchestration Configuration**:
+
+```python
+from aletheia.agents.orchestration_sk import create_orchestration_with_sk_agents
+from semantic_kernel.agents import OrchestrationHandoffs
+
+# Create specialized fetcher agents
+k8s_fetcher = KubernetesDataFetcher(config, scratchpad)
+prom_fetcher = PrometheusDataFetcher(config, scratchpad)
+pattern_analyzer = PatternAnalyzerAgent(config, scratchpad)
+root_cause_analyst = RootCauseAnalystAgent(config, scratchpad)
+
+# Define handoff rules for specialized fetchers
+handoffs = OrchestrationHandoffs(
+    # Triage routes to specialized fetchers
+    (\"triage_agent\", \"kubernetes_data_fetcher\", \"Transfer for K8s logs\"),
+    (\"triage_agent\", \"prometheus_data_fetcher\", \"Transfer for metrics\"),
+    
+    # Fetchers return to triage
+    (\"kubernetes_data_fetcher\", \"triage_agent\", \"Transfer back after K8s data collection\"),
+    (\"prometheus_data_fetcher\", \"triage_agent\", \"Transfer back after metrics collection\"),
+    
+    # Triage routes to analysis
+    (\"triage_agent\", \"pattern_analyzer\", \"Transfer for pattern analysis\"),
+)
+
+# Create orchestration with all agents
+orchestration = create_orchestration_with_sk_agents(
+    agents=[triage, k8s_fetcher, prom_fetcher, pattern_analyzer, root_cause_analyst],
+    handoffs=handoffs,
+    scratchpad=scratchpad
+)
+```
+
+**Triage Agent Instructions** (routes to correct fetcher):
+
+```markdown
+You are a triage agent that routes user requests to specialist agents.
+
+**Available Specialist Agents**:
+
+1. **kubernetes_data_fetcher**: Use when user needs:
+   - Kubernetes pod logs
+   - Pod status information
+   - Container logs
+   - Keywords: \"pod\", \"container\", \"kubectl\", \"k8s\"
+
+2. **prometheus_data_fetcher**: Use when user needs:
+   - Metrics and time-series data
+   - Error rates, latency, throughput
+   - Dashboard queries
+   - Keywords: \"metrics\", \"prometheus\", \"dashboard\", \"rate\"
+
+3. **pattern_analyzer**: Use after data collection to analyze patterns
+
+4. **root_cause_analyst**: Use after analysis to synthesize diagnosis
+```
+
+**Example Routing Flow**:
+
+```
+User: \"Check logs for payments-svc pod in production namespace\"
+  ↓
+Triage Agent: Detects K8s keywords → routes to kubernetes_data_fetcher
+  ↓
+KubernetesDataFetcher: Collects logs → writes to scratchpad → returns to triage
+  ↓
+Triage Agent: Data collected → routes to pattern_analyzer
+  ↓
+PatternAnalyzerAgent: Analyzes patterns → writes to scratchpad → returns to triage
+  ↓
+...
+```
+
 ### Orchestration with SK
 
 For multi-agent coordination, use `AletheiaHandoffOrchestration`:
@@ -590,14 +796,14 @@ handoffs = OrchestrationHandoffs(
 
 # Create orchestration
 orchestration = AletheiaHandoffOrchestration(
-    agents=[data_fetcher, pattern_analyzer, code_inspector, root_cause_analyst],
+    agents=[triage, kubernetes_fetcher, prometheus_fetcher, pattern_analyzer, code_inspector, root_cause_analyst],
     handoffs=handoffs,
     scratchpad=scratchpad,
     console=console
 )
 
 # Execute orchestration
-await orchestration.execute(initial_agent=data_fetcher)
+await orchestration.execute(initial_agent=triage)
 ```
 
 **Handoff Configuration**:

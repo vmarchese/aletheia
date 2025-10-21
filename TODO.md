@@ -2518,25 +2518,25 @@ Implement complete test services in Golang and Java to validate Aletheia's troub
     - **Acceptance**: E2E tests demonstrate both fetchers working in real flow
 
 - [ ] **SIMPLIFY-5** Update documentation
-  - [ ] **SIMPLIFY-5.1** Update SPECIFICATION.md
-    - [ ] Update agent architecture section (2.3) to show 6 agents instead of 5
-    - [ ] Document KubernetesDataFetcher responsibilities
-    - [ ] Document PrometheusDataFetcher responsibilities
-    - [ ] Update orchestration flow diagram
-    - **Acceptance**: Architecture docs reflect new agent topology
+  - [x] **SIMPLIFY-5.1** Update SPECIFICATION.md ✅ **(COMPLETE)**
+    - [x] Update agent architecture section (2.1) to show 6 agents instead of 5
+    - [x] Update section 2.3 agent responsibilities to show both specialized fetchers
+    - [x] Document KubernetesDataFetcher responsibilities
+    - [x] Document PrometheusDataFetcher responsibilities
+    - **Acceptance**: ✅ Architecture docs reflect new agent topology (Completed: 2025-10-21)
   
-  - [ ] **SIMPLIFY-5.2** Update AGENTS.md
-    - [ ] Add section for KubernetesDataFetcher patterns
-    - [ ] Add section for PrometheusDataFetcher patterns
-    - [ ] Update orchestration examples with multiple fetchers
-    - [ ] Document when to create specialized vs general-purpose agents
-    - **Acceptance**: Developer guide shows how to use specialist fetchers
+  - [x] **SIMPLIFY-5.2** Update AGENTS.md ✅ **(COMPLETE)**
+    - [x] Add section for KubernetesDataFetcher patterns
+    - [x] Add section for PrometheusDataFetcher patterns
+    - [x] Update orchestration examples with multiple fetchers
+    - [x] Document when to create specialized vs general-purpose agents
+    - **Acceptance**: ✅ Developer guide shows how to use specialist fetchers (Completed: 2025-10-21)
   
-  - [ ] **SIMPLIFY-5.3** Update README.md
-    - [ ] Update agent list to show both fetchers
-    - [ ] Update example scenarios to demonstrate routing to correct fetcher
-    - [ ] Update architecture diagram if present
-    - **Acceptance**: User-facing docs reflect new architecture
+  - [x] **SIMPLIFY-5.3** Update README.md ✅ **(COMPLETE)**
+    - [x] Update agent list to show both fetchers
+    - [x] Update example scenarios to demonstrate routing to correct fetcher
+    - [x] Update architecture diagram if present
+    - **Acceptance**: ✅ User-facing docs reflect new architecture (Completed: 2025-10-21)
 
 ### Simplification Completion Checklist
 

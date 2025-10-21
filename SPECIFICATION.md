@@ -31,10 +31,11 @@ User ←→ Orchestrator Agent (manages session, UX, coordination)
          [Scratchpad File] (encrypted, shared state)
          ↓
 Handoff to Agent:
-1. Data Fetcher Agent       → Collects observability data
-2. Pattern Analyzer Agent   → Identifies anomalies and correlations
-3. Code Inspector Agent     → Maps errors to source code
-4. Root Cause Analyst       → Synthesizes findings and generates diagnosis
+1. Kubernetes Data Fetcher Agent   → Collects Kubernetes logs and pod data
+2. Prometheus Data Fetcher Agent   → Collects metrics and time-series data
+3. Pattern Analyzer Agent          → Identifies anomalies and correlations
+4. Code Inspector Agent            → Maps errors to source code
+5. Root Cause Analyst              → Synthesizes findings and generates diagnosis
 ```
 
 ### 2.2 Scratchpad Design
@@ -157,14 +158,27 @@ FINAL_DIAGNOSIS:
 - Handles error recovery and retry logic
 - **SK Integration**: Optionally uses HandoffOrchestration for agent coordination
 
-#### Data Fetcher Agent (SK ChatCompletionAgent)
-- **Plugins**: KubernetesPlugin, PrometheusPlugin
+#### Kubernetes Data Fetcher Agent (SK ChatCompletionAgent)
+- **Plugins**: KubernetesPlugin
 - **Capabilities via Function Calling**:
-  - Fetches logs via `fetch_kubernetes_logs(pod, namespace, ...)`
-  - Queries metrics via `fetch_prometheus_metrics(query, start, end, ...)`
-  - Constructs PromQL queries via `build_promql_from_template(template, params)`
+  - Fetches logs via `fetch_kubernetes_logs(pod, namespace, since, tail_lines, ...)`
+  - Lists pods via `list_kubernetes_pods(namespace, selector)`
+  - Gets pod status via `get_pod_status(pod, namespace)`
+- Extracts pod/namespace from problem description
 - Samples data intelligently (all errors + random sample of others)
-- Writes summaries + file references to scratchpad
+- Writes summaries + file references to scratchpad under "kubernetes" key
+- 3 retries with exponential backoff on failures (via SK + custom retry)
+- **LLM Model**: Uses FunctionChoiceBehavior.Auto() to automatically invoke plugins
+
+#### Prometheus Data Fetcher Agent (SK ChatCompletionAgent)
+- **Plugins**: PrometheusPlugin
+- **Capabilities via Function Calling**:
+  - Queries metrics via `fetch_prometheus_metrics(query, start, end, step, ...)`
+  - Executes PromQL via `execute_promql_query(query)`
+  - Constructs queries via `build_promql_from_template(template, params)`
+- Uses query templates for common patterns (error rate, latency, etc.)
+- Samples metrics with adaptive resolution based on time window
+- Writes summaries + file references to scratchpad under "prometheus" key
 - 3 retries with exponential backoff on failures (via SK + custom retry)
 - **LLM Model**: Uses FunctionChoiceBehavior.Auto() to automatically invoke plugins
 
