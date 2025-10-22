@@ -33,6 +33,7 @@ Use the scratchpad to:
    - Use `kubernetes.fetch_kubernetes_logs()` to get logs from specific pods
    - Use `kubernetes.list_kubernetes_pods()` to discover pods if the name is not explicit
    - Use `kubernetes.get_pod_status()` to check pod health if relevant
+   - Use `kubernetes.describe_pod()` to describe the pod 
 
 
 3. **If information is missing**, ask a clarifying question rather than guessing

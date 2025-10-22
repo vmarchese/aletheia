@@ -100,6 +100,7 @@ class KubernetesPlugin:
         
         try:
             # Run kubectl command asynchronously
+            log_debug(f"KubernetesPlugin::fetch_kubernetes_logs:: Running command: {' '.join(cmd)}")
             process = subprocess.run(args=cmd, capture_output=True)
             
             if process.returncode != 0:
@@ -245,6 +246,7 @@ class KubernetesPlugin:
         
         try:
             # Run kubectl command asynchronously
+            log_debug(f"KubernetesPlugin::get_pod_status:: Running command: [{' '.join(cmd)}]")
             process = subprocess.run(args=cmd, capture_output=True)
             
             if process.returncode != 0:
@@ -315,3 +317,64 @@ class KubernetesPlugin:
         """
         container_statuses = status.get("containerStatuses", [])
         return sum(cs.get("restartCount", 0) for cs in container_statuses)
+    
+    @kernel_function(
+        name="describe_pod",
+        description="Get detailed description of a Kubernetes pod including events, conditions, and configuration"
+    )
+    def describe_pod(
+        self,
+        pod: Annotated[str, "The name of the pod to describe"],
+        namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
+    ) -> Annotated[str, "Detailed pod description including events and configuration"]:
+        """Describe a Kubernetes pod with full details.
+        
+        This function runs 'kubectl describe pod' to get comprehensive information
+        about a pod including events, conditions, volumes, and configuration.
+        
+        Args:
+            pod: Pod name to describe
+            namespace: Kubernetes namespace (default: "default")
+        
+        Returns:
+            String containing the full kubectl describe output
+        """
+        log_debug(f"KubernetesPlugin::describe_pod:: Describing pod '{pod}' in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "describe", "pod", pod
+        ])
+        
+        try:
+            # Run kubectl command
+            log_debug(f"KubernetesPlugin::describe_pod:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": f"kubectl describe pod failed: {error_msg}",
+                    "pod": pod,
+                    "namespace": namespace
+                })
+            
+            # Return the describe output as-is (it's already human-readable)
+            description = process.stdout.decode()
+            
+            return json.dumps({
+                "description": description,
+                "pod": pod,
+                "namespace": namespace,
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to describe pod: {str(e)}",
+                "pod": pod,
+                "namespace": namespace
+            })
