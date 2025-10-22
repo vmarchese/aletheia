@@ -10,11 +10,10 @@ The plugin provides simplified async functions for:
 - Testing connectivity
 """
 
-import asyncio
 import json
 import aiohttp
 from datetime import datetime, timedelta
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from semantic_kernel.functions import kernel_function
 

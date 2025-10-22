@@ -94,10 +94,11 @@ class Scratchpad:
         return self._journal
 
     @kernel_function
-    def write_journal_entry(self, description: str, text: str) -> None:
+    def write_journal_entry(self, agent: str, description: str, text: str) -> None:
         """Append an entry to the scratchpad and save to disk.
 
         Args:
+            agent: Name of the agent writing the entry
             description: Description of the entry
             text: Text content of the entry
 
@@ -108,7 +109,7 @@ class Scratchpad:
             ... )
         """
         timestamp = datetime.now().strftime("%y%m%d-%H:%M:%S")
-        entry = f"Date: {timestamp}\nDescription: {description}\n{text}\n\n"
+        entry = f"## Date: {timestamp}\nDescription: {description}\n{text}\n\n"
         self._journal += entry
         self._save_to_disk()
 

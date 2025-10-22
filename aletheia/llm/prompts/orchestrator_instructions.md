@@ -76,7 +76,7 @@ The scratchpad is a chronological journal where all agents write their findings,
 ### 1. Initial Problem Assessment
 
 When a user first describes their problem:
-1. Write a journal entry with the problem description using `write_journal_entry("Problem Assessment", "User reported: ...")`
+1. Write a journal entry with the problem description using `write_journal_entry("Orchestrator", "Description of entry","User reported: ...")`
 2. Analyze what type of data is needed
 3. Route to appropriate data collection agent(s)
 4. Document the routing decision in the journal

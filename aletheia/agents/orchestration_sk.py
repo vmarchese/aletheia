@@ -15,6 +15,7 @@ from aletheia.agents.orchestrator import OrchestratorAgent
 from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
+from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.utils.logging import log_debug
 
 
@@ -31,6 +32,7 @@ class AletheiaHandoffOrchestration:
         kubernetes_fetcher_agent: KubernetesDataFetcher,
         prometheus_fetcher_agent: PrometheusDataFetcher,
         pattern_analyzer_agent: PatternAnalyzerAgent,
+        log_file_data_fetcher_agent: LogFileDataFetcher,
         console: Any,
     ):
         log_debug("AletheiaHandoffOrchestration::__init__:: called")
@@ -48,7 +50,13 @@ class AletheiaHandoffOrchestration:
             ).add_many(
                 source_agent=kubernetes_fetcher_agent.name,
                 target_agents={
-                    pattern_analyzer_agent.name: "Transfer to this agent for pattern analysis after Kubernetes data collection",
+                    pattern_analyzer_agent.name: "Transfer to this agent for pattern analysis after Kubernetes data collection to analyze the problems",
+                    orchestration_agent.name: "Transfer back to orchestrator if the user wants to continue the investigation",
+                },
+            ).add_many(
+                source_agent=log_file_data_fetcher_agent.name,
+                target_agents={
+                    pattern_analyzer_agent.name: "Transfer to this agent for pattern analysis after Kubernetes data collection to analyze the problems",
                     orchestration_agent.name: "Transfer back to orchestrator if the user wants to continue the investigation",
                 },
             ).add_many(
@@ -69,6 +77,7 @@ class AletheiaHandoffOrchestration:
             members=[
                 orchestration_agent.agent,
                 kubernetes_fetcher_agent.agent,
+                log_file_data_fetcher_agent.agent,
                 prometheus_fetcher_agent.agent,
                 pattern_analyzer_agent.agent
             ],
@@ -89,7 +98,6 @@ class AletheiaHandoffOrchestration:
             message: The agent's response message
         """
         # Always display agent activity to make it clear who is operating
-        log_debug(f"AletheiaHandoffOrchestration::_agent_response_callback:: message:{message}")
         if self.console and message.name:
             # Format agent name nicely
             agent_display_name = self._format_agent_name(message.name)

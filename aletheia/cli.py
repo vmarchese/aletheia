@@ -90,6 +90,14 @@ async def _start_investigation(session: Session, console: Console) -> None:
                                                    session=session,
                                                    scratchpad=scratchpad) 
 
+        log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
+                                              config=config,
+                                              description="Log File Data Fetcher Agent for collecting logs from log files.",
+                                              instructions=prompt_loader.load("log_file_data_fetcher", "instructions"),
+                                              service=llm_service.client,
+                                              session=session,
+                                              scratchpad=scratchpad)
+
         prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                                    config=config,
                                                    description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
@@ -110,6 +118,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
             kubernetes_fetcher_agent=kubernetes_fetcher,
             prometheus_fetcher_agent=prometheus_fetcher,
             pattern_analyzer_agent=pattern_analyzer,
+            log_file_data_fetcher_agent=log_file_fetcher,
             console=console
         )
         

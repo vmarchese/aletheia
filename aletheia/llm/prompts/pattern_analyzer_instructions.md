@@ -23,7 +23,7 @@ You have access to the Scratchpad plugin with the following functions:
 
 Use the scratchpad to:
 - Read the complete investigation context with `read_scratchpad()` - this includes all data collection results and findings
-- Document your analysis with `write_journal_entry("Pattern Analysis", "<your analysis findings>")`
+- Document your findings with `write_journal_entry("Pattern Analysis", "<description of findings>","<your findings>")`
 - Share identified patterns, anomalies, and correlations so other agents can use your analysis
 
 === YOUR TASK ===

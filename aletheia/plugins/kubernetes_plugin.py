@@ -9,15 +9,13 @@ The plugin provides simplified async functions for:
 - Getting pod status information
 """
 
-import asyncio
 import json
 import subprocess
-from datetime import datetime, timedelta
-from typing import Annotated, Any, Dict, List, Optional
+from datetime import datetime
+from typing import Annotated, Any, Dict, Optional
 
 from semantic_kernel.functions import kernel_function
 
-from aletheia.utils import run_command
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 

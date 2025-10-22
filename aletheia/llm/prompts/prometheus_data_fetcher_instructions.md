@@ -19,7 +19,7 @@ You have access to the Scratchpad plugin with the following functions:
 
 Use the scratchpad to:
 - Read previous context with `read_scratchpad()` to understand what other agents have discovered
-- Document your findings with `write_journal_entry("Prometheus Metrics Collection", "<your findings>")`
+- Document your findings with `write_journal_entry("Prometheus Metrics Collection", "<description of findings>","<your findings>")`
 - Share collected metrics and anomalies so other agents can use your findings
 
 ## Your Task
