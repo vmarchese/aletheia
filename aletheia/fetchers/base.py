@@ -100,7 +100,6 @@ class BaseFetcher(ABC):
             config: Configuration dictionary for the fetcher
         """
         self.config = config
-        self.validate_config()
 
     @abstractmethod
     def fetch(
@@ -122,14 +121,7 @@ class BaseFetcher(ABC):
         """
         pass
 
-    @abstractmethod
-    def validate_config(self) -> None:
-        """Validate the fetcher configuration.
 
-        Raises:
-            ValueError: If configuration is invalid
-        """
-        pass
 
     @abstractmethod
     def test_connection(self) -> bool:

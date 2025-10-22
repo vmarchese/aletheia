@@ -3,40 +3,40 @@
 This plugin exposes Kubernetes operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
 
-The plugin wraps KubernetesFetcher functionality and provides annotated
-functions for:
+The plugin provides simplified async functions for:
 - Fetching logs from pods
 - Listing pods in namespaces
 - Getting pod status information
-- Testing Kubernetes connectivity
 """
 
+import asyncio
 import json
-from datetime import datetime
-from typing import Annotated, Any, Dict, List
+import subprocess
+from datetime import datetime, timedelta
+from typing import Annotated, Any, Dict, List, Optional
 
 from semantic_kernel.functions import kernel_function
 
-from aletheia.fetchers.kubernetes import KubernetesFetcher
-from aletheia.utils.logging import log_operation_start, log_operation_complete, log_plugin_invocation
+from aletheia.utils import run_command
+from aletheia.utils.logging import log_debug, log_error
+from aletheia.config import Config
 
 
 class KubernetesPlugin:
     """Semantic Kernel plugin for Kubernetes operations.
     
-    This plugin provides kernel functions that wrap KubernetesFetcher
-    operations, allowing SK agents to automatically invoke Kubernetes
-    operations via function calling.
+    This plugin provides simplified async kernel functions for Kubernetes
+    operations, allowing SK agents to automatically invoke them via function calling.
     
     All functions use Annotated type hints to provide SK with parameter
     descriptions for the LLM to understand how to call them.
     
     Attributes:
-        fetcher: KubernetesFetcher instance for actual Kubernetes operations
         context: Kubernetes context name
+        namespace: Default namespace for operations
     """
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Config):
         """Initialize the Kubernetes plugin.
         
         Args:
@@ -46,111 +46,103 @@ class KubernetesPlugin:
         Raises:
             ValueError: If required configuration is missing
         """
-        if "context" not in config:
-            raise ValueError("Kubernetes 'context' is required in config")
-        
-        self.config = config
-        self.fetcher = KubernetesFetcher(config)
-        self.context = config["context"]
+        self.context = config.kubernetes_context 
+        self.namespace = config.kubernetes_namespace or "default"
     
     @kernel_function(
         name="fetch_kubernetes_logs",
-        description="Fetch logs from a Kubernetes pod with optional time window filtering and sampling"
+        description="Fetch logs from a Kubernetes pod with optional filtering and limiting"
     )
-    def fetch_logs(
+    def fetch_kubernetes_logs(
         self,
         pod: Annotated[str, "The name of the pod to fetch logs from"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-        container: Annotated[str | None, "Optional container name within the pod"] = None,
-        sample_size: Annotated[int, "Target number of log entries to return (default: 200)"] = 200,
-        since_minutes: Annotated[int | None, "Fetch logs from the last N minutes"] = None,
-    ) -> Annotated[str, "JSON string containing logs, summary, and metadata"]:
+        container: Annotated[Optional[str], "Optional container name within the pod"] = None,
+        tail_lines: Annotated[int, "Number of lines to fetch from the end of logs (default: 100)"] = 100,
+        since_minutes: Annotated[Optional[int], "Fetch logs from the last N minutes"] = None,
+    ) -> Annotated[str, "JSON string containing logs and metadata"]:
         """Fetch logs from a Kubernetes pod.
         
-        This function fetches logs from the specified pod, applies intelligent
-        sampling (prioritizing ERROR and FATAL logs), and returns a structured
-        result with logs, summary, and metadata.
+        This function fetches logs from the specified pod and returns them
+        in a structured format with metadata.
         
         Args:
             pod: Pod name to fetch logs from
             namespace: Kubernetes namespace (default: "default")
             container: Optional container name within the pod
-            sample_size: Target number of logs to return (default: 200)
+            tail_lines: Number of lines to fetch from end of logs (default: 100)
             since_minutes: Optional time window in minutes (fetch logs from last N minutes)
         
         Returns:
             JSON string with structure:
             {
                 "logs": [...],
-                "summary": "...",
-                "count": 123,
-                "metadata": {...}
+                "pod": "pod-name",
+                "namespace": "namespace",
+                "container": "container-name",
+                "count": 123
             }
         """
-        # Log plugin invocation
-        log_plugin_invocation(
-            plugin_name="KubernetesPlugin",
-            function_name="fetch_logs",
-            parameters={
+        cmd = ["kubectl"]
+        log_debug(f"KubernetesPlugin::fetch_kubernetes_logs:: Fetching logs for pod '{pod}' in namespace '{namespace}'")
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "logs", pod,
+            "--tail", str(tail_lines)
+        ])
+        
+        if container:
+            cmd.extend(["--container", container])
+        
+        if since_minutes:
+            cmd.extend(["--since", f"{since_minutes}m"])
+        
+        try:
+            # Run kubectl command asynchronously
+            process = subprocess.run(args=cmd, capture_output=True)
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": f"kubectl logs failed: {error_msg}",
+                    "pod": pod,
+                    "namespace": namespace,
+                    "container": container
+                })
+            
+            # Parse logs into lines
+            log_text = process.stdout.decode()
+            log_lines = [line for line in log_text.split('\n') if line.strip()]
+            
+            return json.dumps({
+                "logs": log_lines,
                 "pod": pod,
                 "namespace": namespace,
                 "container": container,
-                "sample_size": sample_size,
-                "since_minutes": since_minutes
-            }
-        )
-        
-        # Start operation timing
-        start_time = log_operation_start(
-            operation_name=f"kubectl_logs_{pod}",
-            details={"namespace": namespace, "pod": pod}
-        )
-        
-        # Prepare time window if specified
-        time_window = None
-        if since_minutes is not None:
-            from datetime import timedelta
-            end_time = datetime.now()
-            start_time_window = end_time - timedelta(minutes=since_minutes)
-            time_window = (start_time_window, end_time)
-        
-        # Call fetcher
-        result = self.fetcher.fetch(
-            time_window=time_window,
-            namespace=namespace,
-            pod=pod,
-            container=container,
-            sample_size=sample_size
-        )
-        
-        # Log completion
-        log_operation_complete(
-            operation_name=f"kubectl_logs_{pod}",
-            start_time=start_time,
-            result_summary=f"{result.count} logs collected"
-        )
-        
-        # Return as JSON string for LLM consumption
-        return json.dumps({
-            "logs": result.data,
-            "summary": result.summary,
-            "count": result.count,
-            "time_range": [
-                result.time_range[0].isoformat(),
-                result.time_range[1].isoformat()
-            ],
-            "metadata": result.metadata
-        }, indent=2)
+                "count": len(log_lines),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to fetch logs: {str(e)}",
+                "pod": pod,
+                "namespace": namespace,
+                "container": container
+            })
     
     @kernel_function(
         name="list_kubernetes_pods",
         description="List all pods in a Kubernetes namespace, optionally filtered by label selector"
     )
-    def list_pods(
+    def list_kubernetes_pods(
         self,
         namespace: Annotated[str, "The Kubernetes namespace to list pods from"] = "default",
-        selector: Annotated[str | None, "Optional label selector (e.g., 'app=payments-svc')"] = None,
-    ) -> Annotated[str, "JSON array of pod names"]:
+        selector: Annotated[Optional[str], "Optional label selector (e.g., 'app=payments-svc')"] = None,
+    ) -> Annotated[str, "JSON array of pod information"]:
         """List pods in a Kubernetes namespace.
         
         Args:
@@ -158,41 +150,78 @@ class KubernetesPlugin:
             selector: Optional label selector for filtering pods (e.g., "app=payments-svc")
         
         Returns:
-            JSON array of pod names as a string
+            JSON array of pod information including names, status, and age
         """
-        # Log plugin invocation
-        log_plugin_invocation(
-            plugin_name="KubernetesPlugin",
-            function_name="list_pods",
-            parameters={"namespace": namespace, "selector": selector}
-        )
+        log_debug(f"KubernetesPlugin::list_kubernetes_pods:: Listing pods in namespace '{namespace}' with selector '{selector}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "get", "pods",
+            "-o", "json"
+        ])
         
-        # Start operation timing
-        start_time = log_operation_start(
-            operation_name=f"kubectl_list_pods_{namespace}",
-            details={"namespace": namespace, "selector": selector}
-        )
+        if selector:
+            cmd.extend(["-l", selector])
         
-        pods = self.fetcher.list_pods(namespace=namespace, selector=selector)
-        
-        # Log completion
-        log_operation_complete(
-            operation_name=f"kubectl_list_pods_{namespace}",
-            start_time=start_time,
-            result_summary=f"{len(pods)} pods found"
-        )
-        
-        return json.dumps(pods, indent=2)
+        try:
+            # Run kubectl command asynchronously
+            log_debug(f"KubernetesPlugin::list_kubernetes_pods:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+            log_debug("KubernetesPlugin::list_kubernetes_pods:: Command completed")
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                log_error(f"KubernetesPlugin::list_kubernetes_pods:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl get pods failed: {error_msg}",
+                    "namespace": namespace,
+                    "selector": selector
+                })
+            
+            # Parse kubectl JSON output
+            log_debug("KubernetesPlugin::list_kubernetes_pods:: Parsing kubectl output: " + process.stdout.decode())
+            kubectl_output = json.loads(process.stdout.decode())
+            pods = []
+            
+            for item in kubectl_output.get("items", []):
+                metadata = item.get("metadata", {})
+                status = item.get("status", {})
+                
+                pods.append({
+                    "name": metadata.get("name"),
+                    "namespace": metadata.get("namespace"),
+                    "phase": status.get("phase"),
+                    "created": metadata.get("creationTimestamp"),
+                    "ready": self._count_ready_containers(status)
+                })
+            
+            return json.dumps({
+                "pods": pods,
+                "namespace": namespace,
+                "selector": selector,
+                "count": len(pods),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to list pods: {str(e)}",
+                "namespace": namespace,
+                "selector": selector
+            })
     
     @kernel_function(
-        name="get_kubernetes_pod_status",
+        name="get_pod_status",
         description="Get detailed status information for a specific Kubernetes pod"
     )
     def get_pod_status(
         self,
         pod: Annotated[str, "The name of the pod to get status for"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-    ) -> Annotated[str, "JSON object with pod status information"]:
+    ) -> Annotated[str, "JSON object with detailed pod status information"]:
         """Get status information for a Kubernetes pod.
         
         Args:
@@ -201,64 +230,90 @@ class KubernetesPlugin:
         
         Returns:
             JSON string with pod status including:
-            - name, namespace
-            - phase (Running, Pending, Failed, etc.)
-            - conditions
-            - container statuses
-            - start time
+            - name, namespace, phase
+            - conditions and container statuses
+            - start time and IP address
         """
-        # Log plugin invocation
-        log_plugin_invocation(
-            plugin_name="KubernetesPlugin",
-            function_name="get_pod_status",
-            parameters={"pod": pod, "namespace": namespace}
-        )
+        log_debug(f"KubernetesPlugin::get_pod_status:: Getting status for pod '{pod}' in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context]) 
+
+        cmd.extend([
+            "--namespace", namespace,
+            "get", "pod", pod,
+            "-o", "json"
+        ])
         
-        # Start operation timing
-        start_time = log_operation_start(
-            operation_name=f"kubectl_get_status_{pod}",
-            details={"namespace": namespace, "pod": pod}
-        )
-        
-        status = self.fetcher.get_pod_status(pod=pod, namespace=namespace)
-        
-        # Log completion
-        log_operation_complete(
-            operation_name=f"kubectl_get_status_{pod}",
-            start_time=start_time,
-            result_summary=f"Status: {status.get('phase', 'Unknown')}"
-        )
-        
-        return json.dumps(status, indent=2)
-    
-    @kernel_function(
-        name="test_kubernetes_connection",
-        description="Test connectivity to the Kubernetes cluster"
-    )
-    def test_connection(self) -> Annotated[str, "Connection test result message"]:
-        """Test connection to Kubernetes cluster.
-        
-        Returns:
-            Success message if connection works, error message otherwise
-        """
         try:
-            success = self.fetcher.test_connection()
-            if success:
-                return f"Successfully connected to Kubernetes cluster (context: {self.context})"
-            else:
-                return f"Failed to connect to Kubernetes cluster (context: {self.context})"
+            # Run kubectl command asynchronously
+            process = subprocess.run(args=cmd, capture_output=True)
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": f"kubectl get pod failed: {error_msg}",
+                    "pod": pod,
+                    "namespace": namespace
+                })
+            
+            # Parse kubectl JSON output
+            pod_info = json.loads(process.stdout.decode())
+            metadata = pod_info.get("metadata", {})
+            status = pod_info.get("status", {})
+            spec = pod_info.get("spec", {})
+            
+            # Extract key status information
+            result = {
+                "name": metadata.get("name"),
+                "namespace": metadata.get("namespace"),
+                "phase": status.get("phase"),
+                "pod_ip": status.get("podIP"),
+                "host_ip": status.get("hostIP"),
+                "node": spec.get("nodeName"),
+                "start_time": status.get("startTime"),
+                "conditions": status.get("conditions", []),
+                "container_statuses": status.get("containerStatuses", []),
+                "ready": self._count_ready_containers(status),
+                "restarts": self._count_restarts(status),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            return json.dumps(result, indent=2)
+            
         except Exception as e:
-            return f"Kubernetes connection error: {str(e)}"
+            return json.dumps({
+                "error": f"Failed to get pod status: {str(e)}",
+                "pod": pod,
+                "namespace": namespace
+            })
     
-    @kernel_function(
-        name="get_kubernetes_capabilities",
-        description="Get information about what operations this Kubernetes plugin supports"
-    )
-    def get_capabilities(self) -> Annotated[str, "JSON object describing plugin capabilities"]:
-        """Get Kubernetes plugin capabilities.
+    def _count_ready_containers(self, status: Dict[str, Any]) -> str:
+        """Count ready vs total containers in pod status.
         
+        Args:
+            status: Pod status dict from kubectl
+            
         Returns:
-            JSON string describing what operations are supported
+            String like "2/3" indicating ready/total containers
         """
-        capabilities = self.fetcher.get_capabilities()
-        return json.dumps(capabilities, indent=2)
+        container_statuses = status.get("containerStatuses", [])
+        if not container_statuses:
+            return "0/0"
+        
+        ready_count = sum(1 for cs in container_statuses if cs.get("ready", False))
+        total_count = len(container_statuses)
+        
+        return f"{ready_count}/{total_count}"
+    
+    def _count_restarts(self, status: Dict[str, Any]) -> int:
+        """Count total restarts across all containers in pod.
+        
+        Args:
+            status: Pod status dict from kubectl
+            
+        Returns:
+            Total restart count
+        """
+        container_statuses = status.get("containerStatuses", [])
+        return sum(cs.get("restartCount", 0) for cs in container_statuses)

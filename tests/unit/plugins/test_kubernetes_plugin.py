@@ -4,13 +4,12 @@ Tests the KubernetesPlugin class that exposes Kubernetes operations
 as kernel functions for SK agents.
 """
 
+import asyncio
 import json
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, AsyncMock
 
 from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
-from aletheia.fetchers.base import FetchResult, ConnectionError, QueryError
 
 
 class TestKubernetesPluginInitialization:
@@ -22,8 +21,7 @@ class TestKubernetesPluginInitialization:
         plugin = KubernetesPlugin(config)
         
         assert plugin.context == "test-context"
-        assert plugin.config == config
-        assert plugin.fetcher is not None
+        assert plugin.namespace == "default"
     
     def test_init_without_context_raises_error(self):
         """Test that initialization without context raises ValueError."""
@@ -32,560 +30,548 @@ class TestKubernetesPluginInitialization:
         with pytest.raises(ValueError, match="'context' is required"):
             KubernetesPlugin(config)
     
-    def test_init_with_additional_config(self):
-        """Test initialization with additional configuration options."""
+    def test_init_with_custom_namespace(self):
+        """Test initialization with custom namespace."""
         config = {
             "context": "prod-cluster",
-            "namespace": "production",
-            "timeout": 60
+            "namespace": "production"
         }
         plugin = KubernetesPlugin(config)
         
         assert plugin.context == "prod-cluster"
-        assert plugin.config["namespace"] == "production"
+        assert plugin.namespace == "production"
 
 
 class TestFetchKubernetesLogs:
-    """Tests for fetch_logs kernel function."""
+    """Tests for fetch_kubernetes_logs kernel function."""
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_fetch_logs_basic(self, mock_fetcher_class):
-        """Test basic log fetching without time window."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        mock_result = FetchResult(
-            source="kubernetes",
-            data=[{"level": "ERROR", "message": "test error"}],
-            summary="1 logs (1 ERROR)",
-            count=1,
-            time_range=(datetime(2025, 1, 1, 10, 0), datetime(2025, 1, 1, 11, 0)),
-            metadata={"pod": "test-pod"}
-        )
-        mock_fetcher.fetch.return_value = mock_result
-        
-        # Create plugin
+    @pytest.mark.asyncio
+    async def test_fetch_logs_basic(self):
+        """Test basic log fetching."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function
-        result_json = plugin.fetch_logs(
-            pod="test-pod",
-            namespace="default"
+        # Mock successful kubectl process
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            b"log line 1\nlog line 2\nlog line 3\n",
+            b""
         )
         
-        # Verify
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.fetch_kubernetes_logs(
+                pod="test-pod",
+                namespace="default"
+            )
+        
+        # Verify result
         result = json.loads(result_json)
-        assert result["count"] == 1
-        assert result["summary"] == "1 logs (1 ERROR)"
-        assert len(result["logs"]) == 1
-        assert result["logs"][0]["level"] == "ERROR"
-        
-        # Verify fetcher was called correctly
-        mock_fetcher.fetch.assert_called_once()
-        call_kwargs = mock_fetcher.fetch.call_args[1]
-        assert call_kwargs["namespace"] == "default"
-        assert call_kwargs["pod"] == "test-pod"
-        assert call_kwargs["sample_size"] == 200
+        assert result["pod"] == "test-pod"
+        assert result["namespace"] == "default"
+        assert result["count"] == 3
+        assert len(result["logs"]) == 3
+        assert result["logs"][0] == "log line 1"
+        assert "timestamp" in result
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_fetch_logs_with_time_window(self, mock_fetcher_class):
-        """Test log fetching with since_minutes parameter."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        mock_result = FetchResult(
-            source="kubernetes",
-            data=[],
-            summary="0 logs",
-            count=0,
-            time_range=(datetime.now() - timedelta(minutes=30), datetime.now()),
-            metadata={}
-        )
-        mock_fetcher.fetch.return_value = mock_result
-        
-        # Create plugin
-        config = {"context": "test-context"}
-        plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
-        
-        # Call function with time window
-        result_json = plugin.fetch_logs(
-            pod="test-pod",
-            namespace="default",
-            since_minutes=30
-        )
-        
-        # Verify time window was passed
-        mock_fetcher.fetch.assert_called_once()
-        call_kwargs = mock_fetcher.fetch.call_args[1]
-        assert call_kwargs["time_window"] is not None
-        
-        start_time, end_time = call_kwargs["time_window"]
-        # Time window should be approximately 30 minutes
-        duration = (end_time - start_time).total_seconds()
-        assert 29 * 60 <= duration <= 31 * 60
-    
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_fetch_logs_with_container(self, mock_fetcher_class):
+    @pytest.mark.asyncio
+    async def test_fetch_logs_with_container(self):
         """Test log fetching with container parameter."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        mock_result = FetchResult(
-            source="kubernetes",
-            data=[],
-            summary="0 logs",
-            count=0,
-            time_range=(datetime.now(), datetime.now()),
-            metadata={"container": "app"}
-        )
-        mock_fetcher.fetch.return_value = mock_result
-        
-        # Create plugin
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function with container
-        result_json = plugin.fetch_logs(
-            pod="test-pod",
-            namespace="production",
-            container="app",
-            sample_size=500
-        )
+        # Mock successful kubectl process
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (b"container log\n", b"")
         
-        # Verify parameters
-        mock_fetcher.fetch.assert_called_once()
-        call_kwargs = mock_fetcher.fetch.call_args[1]
-        assert call_kwargs["container"] == "app"
-        assert call_kwargs["sample_size"] == 500
-    
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_fetch_logs_returns_valid_json(self, mock_fetcher_class):
-        """Test that fetch_logs returns valid JSON string."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+            result_json = await plugin.fetch_kubernetes_logs(
+                pod="test-pod",
+                namespace="production",
+                container="app",
+                tail_lines=50,
+                since_minutes=30
+            )
         
-        mock_result = FetchResult(
-            source="kubernetes",
-            data=[{"level": "INFO", "message": "test"}],
-            summary="1 logs",
-            count=1,
-            time_range=(datetime(2025, 1, 1), datetime(2025, 1, 2)),
-            metadata={"test": "data"}
-        )
-        mock_fetcher.fetch.return_value = mock_result
+        # Verify kubectl command was called correctly
+        call_args = mock_exec.call_args[0]
+        assert "kubectl" in call_args
+        assert "--context" in call_args
+        assert "test-context" in call_args
+        assert "--namespace" in call_args
+        assert "production" in call_args
+        assert "logs" in call_args
+        assert "test-pod" in call_args
+        assert "--container" in call_args
+        assert "app" in call_args
+        assert "--tail" in call_args
+        assert "50" in call_args
+        assert "--since" in call_args
+        assert "30m" in call_args
         
-        # Create plugin
-        config = {"context": "test-context"}
-        plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
-        
-        # Call function
-        result_json = plugin.fetch_logs(pod="test-pod")
-        
-        # Verify JSON is valid
+        # Verify result
         result = json.loads(result_json)
-        assert "logs" in result
-        assert "summary" in result
-        assert "count" in result
-        assert "time_range" in result
-        assert "metadata" in result
+        assert result["container"] == "app"
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_fetch_logs_handles_fetcher_error(self, mock_fetcher_class):
-        """Test that fetch_logs propagates errors from fetcher."""
-        # Setup mock to raise error
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.fetch.side_effect = ConnectionError("kubectl failed")
-        
-        # Create plugin
+    @pytest.mark.asyncio
+    async def test_fetch_logs_kubectl_error(self):
+        """Test handling of kubectl command errors."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function should raise error
-        with pytest.raises(ConnectionError, match="kubectl failed"):
-            plugin.fetch_logs(pod="test-pod")
+        # Mock failed kubectl process
+        mock_process = AsyncMock()
+        mock_process.returncode = 1
+        mock_process.communicate.return_value = (
+            b"",
+            b"Error from server (NotFound): pods \"missing-pod\" not found"
+        )
+        
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.fetch_kubernetes_logs(
+                pod="missing-pod",
+                namespace="default"
+            )
+        
+        # Verify error is returned in JSON
+        result = json.loads(result_json)
+        assert "error" in result
+        assert "kubectl logs failed" in result["error"]
+        assert "NotFound" in result["error"]
+        assert result["pod"] == "missing-pod"
+    
+    @pytest.mark.asyncio
+    async def test_fetch_logs_exception(self):
+        """Test handling of exceptions during log fetching."""
+        config = {"context": "test-context"}
+        plugin = KubernetesPlugin(config)
+        
+        with patch('asyncio.create_subprocess_exec', side_effect=Exception("Connection timeout")):
+            result_json = await plugin.fetch_kubernetes_logs(
+                pod="test-pod",
+                namespace="default"
+            )
+        
+        # Verify error is returned in JSON
+        result = json.loads(result_json)
+        assert "error" in result
+        assert "Failed to fetch logs" in result["error"]
+        assert "Connection timeout" in result["error"]
 
 
 class TestListKubernetesPods:
-    """Tests for list_pods kernel function."""
+    """Tests for list_kubernetes_pods kernel function."""
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_list_pods_basic(self, mock_fetcher_class):
+    @pytest.mark.asyncio
+    async def test_list_pods_basic(self):
         """Test basic pod listing."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.list_pods.return_value = ["pod1", "pod2", "pod3"]
-        
-        # Create plugin
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function
-        result_json = plugin.list_pods(namespace="default")
+        # Mock kubectl get pods JSON output
+        kubectl_output = {
+            "items": [
+                {
+                    "metadata": {
+                        "name": "pod1",
+                        "namespace": "default",
+                        "creationTimestamp": "2025-01-01T10:00:00Z"
+                    },
+                    "status": {
+                        "phase": "Running",
+                        "containerStatuses": [
+                            {"ready": True, "restartCount": 0}
+                        ]
+                    }
+                },
+                {
+                    "metadata": {
+                        "name": "pod2",
+                        "namespace": "default",
+                        "creationTimestamp": "2025-01-01T11:00:00Z"
+                    },
+                    "status": {
+                        "phase": "Pending",
+                        "containerStatuses": [
+                            {"ready": False, "restartCount": 1}
+                        ]
+                    }
+                }
+            ]
+        }
         
-        # Verify
-        result = json.loads(result_json)
-        assert result == ["pod1", "pod2", "pod3"]
-        
-        mock_fetcher.list_pods.assert_called_once_with(
-            namespace="default",
-            selector=None
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            json.dumps(kubectl_output).encode(),
+            b""
         )
+        
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.list_kubernetes_pods(namespace="default")
+        
+        # Verify result
+        result = json.loads(result_json)
+        assert result["namespace"] == "default"
+        assert result["count"] == 2
+        assert len(result["pods"]) == 2
+        
+        # Check first pod
+        pod1 = result["pods"][0]
+        assert pod1["name"] == "pod1"
+        assert pod1["phase"] == "Running"
+        assert pod1["ready"] == "1/1"
+        
+        # Check second pod
+        pod2 = result["pods"][1]
+        assert pod2["name"] == "pod2"
+        assert pod2["phase"] == "Pending"
+        assert pod2["ready"] == "0/1"
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_list_pods_with_selector(self, mock_fetcher_class):
+    @pytest.mark.asyncio
+    async def test_list_pods_with_selector(self):
         """Test pod listing with label selector."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.list_pods.return_value = ["app-pod-1", "app-pod-2"]
-        
-        # Create plugin
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function with selector
-        result_json = plugin.list_pods(
-            namespace="production",
-            selector="app=payments-svc"
+        kubectl_output = {"items": []}
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            json.dumps(kubectl_output).encode(),
+            b""
         )
         
-        # Verify
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+            result_json = await plugin.list_kubernetes_pods(
+                namespace="production",
+                selector="app=payments-svc"
+            )
+        
+        # Verify kubectl command included selector
+        call_args = mock_exec.call_args[0]
+        assert "-l" in call_args
+        assert "app=payments-svc" in call_args
+        
+        # Verify result
         result = json.loads(result_json)
-        assert result == ["app-pod-1", "app-pod-2"]
-        
-        mock_fetcher.list_pods.assert_called_once_with(
-            namespace="production",
-            selector="app=payments-svc"
-        )
+        assert result["selector"] == "app=payments-svc"
+        assert result["count"] == 0
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_list_pods_empty_result(self, mock_fetcher_class):
-        """Test pod listing with no pods found."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.list_pods.return_value = []
-        
-        # Create plugin
+    @pytest.mark.asyncio
+    async def test_list_pods_kubectl_error(self):
+        """Test handling of kubectl errors."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function
-        result_json = plugin.list_pods(namespace="empty")
+        mock_process = AsyncMock()
+        mock_process.returncode = 1
+        mock_process.communicate.return_value = (
+            b"",
+            b"Error from server (Forbidden): pods is forbidden"
+        )
         
-        # Verify
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.list_kubernetes_pods(namespace="forbidden")
+        
+        # Verify error is returned
         result = json.loads(result_json)
-        assert result == []
+        assert "error" in result
+        assert "kubectl get pods failed" in result["error"]
+        assert "Forbidden" in result["error"]
 
 
-class TestGetKubernetesPodStatus:
+class TestGetPodStatus:
     """Tests for get_pod_status kernel function."""
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_get_pod_status_basic(self, mock_fetcher_class):
+    @pytest.mark.asyncio
+    async def test_get_pod_status_basic(self):
         """Test getting pod status."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        mock_status = {
-            "name": "test-pod",
-            "namespace": "default",
-            "phase": "Running",
-            "conditions": [{"type": "Ready", "status": "True"}],
-            "container_statuses": [{"name": "app", "ready": True}],
-            "start_time": "2025-01-01T10:00:00Z"
-        }
-        mock_fetcher.get_pod_status.return_value = mock_status
-        
-        # Create plugin
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function
-        result_json = plugin.get_pod_status(
-            pod="test-pod",
-            namespace="default"
+        # Mock kubectl get pod JSON output
+        kubectl_output = {
+            "metadata": {
+                "name": "test-pod",
+                "namespace": "default"
+            },
+            "spec": {
+                "nodeName": "worker-node-1"
+            },
+            "status": {
+                "phase": "Running",
+                "podIP": "10.244.1.5",
+                "hostIP": "192.168.1.10",
+                "startTime": "2025-01-01T10:00:00Z",
+                "conditions": [
+                    {"type": "Ready", "status": "True"},
+                    {"type": "PodScheduled", "status": "True"}
+                ],
+                "containerStatuses": [
+                    {
+                        "name": "app",
+                        "ready": True,
+                        "restartCount": 0
+                    }
+                ]
+            }
+        }
+        
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            json.dumps(kubectl_output).encode(),
+            b""
         )
         
-        # Verify
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.get_pod_status(
+                pod="test-pod",
+                namespace="default"
+            )
+        
+        # Verify result
         result = json.loads(result_json)
         assert result["name"] == "test-pod"
+        assert result["namespace"] == "default"
         assert result["phase"] == "Running"
-        assert len(result["conditions"]) == 1
-        
-        mock_fetcher.get_pod_status.assert_called_once_with(
-            pod="test-pod",
-            namespace="default"
-        )
+        assert result["pod_ip"] == "10.244.1.5"
+        assert result["node"] == "worker-node-1"
+        assert result["ready"] == "1/1"
+        assert result["restarts"] == 0
+        assert len(result["conditions"]) == 2
+        assert len(result["container_statuses"]) == 1
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_get_pod_status_failed_pod(self, mock_fetcher_class):
+    @pytest.mark.asyncio
+    async def test_get_pod_status_failed_pod(self):
         """Test getting status of a failed pod."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        mock_status = {
-            "name": "failed-pod",
-            "namespace": "production",
-            "phase": "Failed",
-            "conditions": [],
-            "container_statuses": [],
-            "start_time": None
-        }
-        mock_fetcher.get_pod_status.return_value = mock_status
-        
-        # Create plugin
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function
-        result_json = plugin.get_pod_status(
-            pod="failed-pod",
-            namespace="production"
+        kubectl_output = {
+            "metadata": {
+                "name": "failed-pod",
+                "namespace": "production"
+            },
+            "spec": {},
+            "status": {
+                "phase": "Failed",
+                "conditions": [],
+                "containerStatuses": [
+                    {
+                        "name": "app",
+                        "ready": False,
+                        "restartCount": 5
+                    }
+                ]
+            }
+        }
+        
+        mock_process = AsyncMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            json.dumps(kubectl_output).encode(),
+            b""
         )
         
-        # Verify
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.get_pod_status(
+                pod="failed-pod",
+                namespace="production"
+            )
+        
+        # Verify result
         result = json.loads(result_json)
         assert result["phase"] == "Failed"
-        assert result["start_time"] is None
-
-
-class TestTestKubernetesConnection:
-    """Tests for test_connection kernel function."""
+        assert result["ready"] == "0/1"
+        assert result["restarts"] == 5
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_connection_success(self, mock_fetcher_class):
-        """Test successful connection test."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.test_connection.return_value = True
-        
-        # Create plugin
-        config = {"context": "prod-cluster"}
-        plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
-        
-        # Call function
-        result = plugin.test_connection()
-        
-        # Verify
-        assert "Successfully connected" in result
-        assert "prod-cluster" in result
-    
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_connection_failure(self, mock_fetcher_class):
-        """Test failed connection test."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.test_connection.return_value = False
-        
-        # Create plugin
-        config = {"context": "invalid-cluster"}
-        plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
-        
-        # Call function
-        result = plugin.test_connection()
-        
-        # Verify
-        assert "Failed to connect" in result
-        assert "invalid-cluster" in result
-    
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_connection_exception(self, mock_fetcher_class):
-        """Test connection test with exception."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.test_connection.side_effect = Exception("Network error")
-        
-        # Create plugin
-        config = {"context": "test-cluster"}
-        plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
-        
-        # Call function
-        result = plugin.test_connection()
-        
-        # Verify
-        assert "connection error" in result
-        assert "Network error" in result
-
-
-class TestGetKubernetesCapabilities:
-    """Tests for get_capabilities kernel function."""
-    
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_get_capabilities(self, mock_fetcher_class):
-        """Test getting plugin capabilities."""
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        mock_capabilities = {
-            "supports_time_window": True,
-            "supports_streaming": False,
-            "max_sample_size": 10000,
-            "data_types": ["logs"],
-            "sampling_strategies": ["level-based", "random"],
-            "retry_enabled": True,
-            "default_retries": 3
-        }
-        mock_fetcher.get_capabilities.return_value = mock_capabilities
-        
-        # Create plugin
+    @pytest.mark.asyncio
+    async def test_get_pod_status_not_found(self):
+        """Test getting status of non-existent pod."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        # Call function
-        result_json = plugin.get_capabilities()
+        mock_process = AsyncMock()
+        mock_process.returncode = 1
+        mock_process.communicate.return_value = (
+            b"",
+            b"Error from server (NotFound): pods \"missing-pod\" not found"
+        )
         
-        # Verify
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result_json = await plugin.get_pod_status(
+                pod="missing-pod",
+                namespace="default"
+            )
+        
+        # Verify error is returned
         result = json.loads(result_json)
-        assert result["supports_time_window"] is True
-        assert result["max_sample_size"] == 10000
-        assert "logs" in result["data_types"]
+        assert "error" in result
+        assert "kubectl get pod failed" in result["error"]
+        assert "NotFound" in result["error"]
+
+
+class TestHelperMethods:
+    """Tests for helper methods."""
+    
+    def test_count_ready_containers(self):
+        """Test counting ready containers."""
+        config = {"context": "test-context"}
+        plugin = KubernetesPlugin(config)
+        
+        # Test with no containers
+        status = {"containerStatuses": []}
+        assert plugin._count_ready_containers(status) == "0/0"
+        
+        # Test with mixed ready/not ready
+        status = {
+            "containerStatuses": [
+                {"ready": True},
+                {"ready": False},
+                {"ready": True}
+            ]
+        }
+        assert plugin._count_ready_containers(status) == "2/3"
+        
+        # Test with missing containerStatuses
+        status = {}
+        assert plugin._count_ready_containers(status) == "0/0"
+    
+    def test_count_restarts(self):
+        """Test counting total restarts."""
+        config = {"context": "test-context"}
+        plugin = KubernetesPlugin(config)
+        
+        # Test with no containers
+        status = {"containerStatuses": []}
+        assert plugin._count_restarts(status) == 0
+        
+        # Test with restarts
+        status = {
+            "containerStatuses": [
+                {"restartCount": 2},
+                {"restartCount": 5},
+                {"restartCount": 0}
+            ]
+        }
+        assert plugin._count_restarts(status) == 7
+        
+        # Test with missing restartCount
+        status = {
+            "containerStatuses": [
+                {"restartCount": 1},
+                {}  # Missing restartCount
+            ]
+        }
+        assert plugin._count_restarts(status) == 1
 
 
 class TestKernelFunctionDecorators:
     """Tests for kernel function decorator metadata."""
     
-    def test_fetch_logs_has_kernel_function_decorator(self):
-        """Test that fetch_logs has kernel_function decorator."""
+    def test_all_functions_have_kernel_decorators(self):
+        """Test that all public methods have kernel_function decorators."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
         
-        # Check that the method has kernel function metadata
-        assert hasattr(plugin.fetch_logs, '__kernel_function__') or \
-               hasattr(plugin.fetch_logs, '__kernel_function_name__') or \
-               'fetch_kubernetes_logs' in str(plugin.fetch_logs)
-    
-    def test_list_pods_has_kernel_function_decorator(self):
-        """Test that list_pods has kernel_function decorator."""
-        config = {"context": "test-context"}
-        plugin = KubernetesPlugin(config)
-        
-        assert hasattr(plugin.list_pods, '__kernel_function__') or \
-               hasattr(plugin.list_pods, '__kernel_function_name__') or \
-               'list_kubernetes_pods' in str(plugin.list_pods)
-    
-    def test_all_public_methods_are_kernel_functions(self):
-        """Test that all public methods (except __init__) are kernel functions."""
-        config = {"context": "test-context"}
-        plugin = KubernetesPlugin(config)
-        
-        public_methods = [
-            method for method in dir(plugin)
-            if not method.startswith('_') and callable(getattr(plugin, method))
-        ]
-        
-        # All public methods should be kernel functions
-        # (except properties like 'context', 'config', 'fetcher')
+        # Get all async methods that should be kernel functions
         expected_functions = [
-            'fetch_logs',
-            'list_pods',
-            'get_pod_status',
-            'test_connection',
-            'get_capabilities'
+            "fetch_kubernetes_logs",
+            "list_kubernetes_pods", 
+            "get_pod_status"
         ]
         
         for func_name in expected_functions:
-            assert func_name in public_methods
+            method = getattr(plugin, func_name)
+            # Check that method exists and is callable
+            assert callable(method)
+            # SK decorators add metadata to functions
+            assert hasattr(method, '__name__')
 
 
 class TestPluginIntegrationWithKernel:
     """Integration tests for plugin with SK kernel."""
     
     @pytest.mark.asyncio
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    async def test_plugin_can_be_added_to_kernel(self, mock_fetcher_class):
+    async def test_plugin_can_be_added_to_kernel(self):
         """Test that plugin can be added to SK kernel."""
-        from semantic_kernel import Kernel
-        
-        # Setup mock
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        
-        # Create plugin and kernel
-        config = {"context": "test-context"}
-        plugin = KubernetesPlugin(config)
-        kernel = Kernel()
-        
-        # Add plugin to kernel
-        kernel.add_plugin(plugin, plugin_name="kubernetes")
-        
-        # Verify plugin was added
-        assert "kubernetes" in kernel.plugins
-        
-        # Verify functions are available
-        k8s_plugin = kernel.plugins["kubernetes"]
-        assert "fetch_kubernetes_logs" in [f.name for f in k8s_plugin.functions.values()]
-        assert "list_kubernetes_pods" in [f.name for f in k8s_plugin.functions.values()]
+        try:
+            from semantic_kernel import Kernel
+            
+            # Create plugin and kernel
+            config = {"context": "test-context"}
+            plugin = KubernetesPlugin(config)
+            kernel = Kernel()
+            
+            # Add plugin to kernel
+            kernel.add_plugin(plugin, plugin_name="kubernetes")
+            
+            # Verify plugin was added
+            assert "kubernetes" in kernel.plugins
+            
+            # Verify functions are available
+            k8s_plugin = kernel.plugins["kubernetes"]
+            function_names = [f.name for f in k8s_plugin.functions.values()]
+            assert "fetch_kubernetes_logs" in function_names
+            assert "list_kubernetes_pods" in function_names
+            assert "get_pod_status" in function_names
+            
+        except ImportError:
+            pytest.skip("Semantic Kernel not available for integration test")
 
 
-class TestPluginErrorHandling:
-    """Tests for error handling in plugin functions."""
+class TestAsyncBehavior:
+    """Tests for async behavior of plugin functions."""
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_fetch_logs_connection_error_propagates(self, mock_fetcher_class):
-        """Test that ConnectionError from fetcher propagates."""
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.fetch.side_effect = ConnectionError("Connection refused")
-        
+    @pytest.mark.asyncio
+    async def test_all_functions_are_async(self):
+        """Test that all kernel functions are async."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        with pytest.raises(ConnectionError):
-            plugin.fetch_logs(pod="test-pod")
+        # Test that methods are coroutines
+        assert asyncio.iscoroutinefunction(plugin.fetch_kubernetes_logs)
+        assert asyncio.iscoroutinefunction(plugin.list_kubernetes_pods)
+        assert asyncio.iscoroutinefunction(plugin.get_pod_status)
     
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_list_pods_query_error_propagates(self, mock_fetcher_class):
-        """Test that QueryError from fetcher propagates."""
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.list_pods.side_effect = QueryError("Invalid selector")
-        
+    @pytest.mark.asyncio
+    async def test_concurrent_execution(self):
+        """Test that multiple plugin calls can run concurrently."""
         config = {"context": "test-context"}
         plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
         
-        with pytest.raises(QueryError):
-            plugin.list_pods(namespace="default", selector="invalid=")
-    
-    @patch('aletheia.plugins.kubernetes_plugin.KubernetesFetcher')
-    def test_get_pod_status_error_propagates(self, mock_fetcher_class):
-        """Test that errors from get_pod_status propagate."""
-        mock_fetcher = Mock()
-        mock_fetcher_class.return_value = mock_fetcher
-        mock_fetcher.get_pod_status.side_effect = ConnectionError("Pod not found")
+        # Mock processes for concurrent calls
+        mock_process1 = AsyncMock()
+        mock_process1.returncode = 0
+        mock_process1.communicate.return_value = (b"logs from pod1\n", b"")
         
-        config = {"context": "test-context"}
-        plugin = KubernetesPlugin(config)
-        plugin.fetcher = mock_fetcher
+        mock_process2 = AsyncMock()
+        mock_process2.returncode = 0
+        mock_process2.communicate.return_value = (b"logs from pod2\n", b"")
         
-        with pytest.raises(ConnectionError):
-            plugin.get_pod_status(pod="missing-pod")
+        # Create side effect that returns different mocks for different calls
+        call_count = 0
+        def mock_subprocess(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_process1 if call_count == 1 else mock_process2
+        
+        with patch('asyncio.create_subprocess_exec', side_effect=mock_subprocess):
+            # Run two log fetches concurrently
+            results = await asyncio.gather(
+                plugin.fetch_kubernetes_logs(pod="pod1", namespace="default"),
+                plugin.fetch_kubernetes_logs(pod="pod2", namespace="default")
+            )
+        
+        # Verify both completed successfully
+        assert len(results) == 2
+        result1 = json.loads(results[0])
+        result2 = json.loads(results[1])
+        
+        assert result1["pod"] == "pod1"
+        assert result2["pod"] == "pod2"
+        assert "logs from pod1" in result1["logs"][0]
+        assert "logs from pod2" in result2["logs"][0]

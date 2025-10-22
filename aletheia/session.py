@@ -56,6 +56,7 @@ class SessionMetadata:
     status: str  # active | completed | failed
     salt: str  # Base64-encoded salt for encryption
     verbose: bool = False  # whether very-verbose mode (-vv) is enabled
+    unsafe: bool = False  # whether plaintext mode is enabled (no encryption)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -67,6 +68,9 @@ class SessionMetadata:
         # Handle backwards compatibility for sessions without verbose field
         if "verbose" not in data:
             data["verbose"] = False
+        # Handle backwards compatibility for sessions without unsafe field
+        if "unsafe" not in data:
+            data["unsafe"] = False
         return cls(**data)
 
 
@@ -88,6 +92,7 @@ class Session:
         session_id: str,
         session_dir: Optional[Path] = None,
         password: Optional[str] = None,
+        unsafe: bool = False,
     ):
         """
         Initialize a Session object.
@@ -95,23 +100,29 @@ class Session:
         Args:
             session_id: Unique session identifier
             session_dir: Base directory for sessions (default: ~/.aletheia/sessions)
-            password: Session password for encryption (required for operations)
+            password: Session password for encryption (required for operations unless unsafe=True)
+            unsafe: If True, use plaintext storage without encryption
         """
         self.session_id = session_id
         self.base_dir = session_dir or self.DEFAULT_SESSION_DIR
         self.session_path = self.base_dir / session_id
         self.password = password
+        self.unsafe = unsafe
         self._key: Optional[bytes] = None
         self._metadata: Optional[SessionMetadata] = None
 
     @property
     def metadata_file(self) -> Path:
-        """Path to encrypted metadata file."""
+        """Path to metadata file (encrypted or plaintext based on unsafe mode)."""
+        if self.unsafe:
+            return self.session_path / "metadata.json"
         return self.session_path / "metadata.encrypted"
 
     @property
     def scratchpad_file(self) -> Path:
-        """Path to encrypted scratchpad file."""
+        """Path to scratchpad file (encrypted or plaintext based on unsafe mode)."""
+        if self.unsafe:
+            return self.session_path / "scratchpad.enc"
         return self.session_path / "scratchpad.encrypted"
 
     @property
@@ -120,8 +131,8 @@ class Session:
         return self.session_path / "data"
 
     def _ensure_password(self) -> None:
-        """Ensure password is set."""
-        if self.password is None:
+        """Ensure password is set (unless in unsafe mode)."""
+        if not self.unsafe and self.password is None:
             raise SessionError("Session password required for this operation")
 
     def _derive_key(self, salt: bytes) -> bytes:
@@ -129,11 +140,11 @@ class Session:
         self._ensure_password()
         return derive_session_key(self.password, salt)
 
-    def _load_metadata(self, key: bytes) -> SessionMetadata:
-        """Load session metadata from encrypted file.
+    def _load_metadata(self, key: Optional[bytes]) -> SessionMetadata:
+        """Load session metadata from file (encrypted or plaintext).
 
         Args:
-            key: Encryption key to use for decryption
+            key: Encryption key to use for decryption (None in unsafe mode)
 
         Returns:
             Loaded session metadata
@@ -141,22 +152,35 @@ class Session:
         if not self.metadata_file.exists():
             raise SessionNotFoundError(f"Session {self.session_id} not found")
 
-        # Load encrypted metadata
-        data = decrypt_json_file(self.metadata_file, key)
+        if self.unsafe:
+            # Load plaintext metadata
+            with open(self.metadata_file, 'r') as f:
+                data = json.load(f)
+        else:
+            # Load encrypted metadata
+            data = decrypt_json_file(self.metadata_file, key)
         return SessionMetadata.from_dict(data)
 
     def _save_metadata(self, metadata: SessionMetadata) -> None:
-        """Save session metadata to encrypted file."""
+        """Save session metadata to file (encrypted or plaintext)."""
         self._ensure_password()
 
         # Update timestamp
         metadata.updated = datetime.now().isoformat()
 
-        # Encrypt and save
-        encrypt_json_file(metadata.to_dict(), self.metadata_file, self._get_key())
+        if self.unsafe:
+            # Save plaintext metadata
+            with open(self.metadata_file, 'w') as f:
+                json.dump(metadata.to_dict(), f, indent=2)
+        else:
+            # Encrypt and save
+            encrypt_json_file(metadata.to_dict(), self.metadata_file, self._get_key())
 
-    def _get_key(self) -> bytes:
-        """Get or derive encryption key."""
+    def _get_key(self) -> Optional[bytes]:
+        """Get or derive encryption key (None in unsafe mode)."""
+        if self.unsafe:
+            return None
+            
         if self._key is None:
             # Need to load metadata first to get the salt
             if self._metadata is None:
@@ -186,31 +210,33 @@ class Session:
         password: Optional[str] = None,
         session_dir: Optional[Path] = None,
         verbose: bool = False,
+        unsafe: bool = False,
     ) -> "Session":
         """
         Create a new session.
 
         Args:
             name: Optional human-readable session name
-            password: Session password for encryption
+            password: Session password for encryption (not required if unsafe=True)
             session_dir: Base directory for sessions
             verbose: Enable very-verbose mode (-vv) with trace logging
+            unsafe: If True, use plaintext storage without encryption
 
         Returns:
             New Session instance
 
         Raises:
             SessionExistsError: If session already exists
-            SessionError: If password not provided
+            SessionError: If password not provided when unsafe=False
         """
-        if password is None:
-            raise SessionError("Password required to create session")
+        if not unsafe and password is None:
+            raise SessionError("Password required to create session (unless --unsafe is used)")
 
         # Generate unique session ID
         session_id = cls._generate_session_id(session_dir)
 
         # Create session instance
-        session = cls(session_id, session_dir, password)
+        session = cls(session_id, session_dir, password, unsafe=unsafe)
 
         # Check if session already exists
         if session.session_path.exists():
@@ -219,14 +245,20 @@ class Session:
         # Create directory structure
         session._create_directory_structure()
 
-        # Generate encryption key and salt
-        key, salt = create_session_encryption(password)
-        session._key = key
-
-        # Save salt to separate file (unencrypted, as salt is not secret)
         import base64
-        salt_file = session.session_path / "salt"
-        salt_file.write_text(base64.b64encode(salt).decode("utf-8"))
+        
+        if unsafe:
+            # In unsafe mode, use a dummy salt (no actual encryption)
+            salt = b'unsafe_mode_no_encryption'
+            session._key = None
+        else:
+            # Generate encryption key and salt
+            key, salt = create_session_encryption(password)
+            session._key = key
+
+            # Save salt to separate file (unencrypted, as salt is not secret)
+            salt_file = session.session_path / "salt"
+            salt_file.write_text(base64.b64encode(salt).decode("utf-8"))
 
         # Create metadata
         now = datetime.now().isoformat()
@@ -238,6 +270,7 @@ class Session:
             status="active",
             salt=base64.b64encode(salt).decode("utf-8"),
             verbose=verbose,
+            unsafe=unsafe,
         )
 
         session._metadata = metadata
@@ -249,16 +282,18 @@ class Session:
     def resume(
         cls,
         session_id: str,
-        password: str,
+        password: Optional[str],
         session_dir: Optional[Path] = None,
+        unsafe: bool = False,
     ) -> "Session":
         """
         Resume an existing session.
 
         Args:
             session_id: Session identifier to resume
-            password: Session password for decryption
+            password: Session password for decryption (not required if unsafe=True)
             session_dir: Base directory for sessions
+            unsafe: If True, session uses plaintext storage
 
         Returns:
             Session instance
@@ -269,56 +304,29 @@ class Session:
         """
         import base64
 
-        session = cls(session_id, session_dir, password)
+        session = cls(session_id, session_dir, password, unsafe=unsafe)
 
         if not session.session_path.exists():
             raise SessionNotFoundError(f"Session {session_id} not found")
 
-        # First, we need to read the metadata to get the salt
-        # But we can't decrypt without the key, which needs the salt
-        # Solution: Read encrypted metadata, extract first to get salt, then decrypt properly
-        # Actually, we'll use a temporary key to try decryption and let it fail if password is wrong
+        if unsafe:
+            # In unsafe mode, no encryption - load metadata directly
+            session._key = None
+            session._metadata = session._load_metadata(None)
+        else:
+            # Encrypted mode - need salt and password
+            salt_file = session.session_path / "salt"
+            if not salt_file.exists():
+                raise SessionNotFoundError(f"Session {session_id} salt file not found")
 
-        # Load encrypted data to extract salt (we need a workaround here)
-        # For now, we'll try with a temporary key and catch errors
-        # Better approach: Store salt separately or use a two-pass approach
+            # Read salt
+            salt = base64.b64decode(salt_file.read_text())
 
-        # Let's use a simpler approach: try to decrypt with derived key
-        # We'll need to read the file first to get salt somehow
-        # Actually, Fernet already includes salt in the encrypted data!
-        # So we can just try to decrypt and it will fail if password is wrong
+            # Derive key
+            session._key = session._derive_key(salt)
 
-        # Create a temporary key to attempt decryption
-        # We use a fixed salt for the first attempt
-        temp_salt = b'\x00' * 32
-        try:
-            temp_key = session._derive_key(temp_salt)
-            session._metadata = session._load_metadata(temp_key)
-        except Exception:
-            # If that fails, try reading to get the real salt
-            # This is a chicken-and-egg problem - let's fix it properly
-            pass
-
-        # Better solution: Store salt in a separate unencrypted file
-        # For now, let's use a fixed salt for all sessions and change the design
-        # Actually, the best solution is to store salt in session metadata
-
-        # Let me reconsider: each session should have unique salt
-        # Salt should be stored unencrypted (it's not secret)
-        # We'll store it in a separate file
-
-        salt_file = session.session_path / "salt"
-        if not salt_file.exists():
-            raise SessionNotFoundError(f"Session {session_id} salt file not found")
-
-        # Read salt
-        salt = base64.b64decode(salt_file.read_text())
-
-        # Derive key
-        session._key = session._derive_key(salt)
-
-        # Load metadata (this will validate password)
-        session._metadata = session._load_metadata(session._key)
+            # Load metadata (this will validate password)
+            session._metadata = session._load_metadata(session._key)
 
         return session
 
@@ -417,16 +425,18 @@ class Session:
     def import_session(
         cls,
         archive_path: Path,
-        password: str,
+        password: Optional[str],
         session_dir: Optional[Path] = None,
+        unsafe: bool = False,
     ) -> "Session":
         """
-        Import session from encrypted tar.gz archive.
+        Import session from archive (encrypted or plaintext).
 
         Args:
-            archive_path: Path to encrypted archive
-            password: Session password for decryption
+            archive_path: Path to archive
+            password: Session password for decryption (not required if unsafe=True)
             session_dir: Base directory for sessions
+            unsafe: If True, archive uses plaintext storage
 
         Returns:
             Session instance

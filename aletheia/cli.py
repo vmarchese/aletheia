@@ -3,7 +3,6 @@ Command-line interface for Aletheia.
 
 Main entry point for the Aletheia CLI application.
 """
-import sys
 import typer
 import asyncio
 from pathlib import Path
@@ -13,14 +12,16 @@ from rich.table import Table
 import getpass
 
 from aletheia.session import Session
-from aletheia.config import ConfigLoader
+from aletheia.config import load_config
+from aletheia.llm.service import LLMService
 from aletheia.agents.orchestrator import OrchestratorAgent
-from aletheia.agents.data_fetcher import DataFetcherAgent
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
-from aletheia.agents.code_inspector import CodeInspectorAgent
-from aletheia.agents.root_cause_analyst import RootCauseAnalystAgent
+from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
+from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.scratchpad import Scratchpad
-from aletheia.utils import set_verbose_commands, enable_trace_logging, disable_trace_logging
+from aletheia.utils import set_verbose_commands, enable_trace_logging
+from aletheia.llm.prompts.loader import Loader
+from aletheia.agents.orchestration_sk import AletheiaHandoffOrchestration
 
 app = typer.Typer(
     name="aletheia",
@@ -44,7 +45,7 @@ app.add_typer(demo_app, name="demo")
 console = Console()
 
 
-def _start_investigation(session: Session, console: Console) -> None:
+async def _start_investigation(session: Session, console: Console) -> None:
     """
     Start the investigation workflow for a session.
     
@@ -54,64 +55,83 @@ def _start_investigation(session: Session, console: Console) -> None:
     """
     try:
         # Load configuration
-        config_loader = ConfigLoader()
-        config_model = config_loader.load()
+        config= load_config()
         
-        # Convert Pydantic model to dictionary for agents
-        config = config_model.model_dump()
-        
+        # Prompt loader
+        prompt_loader = Loader()
         # Initialize scratchpad with session directory and encryption key
         scratchpad_file = session.scratchpad_file
         
         # Load existing scratchpad if it exists, otherwise create new one
-        if scratchpad_file.exists():
-            scratchpad = Scratchpad.load(
+        scratchpad = Scratchpad(
                 session_dir=session.session_path,
                 encryption_key=session._get_key()
-            )
-        else:
-            scratchpad = Scratchpad(
-                session_dir=session.session_path,
-                encryption_key=session._get_key()
-            )
+        )
+
+        # get LLM Service
+        llm_service = LLMService(config=config)
         
         # Initialize orchestrator
-        orchestrator = OrchestratorAgent(
-            config=config,
+        orchestrator = OrchestratorAgent( 
+            name="orchestrator",
+            description="Orchestrator agent managing the investigation workflow",
+            instructions=prompt_loader.load("orchestrator", "instructions"),
+            service = llm_service.client,
+            session=session,
             scratchpad=scratchpad
         )
         
         # Initialize and register specialist agents
-        # SIMPLIFY-3: Use specialized data fetchers instead of generic DataFetcherAgent
-        from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
-        from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
-        
-        kubernetes_fetcher = KubernetesDataFetcher(config=config, scratchpad=scratchpad)
-        prometheus_fetcher = PrometheusDataFetcher(config=config, scratchpad=scratchpad)
-        pattern_analyzer = PatternAnalyzerAgent(config=config, scratchpad=scratchpad)
-        code_inspector = CodeInspectorAgent(config=config, scratchpad=scratchpad)
-        root_cause_analyst = RootCauseAnalystAgent(config=config, scratchpad=scratchpad)
-        
-        orchestrator.register_agent("kubernetes_data_fetcher", kubernetes_fetcher)
-        orchestrator.register_agent("prometheus_data_fetcher", prometheus_fetcher)
-        orchestrator.register_agent("pattern_analyzer", pattern_analyzer)
-        orchestrator.register_agent("code_inspector", code_inspector)
-        orchestrator.register_agent("root_cause_analyst", root_cause_analyst)
-        
-        # Also register generic data_fetcher for backward compatibility
-        # This will be removed once SIMPLIFY-1.3 (deprecation) is complete
-        data_fetcher = DataFetcherAgent(config=config, scratchpad=scratchpad)
-        orchestrator.register_agent("data_fetcher", data_fetcher)
+        kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
+                                                   config=config,
+                                                   description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
+                                                   instructions=prompt_loader.load("kubernetes_data_fetcher", "instructions"),
+                                                   service=llm_service.client,
+                                                   session=session,
+                                                   scratchpad=scratchpad) 
+
+        prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
+                                                   config=config,
+                                                   description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
+                                                   instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
+                                                   service=llm_service.client,
+                                                   session=session,
+                                                   scratchpad=scratchpad)
+        pattern_analyzer = PatternAnalyzerAgent(name="pattern_analyzer",
+                                                description="Pattern Analyzer Agent for analyzing collected data patterns.",
+                                                instructions=prompt_loader.load("pattern_analyzer", "instructions"),
+                                                service=llm_service.client,
+                                                session=session,
+                                                scratchpad=scratchpad)
+
+        # Creating orchestration
+        orchestration = AletheiaHandoffOrchestration(
+            orchestration_agent=orchestrator,
+            kubernetes_fetcher_agent=kubernetes_fetcher,
+            prometheus_fetcher_agent=prometheus_fetcher,
+            pattern_analyzer_agent=pattern_analyzer,
+            console=console
+        )
         
         # Start investigation in conversational mode
         console.print(f"\n[cyan]Starting conversational investigation...[/cyan]\n")
-        result = orchestrator.execute()
+        runtime = orchestration.start_runtime()
+
+        # Ask user for the problem to investigate
+        problem = typer.prompt("Describe the issue to investigate")
+        if not problem or not problem.strip():
+            console.print("[yellow]No problem description provided. Aborting investigation.[/yellow]")
+            return
+
+        result = await orchestration.orchestration_handoffs.invoke(
+            runtime = runtime,
+            task = problem,
+        )
+        value = await result.get()
+        console.print(f"\n[bold green]Investigation Result:[/bold green]\n{value}\n")   
+
+
         
-        # Display completion message
-        if result.get("status") == "completed":
-            console.print("\n[green]✓ Investigation completed successfully![/green]")
-        else:
-            console.print(f"\n[yellow]Investigation ended with status: {result.get('status')}[/yellow]")
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")
@@ -135,6 +155,7 @@ def session_open(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Session name"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
     very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Use plaintext storage (skips encryption - NOT RECOMMENDED)"),
 ) -> None:
     """Open a new troubleshooting session in conversational mode."""
     # Enable very-verbose mode (implies verbose)
@@ -149,23 +170,31 @@ def session_open(
     if very_verbose:
         console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
     
-    # Get password
-    password = getpass.getpass("Enter password: ")
-    if not password:
-        typer.echo("Error: Password cannot be empty", err=True)
-        raise typer.Exit(1)
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - data will be stored in PLAINTEXT without encryption![/bold red]")
+        console.print("[red]This mode should ONLY be used for testing purposes.[/red]\n")
     
-    # Confirm password
-    password_confirm = getpass.getpass("Confirm password: ")
-    if password != password_confirm:
-        typer.echo("Error: Passwords do not match", err=True)
-        raise typer.Exit(1)
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
+        
+        # Confirm password
+        password_confirm = getpass.getpass("Confirm password: ")
+        if password != password_confirm:
+            typer.echo("Error: Passwords do not match", err=True)
+            raise typer.Exit(1)
     
     try:
         session = Session.create(
             name=name,
             password=password,
             verbose=very_verbose,
+            unsafe=unsafe,
         )
         
         # Enable trace logging if very-verbose mode
@@ -178,7 +207,7 @@ def session_open(
         console.print(f"Session ID: {session.session_id}")
         
         # Start investigation workflow
-        _start_investigation(session, console)
+        asyncio.run(_start_investigation(session, console))
         
     except FileExistsError as e:
         typer.echo(f"Error: {e}", err=True)
@@ -221,6 +250,7 @@ def session_resume(
     session_id: str = typer.Argument(..., help="Session ID to resume"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
     very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
 ) -> None:
     """Resume an existing troubleshooting session."""
     # Enable very-verbose mode (implies verbose)
@@ -235,14 +265,20 @@ def session_resume(
     if very_verbose:
         console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
     
-    # Get password
-    password = getpass.getpass("Enter session password: ")
-    if not password:
-        typer.echo("Error: Password cannot be empty", err=True)
-        raise typer.Exit(1)
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
+    
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
     
     try:
-        session = Session.resume(session_id=session_id, password=password)
+        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
         metadata = session.get_metadata()
         
         # Enable trace logging if very-verbose mode or if session was created with verbose
@@ -254,7 +290,7 @@ def session_resume(
         console.print(f"Session ID: {session.session_id}")
         
         # Resume investigation workflow
-        _start_investigation(session, console)
+        asyncio.run(_start_investigation(session, console))
         
     except FileNotFoundError:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
@@ -294,16 +330,23 @@ def session_delete(
 def session_export(
     session_id: str = typer.Argument(..., help="Session ID to export"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
 ) -> None:
     """Export a troubleshooting session."""
-    # Get password
-    password = getpass.getpass("Enter session password: ")
-    if not password:
-        typer.echo("Error: Password cannot be empty", err=True)
-        raise typer.Exit(1)
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
+    
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
     
     try:
-        session = Session.resume(session_id=session_id, password=password)
+        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
         export_path = session.export(output_path=output)
         console.print(f"[green]Session exported successfully![/green]")
         console.print(f"Export file: {export_path}")
@@ -321,20 +364,27 @@ def session_export(
 @session_app.command("import")
 def session_import(
     archive_path: Path = typer.Argument(..., help="Path to session archive"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Archive uses plaintext storage (skips encryption)"),
 ) -> None:
     """Import a troubleshooting session."""
     if not archive_path.exists():
         typer.echo(f"Error: Archive file '{archive_path}' not found", err=True)
         raise typer.Exit(1)
     
-    # Get password
-    password = getpass.getpass("Enter session password: ")
-    if not password:
-        typer.echo("Error: Password cannot be empty", err=True)
-        raise typer.Exit(1)
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - archive uses PLAINTEXT storage![/bold red]\n")
+    
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
     
     try:
-        session = Session.import_session(archive_path=archive_path, password=password)
+        session = Session.import_session(archive_path=archive_path, password=password, unsafe=unsafe)
         metadata = session.get_metadata()
         console.print(f"[green]Session imported successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
@@ -354,17 +404,24 @@ def session_import(
 def session_view(
     session_id: str = typer.Argument(..., help="Session ID to view"),
     format: str = typer.Option("yaml", "--format", "-f", help="Output format (yaml or json)"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
 ) -> None:
     """View scratchpad contents of a session."""
-    # Get password
-    password = getpass.getpass("Enter session password: ")
-    if not password:
-        typer.echo("Error: Password cannot be empty", err=True)
-        raise typer.Exit(1)
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
+    
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
     
     try:
         # Resume session to decrypt
-        session = Session.resume(session_id=session_id, password=password)
+        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
         
         # Load scratchpad
         scratchpad_file = session.scratchpad_file
@@ -451,9 +508,7 @@ def demo_run(
     
     try:
         # Load configuration
-        config_loader = ConfigLoader()
-        config_model = config_loader.load()
-        config = config_model.model_dump()
+        config = load_config()
         
         # Create temporary scratchpad (demo doesn't persist)
         with TemporaryDirectory() as temp_dir:

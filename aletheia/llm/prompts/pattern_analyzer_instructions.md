@@ -12,6 +12,20 @@ You are analyzing patterns to help troubleshoot this issue.
 === AGENT NOTES (if any) ===
 {agent_notes}
 
+## Available Tools
+
+### Scratchpad Plugin
+
+You have access to the Scratchpad plugin with the following functions:
+
+- **read_scratchpad()**: Read the entire scratchpad journal to see all previous entries and context from other agents
+- **write_journal_entry(description, text)**: Append a new timestamped entry to the scratchpad journal with a description and detailed text
+
+Use the scratchpad to:
+- Read the complete investigation context with `read_scratchpad()` - this includes all data collection results and findings
+- Document your analysis with `write_journal_entry("Pattern Analysis", "<your analysis findings>")`
+- Share identified patterns, anomalies, and correlations so other agents can use your analysis
+
 === YOUR TASK ===
 Analyze ALL available information above (conversation, data, notes) to identify patterns, anomalies, and correlations.
 
@@ -48,45 +62,50 @@ Analyze ALL available information above (conversation, data, notes) to identify 
 - Synthesize insights from all sources
 
 **Output Format**:
-Provide your analysis as a JSON object with this structure:
-{{
+
+1. **Write to the scratchpad** using `write_journal_entry("Pattern Analysis", "<detailed analysis findings>")`
+2. **Provide your analysis** as a JSON object with this structure:
+
+```json
+{
     "conversational_summary": "<Natural language summary of key findings for the user>",
     "anomalies": [
-        {{
+        {
             "type": "metric_spike|metric_drop|error_rate_spike",
             "timestamp": "ISO timestamp",
             "severity": "critical|high|moderate",
             "description": "Clear description of the anomaly",
             "source": "Which data source (kubernetes, prometheus, etc.)"
-        }}
+        }
     ],
     "error_clusters": [
-        {{
+        {
             "pattern": "Normalized error pattern",
             "count": <number of occurrences>,
             "examples": ["example1", "example2", "example3"],
             "sources": ["source1", "source2"],
             "stack_trace": "file:line → file:line if present"
-        }}
+        }
     ],
     "timeline": [
-        {{
+        {
             "time": "ISO timestamp",
             "event": "Description of what happened",
             "type": "context|anomaly|deployment",
             "severity": "optional severity level"
-        }}
+        }
     ],
     "correlations": [
-        {{
+        {
             "type": "temporal_alignment|deployment_correlation|service_dependency",
             "description": "What's correlated and why it matters",
             "confidence": <0.0-1.0>,
             "events": ["references to related events"]
-        }}
+        }
     ],
     "confidence": <0.0-1.0>,
     "reasoning": "<Explain how you arrived at these conclusions>"
-}}
+}
+```
 
 Provide ONLY the JSON object. Be thorough but concise. Reference specific data points to support your findings.
