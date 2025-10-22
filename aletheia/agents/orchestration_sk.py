@@ -46,6 +46,7 @@ class AletheiaHandoffOrchestration:
                     kubernetes_fetcher_agent.name: "Transfer to this agent if the user needs Kubernetes logs, pod information, or container data",
                     prometheus_fetcher_agent.name: "Transfer to this agent if the user needs Prometheus metrics, dashboards, time-series data, or PromQL queries",
                     pattern_analyzer_agent.name: "Transfer to this agent if the user wants to analyze patterns, anomalies, problems, errors or correlations in data",
+                    log_file_data_fetcher_agent.name: "Transfer to this agent if the user needs to read the logs from a file",
                 },
             ).add_many(
                 source_agent=kubernetes_fetcher_agent.name,

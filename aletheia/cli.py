@@ -18,6 +18,7 @@ from aletheia.agents.orchestrator import OrchestratorAgent
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
+from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader

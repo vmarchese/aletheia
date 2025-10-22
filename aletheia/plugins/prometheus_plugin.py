@@ -3,7 +3,7 @@
 This plugin exposes Prometheus operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
 
-The plugin provides simplified async functions for:
+The plugin provides synchronous functions for:
 - Fetching metrics from Prometheus using PromQL queries
 - Executing PromQL queries with time windows
 - Building queries from templates
@@ -11,13 +11,14 @@ The plugin provides simplified async functions for:
 """
 
 import json
-import aiohttp
+import requests
 from datetime import datetime, timedelta
 from typing import Annotated, Any, Dict, Optional
 
 from semantic_kernel.functions import kernel_function
 
 from aletheia.config import Config
+from aletheia.utils.logging import log_debug, log_error
 
 
 # PromQL query templates for common use cases
@@ -34,7 +35,7 @@ PROMQL_TEMPLATES = {
 class PrometheusPlugin:
     """Semantic Kernel plugin for Prometheus operations.
     
-    This plugin provides simplified async kernel functions for Prometheus
+    This plugin provides synchronous kernel functions for Prometheus
     operations, allowing SK agents to automatically invoke them via function calling.
     
     All functions use Annotated type hints to provide SK with parameter
@@ -43,7 +44,7 @@ class PrometheusPlugin:
     Attributes:
         endpoint: Prometheus server endpoint URL
         timeout: Default timeout for HTTP requests
-        session: Shared aiohttp session for requests
+        session: requests.Session for reusing connections
     """
     
     def __init__(self, config: Config):
@@ -56,11 +57,12 @@ class PrometheusPlugin:
         Raises:
             ValueError: If required configuration is missing
         """
+        log_debug("PrometheusPlugin::__init__:: called")
         
         if config.prometheus_endpoint:
             self.endpoint = config.prometheus_endpoint.rstrip('/')
         self.timeout = config.prometheus_timeout_seconds
-        self.session = None  # Will be created when needed
+        self.session = requests.Session()
         
         # Store auth config if provided
         self.auth_config = config.prometheus_credentials_type
@@ -81,18 +83,7 @@ class PrometheusPlugin:
         
         return headers
     
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session.
-        
-        Returns:
-            Configured aiohttp ClientSession
-        """
-        if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
-            self.session = aiohttp.ClientSession(timeout=timeout)
-        return self.session
-    
-    async def _make_request(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _make_request(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Make HTTP request to Prometheus API.
         
         Args:
@@ -105,31 +96,39 @@ class PrometheusPlugin:
         Raises:
             Exception: If request fails
         """
-        session = await self._get_session()
+        log_debug(f"PrometheusPlugin::_make_request:: URL={url} PARAMS={params}")
         headers = self._get_headers()
         
         try:
-            async with session.get(url, params=params, headers=headers) as response:
-                if response.status == 401:
-                    raise Exception("Authentication failed: Invalid credentials")
+            response = self.session.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 401:
+                log_error("PrometheusPlugin::_make_request:: Authentication failed with 401")
+                raise Exception("Authentication failed: Invalid credentials")
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("status") != "success":
+                error_msg = data.get("error", "Unknown error")
+                raise Exception(f"Prometheus query failed: {error_msg}")
+            
+            return data
                 
-                response.raise_for_status()
-                data = await response.json()
-                
-                if data.get("status") != "success":
-                    error_msg = data.get("error", "Unknown error")
-                    raise Exception(f"Prometheus query failed: {error_msg}")
-                
-                return data
-                
-        except aiohttp.ClientError as e:
+        except requests.RequestException as e:
+            log_error(f"PrometheusPlugin::_make_request:: HTTP request error: {str(e)}")
             raise Exception(f"HTTP request failed: {str(e)}")
     
     @kernel_function(
         name="fetch_prometheus_metrics",
         description="Fetch metrics from Prometheus using a PromQL query with optional time window filtering"
     )
-    async def fetch_prometheus_metrics(
+    def fetch_prometheus_metrics(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
         start_time: Annotated[Optional[str], "Start time in ISO format (e.g., '2024-10-15T10:00:00')"] = None,
@@ -160,6 +159,7 @@ class PrometheusPlugin:
                 "metadata": {...}
             }
         """
+        log_debug("PrometheusPlugin::fetch_prometheus_metrics:: called")
         try:
             # Calculate time window
             if end_time:
@@ -193,7 +193,7 @@ class PrometheusPlugin:
                 "step": step
             }
             
-            data = await self._make_request(url, params)
+            data = self._make_request(url, params)
             
             # Process results
             result_data = data.get("data", {}).get("result", [])
@@ -248,7 +248,7 @@ class PrometheusPlugin:
         name="execute_promql_query",
         description="Execute a PromQL query for instant values (single point in time)"
     )
-    async def execute_promql_query(
+    def execute_promql_query(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
         time: Annotated[Optional[str], "Time for query evaluation in ISO format (default: now)"] = None,
@@ -264,6 +264,7 @@ class PrometheusPlugin:
         Returns:
             JSON string with query results
         """
+        log_debug("PrometheusPlugin::execute_promql_query:: called")
         try:
             # Calculate evaluation time
             if time:
@@ -278,7 +279,7 @@ class PrometheusPlugin:
                 "time": eval_time.timestamp()
             }
             
-            data = await self._make_request(url, params)
+            data = self._make_request(url, params)
             
             # Process results
             result_data = data.get("data", {}).get("result", [])
@@ -332,7 +333,7 @@ class PrometheusPlugin:
         name="build_promql_from_template",
         description="Build a PromQL query from a predefined template with parameter substitution"
     )
-    async def build_promql_from_template(
+    def build_promql_from_template(
         self,
         template: Annotated[
             str,
@@ -362,6 +363,7 @@ class PrometheusPlugin:
             If execute=False: The built PromQL query string
             If execute=True: JSON string with query results
         """
+        log_debug("PrometheusPlugin::build_promql_from_template:: called")
         try:
             # Parse parameters
             try:
@@ -397,7 +399,7 @@ class PrometheusPlugin:
                 })
             
             # Execute the query using fetch_prometheus_metrics
-            result_json = await self.fetch_prometheus_metrics(
+            result_json = self.fetch_prometheus_metrics(
                 query=query,
                 since_hours=since_hours
             )
@@ -419,12 +421,13 @@ class PrometheusPlugin:
         name="list_promql_templates",
         description="List all available PromQL query templates with their descriptions"
     )
-    async def list_promql_templates(self) -> Annotated[str, "JSON object mapping template names to their descriptions"]:
+    def list_promql_templates(self) -> Annotated[str, "JSON object mapping template names to their descriptions"]:
         """List available PromQL query templates.
         
         Returns:
             JSON string with template names, patterns, and descriptions
         """
+        log_debug("PrometheusPlugin::list_promql_templates:: called")
         templates_with_descriptions = {
             "error_rate": {
                 "pattern": PROMQL_TEMPLATES["error_rate"],
@@ -495,17 +498,18 @@ class PrometheusPlugin:
         name="test_prometheus_connection",
         description="Test connectivity to the Prometheus server"
     )
-    async def test_prometheus_connection(self) -> Annotated[str, "Connection test result message"]:
+    def test_prometheus_connection(self) -> Annotated[str, "Connection test result message"]:
         """Test connection to Prometheus server.
         
         Returns:
             Success message if connection works, error message otherwise
         """
+        log_debug("PrometheusPlugin::test_prometheus_connection:: called")
         try:
             url = f"{self.endpoint}/api/v1/query"
             params = {"query": "up"}
             
-            data = await self._make_request(url, params)
+            data = self._make_request(url, params)
             
             # If we get here, the connection worked
             result_count = len(data.get("data", {}).get("result", []))
@@ -525,11 +529,7 @@ class PrometheusPlugin:
                 "timestamp": datetime.now().isoformat()
             })
     
-    async def __aenter__(self):
-        """Async context manager entry."""
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit - cleanup session."""
-        if self.session and not self.session.closed:
-            await self.session.close()
+    def __del__(self):
+        """Cleanup session on deletion."""
+        if hasattr(self, 'session'):
+            self.session.close()

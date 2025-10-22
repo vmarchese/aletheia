@@ -102,6 +102,8 @@ class Config(BaseSettings):
     prometheus_password_env: Optional[str] = Field(default=None, description="Environment variable for Prometheus password")
     prometheus_credentials_file: Optional[str] = Field(default=None, description="Path to Prometheus credentials file")
     prometheus_timeout_seconds: int = Field( default=10, ge=1, description="Timeout for Prometheus requests in seconds")
+    prometheus_credentials_bearer: Optional[str] = Field(default=None, description="Environment variable for Prometheus bearer token")
+
     
     # Elasticsearch
     elasticsearch_endpoint: Optional[str] = Field(default=None, description="Elasticsearch endpoint URL")
