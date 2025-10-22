@@ -115,6 +115,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
 
         # Creating orchestration
         orchestration = AletheiaHandoffOrchestration(
+            session=session,
             orchestration_agent=orchestrator,
             kubernetes_fetcher_agent=kubernetes_fetcher,
             prometheus_fetcher_agent=prometheus_fetcher,

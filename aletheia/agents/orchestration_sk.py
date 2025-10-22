@@ -17,6 +17,7 @@ from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.utils.logging import log_debug
+from aletheia.session import Session
 
 
 class AletheiaHandoffOrchestration:
@@ -28,6 +29,7 @@ class AletheiaHandoffOrchestration:
     
     def __init__(
         self,
+        session: Session,
         orchestration_agent: OrchestratorAgent,
         kubernetes_fetcher_agent: KubernetesDataFetcher,
         prometheus_fetcher_agent: PrometheusDataFetcher,
@@ -37,6 +39,7 @@ class AletheiaHandoffOrchestration:
     ):
         log_debug("AletheiaHandoffOrchestration::__init__:: called")
         self.console = console
+        self.session = session
         log_debug("AletheiaHandoffOrchestration::__init__:: setting up handoffs")
         handoffs = (
             OrchestrationHandoffs()
@@ -51,26 +54,22 @@ class AletheiaHandoffOrchestration:
             ).add_many(
                 source_agent=kubernetes_fetcher_agent.name,
                 target_agents={
-                    pattern_analyzer_agent.name: "Transfer to this agent for pattern analysis after Kubernetes data collection to analyze the problems",
-                    orchestration_agent.name: "Transfer back to orchestrator if the user wants to continue the investigation",
+                    orchestration_agent.name: "Transfer back to orchestrator if you have completed your task"
                 },
             ).add_many(
                 source_agent=log_file_data_fetcher_agent.name,
                 target_agents={
-                    pattern_analyzer_agent.name: "Transfer to this agent for pattern analysis after Kubernetes data collection to analyze the problems",
-                    orchestration_agent.name: "Transfer back to orchestrator if the user wants to continue the investigation",
+                    orchestration_agent.name: "Transfer back to orchestrator if you have completed your task"
                 },
             ).add_many(
                 source_agent=prometheus_fetcher_agent.name,
                 target_agents={
-                    pattern_analyzer_agent.name: "Transfer to this agent for pattern analysis after Prometheus data collection",
-                    orchestration_agent.name: "Transfer back to orchestrator if the user wants to continue the investigation",
+                    orchestration_agent.name: "Transfer back to orchestrator if you have completed your task",
                 },
             ).add_many(
                 source_agent=pattern_analyzer_agent.name,
                 target_agents={
-                    orchestration_agent.name: "Transfer back to orchestrator if the user wants to continue the investigation",
-                    kubernetes_fetcher_agent.name: "Transfer to this agent if the user needs Kubernetes logs, pod information, or container data",
+                    orchestration_agent.name: "Transfer back to orchestrator if you have completed your task",
                 },  
             )
         )
@@ -107,14 +106,14 @@ class AletheiaHandoffOrchestration:
             if message.content:
                 # Agent produced content - show it
                 self.console.print(
-                    f"\n[bold cyan]🤖 {agent_display_name}:[/bold cyan]",
+                    f"\n[bold yellow]{self.session.session_id}[/bold yellow] [bold cyan]🤖 {agent_display_name}:[/bold cyan]",
                     end=" "
                 )
                 self.console.print(f"{message.content}")
             else:
                 # Agent is processing (e.g., calling functions)
                 self.console.print(
-                    f"[dim cyan]   → {agent_display_name} processing...[/dim cyan]"
+                    f"[dim yellow]{self.session.session_id}[/dim yellow][dim cyan]   → {agent_display_name} processing...[/dim cyan]"
                 )
         
         # Update scratchpad based on agent and message content
@@ -147,7 +146,7 @@ class AletheiaHandoffOrchestration:
         from rich.prompt import Prompt
         
         # Prompt user for input
-        user_input = Prompt.ask("\n[bold yellow]👤 Your input[/bold yellow]")
+        user_input = Prompt.ask(f"\n[bold yellow]{self.session.session_id}[/bold yellow] [bold yellow]👤 Your input[/bold yellow]")
         
         return ChatMessageContent(
             role=AuthorRole.USER,
