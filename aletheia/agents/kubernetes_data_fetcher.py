@@ -35,7 +35,7 @@ class KubernetesDataFetcher(BaseAgent):
         log_debug("KubernetesDataFetcher::__init__:: called")
 
         log_debug("KubernetesDataFetcher::__init__:: setup plugins")
-        kube_fetcher_plugin = KubernetesPlugin(config)
+        kube_fetcher_plugin = KubernetesPlugin(config=config, session=session)
 
 
         super().__init__(name=name,

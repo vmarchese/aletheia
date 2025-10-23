@@ -18,6 +18,7 @@ from semantic_kernel.functions import kernel_function
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
+from aletheia.session import Session, SessionDataType
 
 
 class KubernetesPlugin:
@@ -34,7 +35,9 @@ class KubernetesPlugin:
         namespace: Default namespace for operations
     """
     
-    def __init__(self, config: Config):
+    def __init__(self, 
+                 config: Config,
+                 session: Session):
         """Initialize the Kubernetes plugin.
         
         Args:
@@ -46,6 +49,7 @@ class KubernetesPlugin:
         """
         self.context = config.kubernetes_context 
         self.namespace = config.kubernetes_namespace or "default"
+        self.session = session
     
     @kernel_function(
         name="fetch_kubernetes_logs",
@@ -115,6 +119,12 @@ class KubernetesPlugin:
             # Parse logs into lines
             log_text = process.stdout.decode()
             log_lines = [line for line in log_text.split('\n') if line.strip()]
+
+            # save log lines to session folder
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.LOGS, f"{pod}_logs", log_text)
+                log_debug(f"KubernetesPlugin::fetch_kubernetes_logs:: Saved logs to {saved}")
             
             return json.dumps({
                 "logs": log_lines,
@@ -122,6 +132,7 @@ class KubernetesPlugin:
                 "namespace": namespace,
                 "container": container,
                 "count": len(log_lines),
+                "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
             
@@ -196,12 +207,18 @@ class KubernetesPlugin:
                     "created": metadata.get("creationTimestamp"),
                     "ready": self._count_ready_containers(status)
                 })
+
+                saved = ""
+                if self.session:
+                    saved = self.session.save_data(SessionDataType.INFO, "pods", json.dumps(pods, indent=2))
+                    log_debug(f"KubernetesPlugin::list_kubernetes_pods:: Saved pod information to {saved}")
             
             return json.dumps({
                 "pods": pods,
                 "namespace": namespace,
                 "selector": selector,
                 "count": len(pods),
+                "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
             
@@ -262,6 +279,12 @@ class KubernetesPlugin:
             metadata = pod_info.get("metadata", {})
             status = pod_info.get("status", {})
             spec = pod_info.get("spec", {})
+
+
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"{pod}_status", json.dumps(pod_info, indent=2))
+                log_debug(f"KubernetesPlugin::get_pod_status:: Saved pod information to {saved}")
             
             # Extract key status information
             result = {
@@ -276,7 +299,8 @@ class KubernetesPlugin:
                 "container_statuses": status.get("containerStatuses", []),
                 "ready": self._count_ready_containers(status),
                 "restarts": self._count_restarts(status),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "saved": str(saved)
             }
             
             return json.dumps(result, indent=2)
@@ -364,6 +388,11 @@ class KubernetesPlugin:
             
             # Return the describe output as-is (it's already human-readable)
             description = process.stdout.decode()
+
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"{pod}_describe", description)
+                log_debug(f"KubernetesPlugin::describe_pod:: Saved pod description to {saved}")
             
             return json.dumps({
                 "description": description,

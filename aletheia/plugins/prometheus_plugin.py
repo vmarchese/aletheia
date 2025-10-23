@@ -75,11 +75,12 @@ class PrometheusPlugin:
         """
         headers = {"Accept": "application/json"}
         
-        auth_type = self.auth_config.get("type")
-        if auth_type == "bearer":
-            token = self.auth_config.get("token")
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
+        # MUST HANDLE AUTHENTICATION IF NEEDED
+#        auth_type = self.auth_config.get("type")
+#        if auth_type == "bearer":
+#            token = self.auth_config.get("token")
+#            if token:
+#                headers["Authorization"] = f"Bearer {token}"
         
         return headers
     
@@ -107,14 +108,17 @@ class PrometheusPlugin:
                 timeout=self.timeout
             )
             
+            log_debug(f"PrometheusPlugin::_make_request:: HTTP Status={response.status_code}")
             if response.status_code == 401:
                 log_error("PrometheusPlugin::_make_request:: Authentication failed with 401")
                 raise Exception("Authentication failed: Invalid credentials")
             
             response.raise_for_status()
             data = response.json()
+            log_debug(f"PrometheusPlugin::_make_request:: Response Data={data}")
             
             if data.get("status") != "success":
+                log_error(f"PrometheusPlugin::_make_request:: Query failed: {data}")
                 error_msg = data.get("error", "Unknown error")
                 raise Exception(f"Prometheus query failed: {error_msg}")
             

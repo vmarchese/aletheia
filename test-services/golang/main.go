@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -286,6 +287,37 @@ func errorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// randomHandler handles the /api/v1/random endpoint with random delay
+func randomHandler(w http.ResponseWriter, r *http.Request) {
+	requestID := r.Context().Value("request_id").(string)
+
+	// Generate random delay between 0-5 seconds
+	delay := time.Duration(rand.Float64() * 5 * float64(time.Second))
+
+	logJSON(LogEntry{
+		Level:     "INFO",
+		Message:   fmt.Sprintf("Random endpoint called, sleeping for %v", delay),
+		RequestID: requestID,
+		Metadata: map[string]interface{}{
+			"delay_seconds": delay.Seconds(),
+		},
+	})
+
+	// Sleep for the random duration
+	time.Sleep(delay)
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "success",
+		"message":       "Random endpoint response",
+		"delay_seconds": delay.Seconds(),
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"request_id":    requestID,
+	})
+}
+
 // healthzHandler handles the /healthz liveness probe
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	requestID := r.Context().Value("request_id").(string)
@@ -351,6 +383,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 		"endpoints": []string{
 			"GET /",
 			"GET /api/v1/error?type={nil_pointer|index_out_of_bounds|divide_by_zero|json_unmarshal|db_timeout}",
+			"GET /api/v1/random",
 			"GET /healthz",
 			"GET /readyz",
 			"GET /metrics",
@@ -417,6 +450,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", loggingMiddleware(rootHandler))
 	mux.HandleFunc("/api/v1/error", loggingMiddleware(errorHandler))
+	mux.HandleFunc("/api/v1/random", loggingMiddleware(randomHandler))
 	mux.HandleFunc("/healthz", loggingMiddleware(healthzHandler))
 	mux.HandleFunc("/readyz", loggingMiddleware(readyzHandler))
 

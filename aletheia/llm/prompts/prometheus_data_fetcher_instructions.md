@@ -54,6 +54,7 @@ You can use these templates with prometheus.build_promql_from_template():
 - If the user mentions "CPU" or "memory", use resource_usage templates
 - Use the time range from the problem description
 - Call the prometheus plugin functions directly - they will be invoked automatically
+- Answer ONLY to requests related to metrics, for every other request give the control back to the orchestrator
 
 ## Response Format
 After collecting the metrics:

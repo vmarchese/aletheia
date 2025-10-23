@@ -14,6 +14,7 @@ import secrets
 import shutil
 import tarfile
 import tempfile
+from enum import Enum
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,14 @@ from aletheia.encryption import (
     derive_session_key,
     encrypt_json_file,
 )
+
+
+class SessionDataType(Enum):
+    """Types of session data."""
+    LOGS = "logs"
+    METRICS = "metrics"
+    TRACES = "traces"
+    INFO = "info"
 
 
 class SessionError(Exception):
@@ -129,6 +138,29 @@ class Session:
     def data_dir(self) -> Path:
         """Path to data directory."""
         return self.session_path / "data"
+
+
+    def save_data(self, type: SessionDataType, name: str, data: str) -> Path:
+        """Save collected data to session data directory.
+
+        Args:
+            type: Type of data (logs, metrics, traces)
+            name: Name of the data file
+            data: Data content to save
+
+        Returns:
+            Path to saved data file
+        """
+        data_type_dir = self.data_dir / str(type.value)
+        data_type_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"{timestamp}_{name}"
+        file_path = data_type_dir / name
+        with open(file_path, 'w') as f:
+            f.write(data)
+        return file_path
+
 
     def _ensure_password(self) -> None:
         """Ensure password is set (unless in unsafe mode)."""
