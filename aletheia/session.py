@@ -25,6 +25,7 @@ from aletheia.encryption import (
     decrypt_json_file,
     derive_session_key,
     encrypt_json_file,
+    encrypt_data
 )
 
 
@@ -157,8 +158,14 @@ class Session:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         name = f"{timestamp}_{name}"
         file_path = data_type_dir / name
-        with open(file_path, 'w') as f:
-            f.write(data)
+
+        if self.unsafe:
+            with open(file_path, 'w') as f:
+                f.write(data)
+        else:
+            ciphertext = encrypt_data(data.encode('utf-8'), self._get_key())
+            with open(file_path, 'wb') as f:
+                f.write(ciphertext)
         return file_path
 
 

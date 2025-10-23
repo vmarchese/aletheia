@@ -18,6 +18,7 @@ from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.utils.logging import log_debug
 from aletheia.session import Session
+from aletheia.agents.history import ConversationHistory
 
 
 class AletheiaHandoffOrchestration:
@@ -73,6 +74,8 @@ class AletheiaHandoffOrchestration:
                 },  
             )
         )
+
+        self.conversation_history = ConversationHistory(session=session)
         self.orchestration_handoffs = HandoffOrchestration(
             members=[
                 orchestration_agent.agent,
@@ -106,10 +109,11 @@ class AletheiaHandoffOrchestration:
             if message.content:
                 # Agent produced content - show it
                 self.console.print(
-                    f"\n[bold yellow]{self.session.session_id}[/bold yellow] [bold cyan]🤖 {agent_display_name}:[/bold cyan]",
+                    f"\n[[bold yellow]{self.session.session_id}[/bold yellow]] [bold cyan]🤖 {agent_display_name}:[/bold cyan]",
                     end=" "
                 )
                 self.console.print(f"{message.content}")
+                self.conversation_history.add_message(message)
             else:
                 # Agent is processing (e.g., calling functions)
                 self.console.print(
@@ -146,12 +150,14 @@ class AletheiaHandoffOrchestration:
         from rich.prompt import Prompt
         
         # Prompt user for input
-        user_input = Prompt.ask(f"\n[bold yellow]{self.session.session_id}[/bold yellow] [bold yellow]👤 Your input[/bold yellow]")
+        user_input = Prompt.ask(f"\n[[bold yellow]{self.session.session_id}[/bold yellow]] [bold yellow]👤 Your input[/bold yellow]")
         
-        return ChatMessageContent(
+        content =  ChatMessageContent(
             role=AuthorRole.USER,
             content=user_input
         )
+        self.conversation_history.add_message(content)
+        return content
     
     def start_runtime(self) -> InProcessRuntime:
         """Start the SK InProcessRuntime."""

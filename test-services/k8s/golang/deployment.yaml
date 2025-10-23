@@ -58,7 +58,7 @@ spec:
             path: /healthz
             port: http
           initialDelaySeconds: 10
-          periodSeconds: 5
+          periodSeconds: 20
           timeoutSeconds: 3
           failureThreshold: 3
         readinessProbe:
@@ -66,7 +66,7 @@ spec:
             path: /readyz
             port: http
           initialDelaySeconds: 5
-          periodSeconds: 5
+          periodSeconds: 20
           timeoutSeconds: 3
           failureThreshold: 3
         securityContext:
