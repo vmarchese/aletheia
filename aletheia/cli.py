@@ -345,64 +345,6 @@ def session_list() -> None:
         raise typer.Exit(1)
 
 
-@session_app.command("resume")
-def session_resume(
-    session_id: str = typer.Argument(..., help="Session ID to resume"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
-    very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
-    unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
-) -> None:
-    """Resume an existing troubleshooting session."""
-    # Enable very-verbose mode (implies verbose)
-    if very_verbose:
-        verbose = True
-    
-    # Enable verbose command output if requested
-    if verbose:
-        set_verbose_commands(True)
-        console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
-    
-    if very_verbose:
-        console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
-    
-    # Warn about unsafe mode
-    if unsafe:
-        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
-    
-    # Get password (skip in unsafe mode)
-    password = None
-    if not unsafe:
-        password = getpass.getpass("Enter session password: ")
-        if not password:
-            typer.echo("Error: Password cannot be empty", err=True)
-            raise typer.Exit(1)
-    
-    try:
-        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
-        metadata = session.get_metadata()
-        
-        # Enable trace logging if very-verbose mode or if session was created with verbose
-        if very_verbose or metadata.verbose:
-            enable_trace_logging(session.session_path)
-            console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
-        
-        console.print(f"[green]Session '{metadata.name}' resumed successfully![/green]")
-        console.print(f"Session ID: {session.session_id}")
-        
-        # Resume investigation workflow
-        asyncio.run(_start_investigation(session, console))
-        
-    except FileNotFoundError:
-        typer.echo(f"Error: Session '{session_id}' not found", err=True)
-        raise typer.Exit(1)
-    except ValueError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
-    except Exception as e:
-        typer.echo(f"Error resuming session: {e}", err=True)
-        raise typer.Exit(1)
-
-
 @session_app.command("delete")
 def session_delete(
     session_id: str = typer.Argument(..., help="Session ID to delete"),
@@ -500,45 +442,6 @@ def session_export(
         raise typer.Exit(1)
     except Exception as e:
         typer.echo(f"Error exporting session: {e}", err=True)
-        raise typer.Exit(1)
-
-
-@session_app.command("import")
-def session_import(
-    archive_path: Path = typer.Argument(..., help="Path to session archive"),
-    unsafe: bool = typer.Option(False, "--unsafe", help="Archive uses plaintext storage (skips encryption)"),
-) -> None:
-    """Import a troubleshooting session."""
-    if not archive_path.exists():
-        typer.echo(f"Error: Archive file '{archive_path}' not found", err=True)
-        raise typer.Exit(1)
-    
-    # Warn about unsafe mode
-    if unsafe:
-        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - archive uses PLAINTEXT storage![/bold red]\n")
-    
-    # Get password (skip in unsafe mode)
-    password = None
-    if not unsafe:
-        password = getpass.getpass("Enter session password: ")
-        if not password:
-            typer.echo("Error: Password cannot be empty", err=True)
-            raise typer.Exit(1)
-    
-    try:
-        session = Session.import_session(archive_path=archive_path, password=password, unsafe=unsafe)
-        metadata = session.get_metadata()
-        console.print(f"[green]Session imported successfully![/green]")
-        console.print(f"Session ID: {session.session_id}")
-        console.print(f"Session Name: {metadata.name}")
-    except FileExistsError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
-    except ValueError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
-    except Exception as e:
-        typer.echo(f"Error importing session: {e}", err=True)
         raise typer.Exit(1)
 
 
