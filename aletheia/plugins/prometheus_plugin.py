@@ -23,10 +23,10 @@ from aletheia.utils.logging import log_debug, log_error
 
 # PromQL query templates for common use cases
 PROMQL_TEMPLATES = {
-    "error_rate": 'rate({metric_name}{{service="{service}",status=~"5.."}}[{window}])',
-    "latency_p95": 'histogram_quantile(0.95, rate({metric_name}_bucket{{service="{service}"}}[{window}]))',
-    "latency_p99": 'histogram_quantile(0.99, rate({metric_name}_bucket{{service="{service}"}}[{window}]))',
-    "request_rate": 'rate({metric_name}{{service="{service}"}}[{window}])',
+    "error_rate": 'rate({metric_name}{{app="{service}",status=~"5.."}}[{window}])',
+    "latency_p95": 'histogram_quantile(0.95, rate({metric_name}_bucket{{app="{service}"}}[{window}]))',
+    "latency_p99": 'histogram_quantile(0.99, rate({metric_name}_bucket{{app="{service}"}}[{window}]))',
+    "request_rate": 'rate({metric_name}{{app="{service}"}}[{window}])',
     "cpu_usage": 'rate(container_cpu_usage_seconds_total{{pod=~"{pod_pattern}"}}[{window}])',
     "memory_usage": 'container_memory_working_set_bytes{{pod=~"{pod_pattern}"}}',
 }

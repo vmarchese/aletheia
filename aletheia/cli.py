@@ -3,6 +3,7 @@ Command-line interface for Aletheia.
 
 Main entry point for the Aletheia CLI application.
 """
+import os
 import typer
 import asyncio
 from pathlib import Path
@@ -31,10 +32,14 @@ from aletheia.agents.entrypoint import AletheiaHandoffOrchestration, Orchestrato
 from aletheia.agents.history import ConversationHistory
 from aletheia.utils.logging import log_debug
 
+def banner_callback(ctx: typer.Context):
+    show_banner()
+
 app = typer.Typer(
     name="aletheia",
     help="AI-powered troubleshooting tool for SREs",
     add_completion=False,
+    callback=banner_callback
 )
 
 session_app = typer.Typer(
@@ -218,6 +223,8 @@ async def _start_investigation(session: Session, console: Console) -> None:
         raise typer.Exit(1)
 
 async def handle_intermediate_steps(message: ChatMessageContent) -> None:
+    if message:
+       console.print(f"\n[dim]Intermediate step from {message.role}:{message.content}[/dim]")
     """
     for item in message.items or []:
         if isinstance(item, FunctionCallContent):
@@ -290,7 +297,7 @@ def session_open(
             console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
         
         metadata = session.get_metadata()
-        console.print(f"[green]Session '{metadata.name}' created successfully![/green]")
+        console.print(f"[green]Session '{session.session_id}' created successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
         
         # Start investigation workflow
@@ -623,11 +630,17 @@ def demo_run(
         typer.echo(f"Error running demo: {e}", err=True)
         raise typer.Exit(1)
 
+def show_banner():
+    banner_path = os.path.join(os.path.dirname(__file__), "banner.txt")
+    try:
+        with open(banner_path, "r", encoding="utf-8") as f:
+            console.print(f.read())
+    except Exception:
+        pass
 
 def main() -> None:
     """Main entry point for the CLI."""
     app()
-
 
 if __name__ == "__main__":
     main()

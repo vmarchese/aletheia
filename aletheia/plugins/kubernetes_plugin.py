@@ -59,9 +59,9 @@ class KubernetesPlugin:
         self,
         pod: Annotated[str, "The name of the pod to fetch logs from"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-        container: Annotated[Optional[str], "Optional container name within the pod"] = None,
+        container: Annotated[str, "Optional container name within the pod"] = None,
         tail_lines: Annotated[int, "Number of lines to fetch from the end of logs (default: 100)"] = 100,
-        since_minutes: Annotated[Optional[int], "Fetch logs from the last N minutes (default: 30m)"] = 30,
+        since_minutes: Annotated[str, "Fetch logs from the last N minutes (default: 30m)"] = "30",
     ) -> Annotated[str, "JSON string containing logs and metadata"]:
         """Fetch logs from a Kubernetes pod.
         
@@ -95,6 +95,11 @@ class KubernetesPlugin:
             "logs", pod,
             "--tail", str(tail_lines)
         ])
+        # Defensive: Coerce container to None if it's 'None', empty string, or not a string
+        if container in ("None", "", None):
+            container = None
+        elif not isinstance(container, str):
+            container = str(container)
         
         if container:
             cmd.extend(["--container", container])
