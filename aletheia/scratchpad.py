@@ -5,10 +5,18 @@ All data is encrypted at rest using session encryption keys.
 """
 
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from semantic_kernel.functions import kernel_function
 
 from aletheia.encryption import encrypt_data, decrypt_data, EncryptionError, DecryptionError
+
+
+class ScratchpadFileName(Enum):
+    """Scratchpad file naming conventions."""
+    
+    PLAINTEXT = "scratchpad.md"
+    ENCRYPTED = "scratchpad.encrypted"
 
 
 class Scratchpad:
@@ -39,7 +47,10 @@ class Scratchpad:
         self.session_dir = Path(session_dir)
         self.encryption_key = encryption_key
         self.unsafe = encryption_key is None
-        self._scratchpad_file = self.session_dir / "scratchpad.md"
+        if self.unsafe:
+           self._scratchpad_file = self.session_dir / ScratchpadFileName.PLAINTEXT.value
+        else:
+           self._scratchpad_file = self.session_dir / ScratchpadFileName.ENCRYPTED.value
         
         # Load existing scratchpad if it exists
         self._load_from_disk()

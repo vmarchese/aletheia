@@ -18,7 +18,7 @@ from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, Fu
 from semantic_kernel.agents import ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
 
-from aletheia.session import Session
+from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
 from aletheia.llm.service import LLMService
 from aletheia.agents.orchestrator import OrchestratorAgent
@@ -324,16 +324,19 @@ def session_list() -> None:
             console.print("[yellow]No sessions found[/yellow]")
             return
         
+        console.print()
         table = Table(title="Aletheia Sessions")
         table.add_column("Session ID", style="magenta")
         table.add_column("Created", style="yellow")
         table.add_column("Path", style="cyan")
+        table.add_column("Unsafe", style="cyan")
         
         for session_data in sessions:
             table.add_row(
                 session_data["id"],
                 session_data["created"],
                 session_data["path"],
+                session_data["unsafe"]
             )
         
         console.print(table)
@@ -413,9 +416,11 @@ def session_delete(
             return
     
     try:
-        Session.delete(session_id)
+        # Directly construct Session and call delete
+        session = Session(session_id=session_id)
+        session.delete()
         console.print(f"[green]Session '{session_id}' deleted successfully![/green]")
-    except FileNotFoundError:
+    except SessionNotFoundError:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
         raise typer.Exit(1)
     except Exception as e:
@@ -442,9 +447,49 @@ def session_export(
             typer.echo("Error: Password cannot be empty", err=True)
             raise typer.Exit(1)
     
+    import zipfile
+    import tempfile
+    import shutil
+
     try:
         session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
-        export_path = session.export(output_path=output)
+        session_dir = session.session_path
+
+        # Prepare output zip path
+        zip_name = f"{session_id}.zip"
+        export_path = output or Path(zip_name)
+
+        # Create a temporary directory to hold decrypted files
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            # Copy all files from session_dir to tmpdir, decrypting if needed
+            from aletheia.encryption import decrypt_file
+            key = session._get_key() if not unsafe else None
+            for root, dirs, files in os.walk(session_dir):
+                rel_root = Path(root).relative_to(session_dir)
+                for file in files:
+                    src_file = Path(root) / file
+                    rel_file = rel_root / file
+                    dest_file = tmpdir_path / rel_file
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                    # Decrypt all files if encrypted session
+                    if key:
+                        # Try to decrypt, if fails fallback to copy
+                        try:
+                            decrypt_file(src_file, key, dest_file)
+                        except Exception:
+                            shutil.copy2(src_file, dest_file)
+                    else:
+                        shutil.copy2(src_file, dest_file)
+
+            # Create zip file from tmpdir
+            with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for foldername, subfolders, filenames in os.walk(tmpdir_path):
+                    for filename in filenames:
+                        file_path = Path(foldername) / filename
+                        arcname = file_path.relative_to(tmpdir_path)
+                        zipf.write(file_path, arcname)
+
         console.print(f"[green]Session exported successfully![/green]")
         console.print(f"Export file: {export_path}")
     except FileNotFoundError:
@@ -503,58 +548,91 @@ def session_view(
     format: str = typer.Option("yaml", "--format", "-f", help="Output format (yaml or json)"),
     unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
 ) -> None:
-    """View scratchpad contents of a session."""
+    """View scratchpad contents of a session, and list files in the data directory."""
     # Warn about unsafe mode
     if unsafe:
         console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
     
-    # Get password (skip in unsafe mode)
-    password = None
-    if not unsafe:
-        password = getpass.getpass("Enter session password: ")
-        if not password:
-            typer.echo("Error: Password cannot be empty", err=True)
-            raise typer.Exit(1)
-    
     try:
-        # Resume session to decrypt
-        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
-        
+        # Resume session to access metadata
+        session = Session.resume(session_id=session_id, password=None, unsafe=unsafe)
+        metadata = session.get_metadata()
+        is_encrypted = not (metadata.unsafe or unsafe)
+        password = None
+
+        # Ask for password if encrypted
+        if is_encrypted:
+            password = getpass.getpass("Enter session password: ")
+            if not password:
+                typer.echo("Error: Password cannot be empty", err=True)
+                raise typer.Exit(1)
+            # Re-resume session with password
+            session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
+            metadata = session.get_metadata()
+
         # Load scratchpad
         scratchpad_file = session.scratchpad_file
         if not scratchpad_file.exists():
             console.print("[yellow]No scratchpad data found for this session[/yellow]")
             return
-        
-        scratchpad = Scratchpad.load(
+
+        scratchpad = Scratchpad(
             session_dir=session.session_path,
             encryption_key=session._get_key()
         )
-        
+
         # Display metadata
-        metadata = session.get_metadata()
         console.print(f"\n[bold cyan]Session: {metadata.name or session_id}[/bold cyan]")
         console.print(f"Status: {metadata.status}")
         console.print(f"Created: {metadata.created}")
         console.print(f"Updated: {metadata.updated}")
-        
-        # Display scratchpad contents
+
+        # Display scratchpad contents (raw journal)
         console.print(f"\n[bold cyan]Scratchpad Contents:[/bold cyan]\n")
-        
-        if format.lower() == "json":
-            import json
-            data = scratchpad.to_dict()
-            console.print(json.dumps(data, indent=2))
+        journal_content = scratchpad.read_scratchpad()
+        if not journal_content.strip():
+            console.print("[dim](Scratchpad is empty)[/dim]")
         else:
-            # YAML format (default)
-            yaml_output = scratchpad.to_yaml()
-            console.print(yaml_output)
-        
-        # Summary statistics
-        console.print(f"\n[dim]Sections: {scratchpad.section_count}[/dim]")
-        if scratchpad.updated_at:
-            console.print(f"[dim]Last updated: {scratchpad.updated_at.isoformat()}[/dim]")
-        
+            from rich.markdown import Markdown
+            console.print(Markdown(journal_content))
+
+        # List files in the session's data directory (recursively)
+        data_dir = session.session_path / "data"
+        console.print(f"\n[bold cyan]Data Directory Files:[/bold cyan]")
+        if data_dir.exists() and data_dir.is_dir():
+            all_files = []
+            for root, dirs, files in os.walk(data_dir):
+                for file in files:
+                    file_path = Path(root) / file
+                    rel_path = file_path.relative_to(data_dir)
+                    all_files.append(rel_path)
+            if all_files:
+                # Build a tree structure for pretty printing
+                from collections import defaultdict
+                tree = lambda: defaultdict(tree)
+                file_tree = tree()
+                for rel_path in all_files:
+                    parts = rel_path.parts
+                    node = file_tree
+                    for part in parts[:-1]:
+                        node = node[part]
+                    node[parts[-1]] = None  # File leaf
+
+                def print_tree(node, prefix="", depth=0):
+                    for key in sorted(node.keys()):
+                        indent = "  " * depth
+                        if node[key] is None:
+                            console.print(f"{indent}- {key}")
+                        else:
+                            console.print(f"{indent}- {key}/")
+                            print_tree(node[key], prefix + key + "/", depth + 1)
+
+                print_tree(file_tree)
+            else:
+                console.print("[dim](No files in data directory)[/dim]")
+        else:
+            console.print("[dim](No data directory found)[/dim]")
+
     except FileNotFoundError:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
         raise typer.Exit(1)

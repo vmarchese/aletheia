@@ -224,8 +224,8 @@ def decrypt_file(encrypted_filepath: Path,
             f.write(decrypted)
 
         return output_path
-    except DecryptionError:
-        raise
+    except DecryptionError as de:
+        raise de
     except Exception as e:
         raise DecryptionError(f"File decryption failed: {e}") from e
 

@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from aletheia.scratchpad import ScratchpadFileName
+
 from aletheia.encryption import (
     create_session_encryption,
     decrypt_json_file,
@@ -133,8 +135,8 @@ class Session:
     def scratchpad_file(self) -> Path:
         """Path to scratchpad file (encrypted or plaintext based on unsafe mode)."""
         if self.unsafe:
-            return self.session_path / "scratchpad.enc"
-        return self.session_path / "scratchpad.encrypted"
+            return self.session_path / ScratchpadFileName.PLAINTEXT.value
+        return self.session_path / ScratchpadFileName.ENCRYPTED.value
 
     @property
     def data_dir(self) -> Path:
@@ -388,7 +390,7 @@ class Session:
 
         sessions = []
         for session_path in base_dir.iterdir():
-            if session_path.is_dir() and (session_path / "metadata.encrypted").exists():
+            if session_path.is_dir() and ((session_path / "metadata.encrypted").exists() or (session_path / "metadata.json").exists()):
                 sessions.append(
                     {
                         "id": session_path.name,
@@ -396,6 +398,7 @@ class Session:
                         "created": datetime.fromtimestamp(
                             session_path.stat().st_ctime
                         ).isoformat(),
+                        "unsafe": str((session_path / "metadata.json").exists()),
                     }
                 )
 
