@@ -13,8 +13,10 @@ from rich.table import Table
 from rich.prompt import Prompt
 import getpass
 
-from semantic_kernel.contents.chat_history import ChatHistory, ChatMessageContent
-from semantic_kernel.contents import FunctionCallContent, FunctionResultContent
+from semantic_kernel.contents.chat_history import ChatMessageContent
+from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, FunctionResultContent
+from semantic_kernel.agents import ChatHistoryAgentThread
+from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
 
 from aletheia.session import Session
 from aletheia.config import load_config
@@ -28,7 +30,7 @@ from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader
-from aletheia.agents.entrypoint import AletheiaHandoffOrchestration, Orchestrator
+from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.history import ConversationHistory
 from aletheia.utils.logging import log_debug
 
@@ -179,6 +181,9 @@ async def _start_investigation(session: Session, console: Console) -> None:
 
         chatting = True
         chat_history = ConversationHistory()
+        completion_usage = CompletionUsage()
+
+        thread: ChatHistoryAgentThread = None
         while chatting:
             console.print(f"\n[cyan]You can ask questions about the investigation or type 'exit' to end the session.[/cyan]\n")
             user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold yellow]👤 Your input[/bold yellow]")
@@ -189,13 +194,22 @@ async def _start_investigation(session: Session, console: Console) -> None:
             chat_history.add_message(ChatMessageContent(role="user", content=user_input))
 
             log_debug(f"cli::start_investigation - Sending input to orchestrator agent{chat_history.to_prompt()}")
-            async for response in entry.agent.invoke(
+            console.print(f"[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Thinking...[/bold green]\n")
+            full_response = ""
+            async for response in entry.agent.invoke_stream(
                 messages=chat_history.to_prompt(),
-                on_intermediate_message=handle_intermediate_steps
+                on_intermediate_message=handle_intermediate_steps,
+                thread=thread
             ):
                 if response:
-                    chat_history.add_message(response.content)
-                    console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n{response}\n")
+                    full_response += str(response.content)
+                    console.print(f"{response.content}", end="")
+                if response.metadata.get("usage"):
+                    completion_usage += response.metadata["usage"]
+                thread = response.thread
+            chat_history.add_message(ChatMessageContent(role="assistant", content=full_response))
+            console.print("\n\n")
+            console.print(f"[grey89]({completion_usage.completion_tokens} tokens used)[/grey89]\n")
             """
             response = await entry.agent.invoke(
                 messages=chat_history.to_prompt(),
@@ -223,18 +237,13 @@ async def _start_investigation(session: Session, console: Console) -> None:
         raise typer.Exit(1)
 
 async def handle_intermediate_steps(message: ChatMessageContent) -> None:
-    if message:
-       console.print(f"\n[dim]Intermediate step from {message.role}:{message.content}[/dim]")
-    """
     for item in message.items or []:
         if isinstance(item, FunctionCallContent):
-            print(f"Function Call:> {item.name} with arguments: {item.arguments}")
+            log_debug(f"<Function Call:> {item.name} with arguments: {item.arguments}")
         elif isinstance(item, FunctionResultContent):
-            print(f"Function Result:> {item.result} for function: {item.name}")
+            log_debug("<Function Result:> {item.result} for function: {item.name}")
         else:
-            print(f"{message.role}: {message.content}")
-    """
-    pass
+            log_debug("{message.role}: {message.content}")
 
 
 @app.command()

@@ -39,7 +39,7 @@ class Scratchpad:
         self.session_dir = Path(session_dir)
         self.encryption_key = encryption_key
         self.unsafe = encryption_key is None
-        self._scratchpad_file = self.session_dir / "scratchpad.enc"
+        self._scratchpad_file = self.session_dir / "scratchpad.md"
         
         # Load existing scratchpad if it exists
         self._load_from_disk()
