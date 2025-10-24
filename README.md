@@ -72,11 +72,6 @@ aletheia --help
   aletheia session list
   ```
 
-- **Resume a session:**
-
-  ```bash
-  aletheia session resume <session_id>
-  ```
 
 - **Delete a session:**
 
@@ -86,35 +81,18 @@ aletheia --help
 
 - **Export a session:**
 
+Exports the session to a zip file 
+
   ```bash
   aletheia session export <session_id> --output <file>
   ```
 
-- **Import a session:**
+- **View session:**
 
   ```bash
-  aletheia session import <archive_path>
+  aletheia session view <session_id> 
   ```
 
-- **View session scratchpad:**
-
-  ```bash
-  aletheia session view <session_id> --format yaml|json
-  ```
-
-#### Demo Mode
-
-- **List demo scenarios:**
-
-  ```bash
-  aletheia demo list
-  ```
-
-- **Run a demo scenario:**
-
-  ```bash
-  aletheia demo run <scenario_id>
-  ```
 
 #### Version
 
@@ -122,6 +100,3 @@ aletheia --help
 aletheia version
 ```
 
----
-
-For more details on agent architecture, plugins, and development, see [AGENTS.md](AGENTS.md) and [SPECIFICATION.md](SPECIFICATION.md).

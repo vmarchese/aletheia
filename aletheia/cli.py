@@ -448,7 +448,6 @@ def session_export(
 @session_app.command("view")
 def session_view(
     session_id: str = typer.Argument(..., help="Session ID to view"),
-    format: str = typer.Option("yaml", "--format", "-f", help="Output format (yaml or json)"),
     unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
 ) -> None:
     """View scratchpad contents of a session, and list files in the data directory."""
