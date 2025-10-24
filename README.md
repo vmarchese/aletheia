@@ -2,119 +2,126 @@
 
 > **Aletheia** (ἀλήθεια) — Ancient Greek for "truth" or "un-concealment": bringing what's hidden into the open.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
-Aletheia is a modular, AI-powered troubleshooting framework for SREs and system administrators. It orchestrates specialized LLM agents to collect observability data (logs, metrics, traces), analyze patterns, inspect code, and generate actionable root cause hypotheses.
+Aletheia is a modular, AI-powered troubleshooting framework for SREs and system administrators. It orchestrates specialized LLM agents to collect and analyze observability data (logs, metrics, traces), inspect code, and generate actionable root cause hypotheses.
 
 ---
 
-## 🌟 Key Features
+## Overview
 
-- **Multi-Agent Orchestration:** Modular agents for data collection, pattern analysis, and root cause reasoning.
-- **Pluggable Data Fetchers:** Integrates with Kubernetes, Prometheus, log files, and more.
-- **LLM-Driven Reasoning:** Uses prompt templates and plugins for advanced, context-aware analysis.
-- **Extensible Plugins:** Add new data sources or tools via Semantic Kernel plugins.
-- **Conversational Mode:** Natural language troubleshooting with full conversation context.
-- **CLI & Automation:** Command-line interface for interactive or automated sessions.
+Aletheia provides an interactive, agent-based workflow for troubleshooting distributed systems. It leverages Large Language Models (LLMs) and specialized plugins to automate data collection, pattern analysis, and root cause investigation across Kubernetes, Prometheus, log files, and more. The CLI offers a conversational interface for managing troubleshooting sessions, running investigations, and exploring demo scenarios.
 
----
+## Installation
 
-## 🗂️ Project Structure
+Aletheia requires Python 3.8+ and uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
-```
-aletheia/
-├── agents/         # AI agent implementations and orchestration logic
-├── demo/           # Demo scenarios and example orchestrators
-├── fetchers/       # Data fetcher modules for various sources (K8s, Prometheus, etc.)
-├── llm/            # LLM service integration and prompt templates
-├── plugins/        # Semantic Kernel plugins for external tools/APIs
-├── utils/          # Utility modules (logging, validation, etc.)
-├── banner.txt      # CLI banner
-├── cli.py          # Command-line interface entrypoint
-├── config.py       # Configuration loading and management
-├── encryption.py   # Encryption utilities
-├── scratchpad.py   # Shared state and memory for agents
-├── session.py      # Session management
+### 1. Install uv
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
----
+### 2. Clone the repository
 
-## 🚀 Getting Started
+```bash
+git clone https://github.com/your-org/aletheia.git
+cd aletheia
+```
 
-1. **Install dependencies:**
-	```bash
-	pip install -r requirements.txt -r requirements-dev.txt
-	# or use uv for faster installs
-	uv pip install -r requirements.txt -r requirements-dev.txt
-	```
+### 3. Install dependencies
 
-2. **Run the CLI:**
-	```bash
-	python -m aletheia.cli session open
-	```
+```bash
+uv pip install -r requirements.txt
+uv pip install -r requirements-dev.txt  # for development
+```
 
-3. **Configure agents and plugins:**
-	- Edit your configuration YAML to specify LLM settings, agent routing, and data source credentials.
+### 4. (Optional) Install in editable mode
 
-4. **Extend functionality:**
-	- Add new agents in `aletheia/agents/`
-	- Implement new plugins in `aletheia/plugins/`
-	- Add prompt templates in `aletheia/llm/prompts/`
+```bash
+uv pip install -e .
+```
 
----
+## Usage
 
-## 🧩 Extending Aletheia
+Aletheia provides a command-line interface for managing troubleshooting sessions and running investigations.
 
-- **Add a Data Fetcher:**
-  1. Create a fetcher in `aletheia/fetchers/`.
-  2. Implement a plugin in `aletheia/plugins/` with `@kernel_function` decorators.
-  3. Register the plugin in your agent's `__init__`.
-  4. Add a prompt template in `aletheia/llm/prompts/`.
-  5. Update orchestration logic if needed.
+### Command Line Interface
 
-- **Add an Agent:**
-  - Inherit from `SKBaseAgent` in `aletheia/agents/sk_base.py`.
-  - Register required plugins.
-  - Implement the `execute()` method.
+Run the CLI:
 
----
+```bash
+aletheia --help
+```
 
-## 🧪 Testing
+#### Session Management
 
-- Unit tests are in the `tests/` directory.
-- Use `pytest` to run tests:
+- **Open a new session:**
+
   ```bash
-  pytest
+  aletheia session open
   ```
-- Aim for >80% code coverage.
+
+  Options:
+  - `--name, -n`: Session name
+  - `--verbose, -v`: Show all external commands and their output
+  - `--very-verbose, -vv`: Enable trace logging with prompts, commands, and full details
+  - `--unsafe`: Use plaintext storage (not recommended)
+
+- **List sessions:**
+
+  ```bash
+  aletheia session list
+  ```
+
+- **Resume a session:**
+
+  ```bash
+  aletheia session resume <session_id>
+  ```
+
+- **Delete a session:**
+
+  ```bash
+  aletheia session delete <session_id>
+  ```
+
+- **Export a session:**
+
+  ```bash
+  aletheia session export <session_id> --output <file>
+  ```
+
+- **Import a session:**
+
+  ```bash
+  aletheia session import <archive_path>
+  ```
+
+- **View session scratchpad:**
+
+  ```bash
+  aletheia session view <session_id> --format yaml|json
+  ```
+
+#### Demo Mode
+
+- **List demo scenarios:**
+
+  ```bash
+  aletheia demo list
+  ```
+
+- **Run a demo scenario:**
+
+  ```bash
+  aletheia demo run <scenario_id>
+  ```
+
+#### Version
+
+```bash
+aletheia version
+```
 
 ---
 
-## 🛠️ Development Guidelines
-
-- Follow PEP 8 and use type hints.
-- Write docstrings for all public classes and functions.
-- Keep code modular and focused.
-- See `AGENTS.md` and `SPECIFICATION.md` for detailed patterns and architecture.
-
----
-
-## 📚 Documentation
-
-- [AGENTS.md](AGENTS.md): Agent and plugin development guide
-- [SPECIFICATION.md](SPECIFICATION.md): Product requirements and architecture
-- [MIGRATION_SK.md](MIGRATION_SK.md): Semantic Kernel migration guide
-
----
-
-## 🤝 Contributing
-
-Pull requests are welcome! Please follow the code style and contribution guidelines.
-
----
-
-## License
-
-MIT License. See [LICENSE](LICENSE) for details.
+For more details on agent architecture, plugins, and development, see [AGENTS.md](AGENTS.md) and [SPECIFICATION.md](SPECIFICATION.md).
