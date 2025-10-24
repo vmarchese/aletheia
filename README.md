@@ -81,7 +81,6 @@ aletheia --help
 
 - **Export a session:**
 
-Exports the session to a zip file 
 
   ```bash
   aletheia session export <session_id> --output <file>
