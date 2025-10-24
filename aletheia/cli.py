@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Optional
 from rich.console import Console
 from rich.table import Table
+from rich.prompt import Prompt
 import getpass
+
+from semantic_kernel.contents.chat_history import ChatHistory, ChatMessageContent
+from semantic_kernel.contents import FunctionCallContent, FunctionResultContent
 
 from aletheia.session import Session
 from aletheia.config import load_config
@@ -22,7 +26,9 @@ from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader
-from aletheia.agents.orchestration_sk import AletheiaHandoffOrchestration
+from aletheia.agents.entrypoint import AletheiaHandoffOrchestration, Orchestrator
+from aletheia.agents.history import ConversationHistory
+from aletheia.utils.logging import log_debug
 
 app = typer.Typer(
     name="aletheia",
@@ -114,6 +120,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
                                                 scratchpad=scratchpad)
 
         # Creating orchestration
+        """
         orchestration = AletheiaHandoffOrchestration(
             session=session,
             orchestration_agent=orchestrator,
@@ -140,6 +147,53 @@ async def _start_investigation(session: Session, console: Console) -> None:
         )
         value = await result.get()
         console.print(f"\n[bold green]Investigation Result:[/bold green]\n{value}\n")   
+        """
+        entry = Orchestrator( 
+            name="orchestrator",
+            description="Orchestrator agent managing the investigation workflow",
+            instructions=prompt_loader.load("orchestrator", "instructions"),
+            service = llm_service.client,
+            session=session,
+            kubernetes_fetcher_agent=kubernetes_fetcher,
+            prometheus_fetcher_agent=prometheus_fetcher,
+            pattern_analyzer_agent=pattern_analyzer,
+            log_file_data_fetcher_agent=log_file_fetcher,
+            scratchpad=scratchpad
+        )
+        
+
+        chatting = True
+        chat_history = ConversationHistory()
+        while chatting:
+            console.print(f"\n[cyan]You can ask questions about the investigation or type 'exit' to end the session.[/cyan]\n")
+            user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold yellow]👤 Your input[/bold yellow]")
+            if user_input.lower() in ['exit', 'quit']:
+                chatting = False
+                console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
+                break
+            chat_history.add_message(ChatMessageContent(role="user", content=user_input))
+
+            log_debug(f"cli::start_investigation - Sending input to orchestrator agent{chat_history.to_prompt()}")
+            async for response in entry.agent.invoke(
+                messages=chat_history.to_prompt(),
+                on_intermediate_message=handle_intermediate_steps
+            ):
+                if response:
+                    chat_history.add_message(response.content)
+                    console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n{response}\n")
+            """
+            response = await entry.agent.invoke(
+                messages=chat_history.to_prompt(),
+                on_intermediate_message=lambda msg: console.print(f"[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Thinking...[/bold green]\n{msg}\n"),
+            )
+            if response:
+                chat_history.add_message(response.content)
+                console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n{response}\n")
+            """
+
+
+
+             
 
 
         
@@ -152,6 +206,18 @@ async def _start_investigation(session: Session, console: Console) -> None:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
+
+async def handle_intermediate_steps(message: ChatMessageContent) -> None:
+    """
+    for item in message.items or []:
+        if isinstance(item, FunctionCallContent):
+            print(f"Function Call:> {item.name} with arguments: {item.arguments}")
+        elif isinstance(item, FunctionResultContent):
+            print(f"Function Result:> {item.result} for function: {item.name}")
+        else:
+            print(f"{message.role}: {message.content}")
+    """
+    pass
 
 
 @app.command()

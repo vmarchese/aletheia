@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from semantic_kernel.contents import ChatMessageContent, AuthorRole
 
-from aletheia.agents.orchestration_sk import (
+from aletheia.agents.entrypoint import (
     AletheiaHandoffOrchestration,
     create_aletheia_handoffs,
     create_orchestration_with_sk_agents

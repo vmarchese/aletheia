@@ -108,8 +108,11 @@ class Scratchpad:
             ...     "Collected 200 logs from payments-svc pod"
             ... )
         """
-        timestamp = datetime.now().strftime("%y%m%d-%H:%M:%S")
-        entry = f"## Date: {timestamp}\nDescription: {description}\n{text}\n\n"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entry = f"## Date: {timestamp}\n"
+        entry += f"- **Agent:** {agent}\n"
+        entry += f"- **Description:** {description}\n\n"
+        entry += f"{text}\n"
         self._journal += entry
         self._save_to_disk()
 

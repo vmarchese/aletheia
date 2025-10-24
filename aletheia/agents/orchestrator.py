@@ -42,4 +42,3 @@ class OrchestratorAgent(BaseAgent):
                          service=service,
                          session=session,
                          scratchpad=scratchpad)
-    

@@ -30,7 +30,7 @@ from semantic_kernel.contents import ChatMessageContent, AuthorRole
 
 from aletheia.session import Session
 from aletheia.scratchpad import Scratchpad, ScratchpadSection
-from aletheia.agents.orchestration_sk import (
+from aletheia.agents.entrypoint import (
     AletheiaHandoffOrchestration,
     create_aletheia_handoffs,
     create_orchestration_with_sk_agents

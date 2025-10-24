@@ -61,7 +61,7 @@ class KubernetesPlugin:
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
         container: Annotated[Optional[str], "Optional container name within the pod"] = None,
         tail_lines: Annotated[int, "Number of lines to fetch from the end of logs (default: 100)"] = 100,
-        since_minutes: Annotated[Optional[int], "Fetch logs from the last N minutes"] = None,
+        since_minutes: Annotated[Optional[int], "Fetch logs from the last N minutes (default: 30m)"] = 30,
     ) -> Annotated[str, "JSON string containing logs and metadata"]:
         """Fetch logs from a Kubernetes pod.
         
