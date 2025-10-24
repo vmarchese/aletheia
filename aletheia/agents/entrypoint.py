@@ -19,6 +19,7 @@ from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
+from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
 from aletheia.utils.logging import log_debug
 from aletheia.session import Session
 from aletheia.agents.history import ConversationHistory
@@ -195,16 +196,16 @@ class Orchestrator(BaseAgent):
         kubernetes_fetcher_agent: KubernetesDataFetcher,
         prometheus_fetcher_agent: PrometheusDataFetcher,
         pattern_analyzer_agent: PatternAnalyzerAgent,
-        log_file_data_fetcher_agent: LogFileDataFetcher):    
+        log_file_data_fetcher_agent: LogFileDataFetcher,
+        pcap_file_fetcher_agent: PCAPFileDataFetcher):    
 
         log_debug("Orchestrator::__init__:: called")
-
-
         plugins = [
             kubernetes_fetcher_agent.agent,
             log_file_data_fetcher_agent.agent,
             prometheus_fetcher_agent.agent,
-            pattern_analyzer_agent.agent
+#            pattern_analyzer_agent.agent,
+            pcap_file_fetcher_agent.agent
         ]
         super().__init__(name=name,
                          description=description,

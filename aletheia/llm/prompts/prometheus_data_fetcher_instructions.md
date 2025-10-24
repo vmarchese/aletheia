@@ -39,6 +39,9 @@ Use the scratchpad to:
 
 4. **If information is missing**, ask a clarifying question rather than guessing
 
+5. **Once you have collected the requested metrics**: 
+   - report what you have found to the user 
+
 ## Available Templates
 You can use these templates with prometheus.build_promql_from_template():
 - **error_rate**: Error rate over time for a service

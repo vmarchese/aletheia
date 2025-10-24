@@ -23,6 +23,7 @@ from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
+from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader
@@ -105,6 +106,14 @@ async def _start_investigation(session: Session, console: Console) -> None:
                                               session=session,
                                               scratchpad=scratchpad)
 
+        pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
+                                              config=config,
+                                              description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
+                                              instructions=prompt_loader.load("pcap_file_data_fetcher", "instructions"),
+                                              service=llm_service.client,
+                                              session=session,
+                                              scratchpad=scratchpad)                                              
+
         prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                                    config=config,
                                                    description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
@@ -158,6 +167,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
             prometheus_fetcher_agent=prometheus_fetcher,
             pattern_analyzer_agent=pattern_analyzer,
             log_file_data_fetcher_agent=log_file_fetcher,
+            pcap_file_fetcher_agent=pcap_file_fetcher,
             scratchpad=scratchpad
         )
         
