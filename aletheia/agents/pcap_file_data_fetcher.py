@@ -36,7 +36,7 @@ class PCAPFileDataFetcher(BaseAgent):
         log_debug("PCAPFileDataFetcher::__init__:: called")
 
         log_debug("PCAPFileDataFetcher::__init__:: setup plugins")
-        pcap_file_plugin = PCAPFilePlugin(config)
+        pcap_file_plugin = PCAPFilePlugin(config=config, session=session)
 
 
         super().__init__(name=name,

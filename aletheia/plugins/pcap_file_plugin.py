@@ -15,17 +15,20 @@ from semantic_kernel.functions import kernel_function
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
+from aletheia.session import Session, SessionDataType
 
 
 class PCAPFilePlugin:
     """Semantic Kernel plugin for PCAP file operations."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, session: Session):
         """Initialize the PCAPFilePlugin.
 
         Args:
             config: Configuration object for the plugin
+            session: Session object for managing state
         """
+        self.session = session
         self.config = config
 
     @kernel_function(description="Read a pcap file and return packet details as CSV (verbose mode).")
@@ -111,6 +114,13 @@ class PCAPFilePlugin:
             log_debug(f"PCAPFilePlugin::read_pcap_from_file:: returning {len(packets)} packets.")
             for i, packet in enumerate(packets, 1):
                 csv_lines.append(packet_to_csv(packet, i))
+
+            # save log lines to session folder
+            saved = ""
+            filename = os.path.basename(file_path)
+            if self.session:
+                saved = self.session.save_data(SessionDataType.TCPDUMP, f"{filename}_tcpdump", "\n".join(csv_lines))
+                log_debug(f"PCAPFilePlugin::read_pcap_from_file:: Saved dump to {saved}")
 
             return '\n'.join(csv_lines)
         except Exception as e:

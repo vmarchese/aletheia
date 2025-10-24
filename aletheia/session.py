@@ -35,6 +35,7 @@ class SessionDataType(Enum):
     METRICS = "metrics"
     TRACES = "traces"
     INFO = "info"
+    TCPDUMP = "tcpdump"
 
 
 class SessionError(Exception):
