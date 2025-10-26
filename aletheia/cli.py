@@ -7,7 +7,7 @@ import os
 import typer
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -18,21 +18,23 @@ from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, Fu
 from semantic_kernel.agents import ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
 
+from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
 from aletheia.llm.service import LLMService
 from aletheia.agents.orchestrator import OrchestratorAgent
-from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
 from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.claude_code_analyzer import ClaudeCodeAnalyzer
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.history import ConversationHistory
 from aletheia.utils.logging import log_debug
+from aletheia.config import Config
 
 def banner_callback(ctx: typer.Context):
     show_banner()
@@ -53,6 +55,68 @@ app.add_typer(session_app, name="session")
 
 console = Console()
 
+
+
+def _build_plugins(config: Config,
+                   prompt_loader: Loader,
+                   llm_service: LLMService,
+                   session: Session,
+                   scratchpad: Scratchpad) -> List[BaseAgent]:
+    """Build and return the list of available agent plugins."""
+    # Currently, plugins are built directly in the _start_investigation function.
+    # This function can be expanded in the future to dynamically load plugins.
+    kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
+                                                   config=config,
+                                                   description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
+                                                   instructions=prompt_loader.load("kubernetes_data_fetcher", "instructions"),
+                                                   service=llm_service.client,
+                                                   session=session,
+                                                   scratchpad=scratchpad)     
+    log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
+                                        config=config,
+                                        description="Log File Data Fetcher Agent for collecting logs from log files.",
+                                        instructions=prompt_loader.load("log_file_data_fetcher", "instructions"),
+                                        service=llm_service.client,
+                                        session=session,
+                                        scratchpad=scratchpad)
+
+    pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
+                                        config=config,
+                                        description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
+                                        instructions=prompt_loader.load("pcap_file_data_fetcher", "instructions"),
+                                        service=llm_service.client,
+                                        session=session,
+                                        scratchpad=scratchpad)                                              
+
+    prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
+                                            config=config,
+                                            description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
+                                            instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
+                                            service=llm_service.client,
+                                            session=session,
+                                            scratchpad=scratchpad)
+    """
+    pattern_analyzer = PatternAnalyzerAgent(name="pattern_analyzer",
+                                            description="Pattern Analyzer Agent for analyzing collected data patterns.",
+                                            instructions=prompt_loader.load("pattern_analyzer", "instructions"),
+                                            service=llm_service.client,
+                                            session=session,
+                                            scratchpad=scratchpad)
+    """                                        
+    claude_code_analyzer = ClaudeCodeAnalyzer(name="claude_code_analyzer",
+                                            config=config,
+                                            description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
+                                            instructions=prompt_loader.load("claude_code_analyzer", "instructions"),
+                                            service=llm_service.client,
+                                            session=session,
+                                            scratchpad=scratchpad)                                                   
+    return [
+        kubernetes_fetcher.agent,
+        log_file_fetcher.agent,
+        pcap_file_fetcher.agent,
+        prometheus_fetcher.agent,
+        claude_code_analyzer.agent
+    ]
 
 async def _start_investigation(session: Session, console: Console) -> None:
     """
@@ -80,95 +144,18 @@ async def _start_investigation(session: Session, console: Console) -> None:
         # get LLM Service
         llm_service = LLMService(config=config)
         
-        # Initialize orchestrator
-        orchestrator = OrchestratorAgent( 
-            name="orchestrator",
-            description="Orchestrator agent managing the investigation workflow",
-            instructions=prompt_loader.load("orchestrator", "instructions"),
-            service = llm_service.client,
-            session=session,
-            scratchpad=scratchpad
-        )
         
-        # Initialize and register specialist agents
-        kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
-                                                   config=config,
-                                                   description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
-                                                   instructions=prompt_loader.load("kubernetes_data_fetcher", "instructions"),
-                                                   service=llm_service.client,
-                                                   session=session,
-                                                   scratchpad=scratchpad) 
-
-        log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
-                                              config=config,
-                                              description="Log File Data Fetcher Agent for collecting logs from log files.",
-                                              instructions=prompt_loader.load("log_file_data_fetcher", "instructions"),
-                                              service=llm_service.client,
-                                              session=session,
-                                              scratchpad=scratchpad)
-
-        pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
-                                              config=config,
-                                              description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
-                                              instructions=prompt_loader.load("pcap_file_data_fetcher", "instructions"),
-                                              service=llm_service.client,
-                                              session=session,
-                                              scratchpad=scratchpad)                                              
-
-        prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
-                                                   config=config,
-                                                   description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
-                                                   instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
-                                                   service=llm_service.client,
-                                                   session=session,
-                                                   scratchpad=scratchpad)
-        pattern_analyzer = PatternAnalyzerAgent(name="pattern_analyzer",
-                                                description="Pattern Analyzer Agent for analyzing collected data patterns.",
-                                                instructions=prompt_loader.load("pattern_analyzer", "instructions"),
-                                                service=llm_service.client,
-                                                session=session,
-                                                scratchpad=scratchpad)
-
-        # Creating orchestration
-        """
-        orchestration = AletheiaHandoffOrchestration(
-            session=session,
-            orchestration_agent=orchestrator,
-            kubernetes_fetcher_agent=kubernetes_fetcher,
-            prometheus_fetcher_agent=prometheus_fetcher,
-            pattern_analyzer_agent=pattern_analyzer,
-            log_file_data_fetcher_agent=log_file_fetcher,
-            console=console
-        )
-        
-        # Start investigation in conversational mode
-        console.print(f"\n[cyan]Starting conversational investigation...[/cyan]\n")
-        runtime = orchestration.start_runtime()
-
-        # Ask user for the problem to investigate
-        problem = typer.prompt("Describe the issue to investigate")
-        if not problem or not problem.strip():
-            console.print("[yellow]No problem description provided. Aborting investigation.[/yellow]")
-            return
-
-        result = await orchestration.orchestration_handoffs.invoke(
-            runtime = runtime,
-            task = problem,
-        )
-        value = await result.get()
-        console.print(f"\n[bold green]Investigation Result:[/bold green]\n{value}\n")   
-        """
         entry = Orchestrator( 
             name="orchestrator",
             description="Orchestrator agent managing the investigation workflow",
             instructions=prompt_loader.load("orchestrator", "instructions"),
             service = llm_service.client,
             session=session,
-            kubernetes_fetcher_agent=kubernetes_fetcher,
-            prometheus_fetcher_agent=prometheus_fetcher,
-            pattern_analyzer_agent=pattern_analyzer,
-            log_file_data_fetcher_agent=log_file_fetcher,
-            pcap_file_fetcher_agent=pcap_file_fetcher,
+            sub_agents=_build_plugins(config=config,
+                                      prompt_loader=prompt_loader,
+                                      llm_service=llm_service,
+                                      session=session,
+                                      scratchpad=scratchpad),
             scratchpad=scratchpad
         )
         
