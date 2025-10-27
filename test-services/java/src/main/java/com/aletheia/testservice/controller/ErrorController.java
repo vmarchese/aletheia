@@ -165,4 +165,42 @@ public class ErrorController {
             throw e;
         }
     }
+    @GetMapping("/deadlock")
+    public ResponseEntity<Map<String, Object>> triggerDeadlock() throws InterruptedException {
+        final Object lock1 = new Object();
+        final Object lock2 = new Object();
+
+        Thread t1 = new Thread(() -> {
+            synchronized (lock1) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {}
+                synchronized (lock2) {
+                    // Deadlock point
+                }
+            }
+        }, "DeadlockThread-1");
+
+        Thread t2 = new Thread(() -> {
+            synchronized (lock2) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {}
+                synchronized (lock1) {
+                    // Deadlock point
+                }
+            }
+        }, "DeadlockThread-2");
+
+        t1.start();
+        t2.start();
+
+        // Wait a bit to ensure deadlock occurs
+        Thread.sleep(500);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("status", "Deadlock triggered");
+        result.put("message", "Two threads are now deadlocked. This endpoint is for testing deadlock detection.");
+        return ResponseEntity.ok(result);
+    }
 }
