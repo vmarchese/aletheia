@@ -280,7 +280,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
         total_tokens = input_token + output_token
         total_cost = (input_token * config.cost_per_input_token) + (output_token * config.cost_per_output_token)
         console.print(f"[bold cyan]Session completed.[/bold cyan] Total tokens used: [bold]{total_tokens}[/bold] (Input: [bold]{input_token}[/bold], Output: [bold]{output_token}[/bold]).")
-        console.print(f"[bold cyan]Estimated session cost:[/bold cyan] $[bold]{total_cost:.6f}[/bold] (Input: $[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: $[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
+        console.print(f"[bold cyan]Estimated session cost:[/bold cyan] €[bold]{total_cost:.6f}[/bold] (Input: €[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: €[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
 
 
              
