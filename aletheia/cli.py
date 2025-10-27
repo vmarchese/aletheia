@@ -4,15 +4,23 @@ Command-line interface for Aletheia.
 Main entry point for the Aletheia CLI application.
 """
 import os
+import sys
 import typer
 import asyncio
+import threading
+import time
+import random
+import sys
+import getpass
+import time
+import random
+import threading
+
 from pathlib import Path
 from typing import Optional, List
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
-import getpass
-
 from semantic_kernel.contents.chat_history import ChatMessageContent
 from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, FunctionResultContent
 from semantic_kernel.agents import ChatHistoryAgentThread
@@ -22,7 +30,6 @@ from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
 from aletheia.llm.service import LLMService
-from aletheia.agents.orchestrator import OrchestratorAgent
 from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
@@ -35,6 +42,24 @@ from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.history import ConversationHistory
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
+
+thinking_messages = [
+    "Galavanting...",
+    "Confabulating...",
+    "Unhiding...",
+    "Byte-braiding...",
+    "Panic-taming...",
+    "Perambulating...",
+    "Divining...",
+    "Unconcealing...",
+    "Metric-massaging...",
+    "Log-leaping...",
+    "Packet-probing...",
+    "Metric-mining...",
+    "Log-lassoing...",
+    "Trace-traversing...",
+    "Data-dredging...",
+]
 
 def banner_callback(ctx: typer.Context):
     show_banner()
@@ -55,7 +80,7 @@ app.add_typer(session_app, name="session")
 
 console = Console()
 
-
+thinking_interval = 2.0  # seconds
 
 def _build_plugins(config: Config,
                    prompt_loader: Loader,
@@ -118,7 +143,29 @@ def _build_plugins(config: Config,
         claude_code_analyzer.agent
     ]
 
+def thinking_animation(stop_event, session_id):
+    thinking_interval = 2.0  # seconds
+    last_msg = None
+    while not stop_event.is_set():
+        msg = random.choice(thinking_messages)
+        # Avoid repeating the same message twice in a row
+        while last_msg is not None and msg == last_msg and len(thinking_messages) > 1:
+            msg = random.choice(thinking_messages)
+        last_msg = msg
+        max_messages_len = max(len(m) for m in thinking_messages)
+        msg = msg.ljust(max_messages_len)        
+        console.print(f"[[bold yellow]{session_id}[/bold yellow]] [bold green]🤖 {msg}[/bold green]", end="\r", highlight=False, soft_wrap=True)
+        sys.stdout.flush()
+        # Wait for either the interval to pass or the stop event to be set
+        if stop_event.wait(thinking_interval):
+            break
+
+def clear_line():
+    max_messages_len = max(len(msg) for msg in thinking_messages)
+    console.print(" " * (max_messages_len + 20), end="\r", highlight=False)
+
 async def _start_investigation(session: Session, console: Console) -> None:
+
     """
     Start the investigation workflow for a session.
     
@@ -126,6 +173,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
         session: Active session to investigate
         console: Rich console for output
     """
+
     try:
         # Load configuration
         config= load_config()
@@ -144,8 +192,8 @@ async def _start_investigation(session: Session, console: Console) -> None:
         # get LLM Service
         llm_service = LLMService(config=config)
         
-        
-        entry = Orchestrator( 
+
+        entry = Orchestrator(
             name="orchestrator",
             description="Orchestrator agent managing the investigation workflow",
             instructions=prompt_loader.load("orchestrator", "instructions"),
@@ -165,6 +213,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
         completion_usage = CompletionUsage()
 
         thread: ChatHistoryAgentThread = None
+
         while chatting:
             console.print(f"\n[cyan]You can ask questions about the investigation or type 'exit' to end the session.[/cyan]\n")
             user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold yellow]👤 Your input[/bold yellow]")
@@ -175,19 +224,43 @@ async def _start_investigation(session: Session, console: Console) -> None:
             chat_history.add_message(ChatMessageContent(role="user", content=user_input))
 
             log_debug(f"cli::start_investigation - Sending input to orchestrator agent{chat_history.to_prompt()}")
-            console.print(f"[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Thinking...[/bold green]\n")
+
+            # Start thinking animation in a background thread
+            stop_event = threading.Event()
+            animation_thread = threading.Thread(target=thinking_animation, args=(stop_event, session.session_id))
+            animation_thread.start()
+
             full_response = ""
-            async for response in entry.agent.invoke_stream(
-                messages=chat_history.to_prompt(),
-                on_intermediate_message=handle_intermediate_steps,
-                thread=thread
-            ):
-                if response:
-                    full_response += str(response.content)
-                    console.print(f"{response.content}", end="")
-                if response.metadata.get("usage"):
-                    completion_usage += response.metadata["usage"]
-                thread = response.thread
+            first_message = 0
+            try:
+                async for response in entry.agent.invoke_stream(
+                    messages=chat_history.to_prompt(),
+                    on_intermediate_message=handle_intermediate_steps,
+                    thread=thread
+                ):
+                    # Stop animation and clear line before streaming response
+                    if (stop_event and not stop_event.is_set()) and (response is not None and str(response.content) != ""):
+                        stop_event.set()
+                        animation_thread.join()
+                        # Overwrite the animation line with spaces to clear
+                        clear_line()
+                        console.print("")
+
+                    if response and str(response.content) != "":
+                        full_response += str(response.content)
+                        if first_message == 0:
+                            first_message +=1
+                            console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n", end="")
+                        console.print(f"{response.content}", end="")
+                    if response.metadata.get("usage"):
+                        completion_usage += response.metadata["usage"]
+                    thread = response.thread
+            finally:
+                if stop_event and not stop_event.is_set():
+                    stop_event.set()
+                    animation_thread.join()
+                    clear_line()
+
             chat_history.add_message(ChatMessageContent(role="assistant", content=full_response))
             console.print("\n\n")
             console.print(f"[grey89]({completion_usage.completion_tokens} tokens used)[/grey89]\n")
