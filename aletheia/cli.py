@@ -34,7 +34,7 @@ from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
-from aletheia.agents.claude_code_analyzer import ClaudeCodeAnalyzer
+from aletheia.agents.code_analyzer import CodeAnalyzer
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader
@@ -128,19 +128,19 @@ def _build_plugins(config: Config,
                                             session=session,
                                             scratchpad=scratchpad)
     """                                        
-    claude_code_analyzer = ClaudeCodeAnalyzer(name="claude_code_analyzer",
-                                            config=config,
-                                            description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
-                                            instructions=prompt_loader.load("claude_code_analyzer", "instructions"),
-                                            service=llm_service.client,
-                                            session=session,
-                                            scratchpad=scratchpad)                                                   
+    code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
+                                 config=config,
+                                 description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
+                                 instructions=prompt_loader.load("claude_code_analyzer", "instructions"),
+                                 service=llm_service.client,
+                                 session=session,
+                                 scratchpad=scratchpad)                                                   
     return [
         kubernetes_fetcher.agent,
         log_file_fetcher.agent,
         pcap_file_fetcher.agent,
         prometheus_fetcher.agent,
-        claude_code_analyzer.agent
+        code_analyzer.agent
     ]
 
 def thinking_animation(stop_event, session_id):

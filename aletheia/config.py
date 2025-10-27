@@ -8,6 +8,7 @@ Implements multi-level configuration loading with precedence:
 4. System config (/etc/aletheia/config.yaml)
 """
 
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -31,6 +32,11 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource, PydanticBaseSettingsSource
+
+class CodeAnalyzerType(Enum):
+    """Code analyzer options."""
+    CLAUDE = "claude"
+    COPILOT = "copilot"
 
 
 class Config(BaseSettings):
@@ -90,6 +96,10 @@ class Config(BaseSettings):
     )
     cost_per_output_token: float = Field(
         default=0.0, description="Cost per output token"
+    )
+
+    code_analyzer: str = Field(
+        default="claude", description="Code analyzer to use (claude, copilot)"
     )
 
     # =================================================================

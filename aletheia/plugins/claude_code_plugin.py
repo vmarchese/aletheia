@@ -21,7 +21,7 @@ class ClaudeCodePlugin:
         self.config = config
 
     @kernel_function(description="Launches claude code with -p in non interactive mode on a folder containing the repository to analyze.")
-    async def claude_code_analyze(
+    async def code_analyze(
         self,
         prompt: str,
         repo_path: Annotated[str, "Path to the repository to analyze"]
