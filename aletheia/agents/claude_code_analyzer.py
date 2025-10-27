@@ -4,6 +4,7 @@ from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.scratchpad import Scratchpad
 from aletheia.plugins.claude_code_plugin import ClaudeCodePlugin
+from aletheia.plugins.git_plugin import GitPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
@@ -22,6 +23,7 @@ class ClaudeCodeAnalyzer(BaseAgent):
 
         log_debug("ClaudeCodeAnalyzer::__init__:: setup plugins")
         claude_code_plugin = ClaudeCodePlugin(config=config, session=session)
+        git_plugin = GitPlugin(session=session)
 
 
         super().__init__(name=name,
@@ -30,5 +32,5 @@ class ClaudeCodeAnalyzer(BaseAgent):
                          service=service,
                          session=session,
                          scratchpad=scratchpad,
-                         plugins=[claude_code_plugin])        
+                         plugins=[claude_code_plugin, git_plugin])        
     
