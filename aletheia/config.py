@@ -85,6 +85,13 @@ class Config(BaseSettings):
         description="Per-agent LLM configuration overrides"
     )
 
+    cost_per_input_token: float = Field(
+        default=0.0, description="Cost per input token"
+    )
+    cost_per_output_token: float = Field(
+        default=0.0, description="Cost per output token"
+    )
+
     # =================================================================
     # Data Sources Configuration (flat)
     # =================================================================
