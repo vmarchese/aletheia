@@ -521,23 +521,17 @@ def session_view(
     # Warn about unsafe mode
     if unsafe:
         console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)         
     
     try:
         # Resume session to access metadata
-        session = Session.resume(session_id=session_id, password=None, unsafe=unsafe)
+        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
         metadata = session.get_metadata()
-        is_encrypted = not (metadata.unsafe or unsafe)
-        password = None
-
-        # Ask for password if encrypted
-        if is_encrypted:
-            password = getpass.getpass("Enter session password: ")
-            if not password:
-                typer.echo("Error: Password cannot be empty", err=True)
-                raise typer.Exit(1)
-            # Re-resume session with password
-            session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
-            metadata = session.get_metadata()
 
         # Load scratchpad
         scratchpad_file = session.scratchpad_file
