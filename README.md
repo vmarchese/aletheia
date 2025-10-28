@@ -27,9 +27,11 @@ git clone https://github.com/your-org/aletheia.git
 cd aletheia
 ```
 
-### 3. Install dependencies
+### 3. Create venv and install dependencies
 
 ```bash
+uv venv --python python3.12
+source ./.venv/bin/activate
 uv pip install -r requirements.txt
 uv pip install -r requirements-dev.txt  # for development
 ```
