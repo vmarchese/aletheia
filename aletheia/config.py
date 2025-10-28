@@ -99,7 +99,7 @@ class Config(BaseSettings):
     )
 
     code_analyzer: str = Field(
-        default="claude", description="Code analyzer to use (claude, copilot)"
+        default="", description="Code analyzer to use (claude, copilot)"
     )
 
     # =================================================================

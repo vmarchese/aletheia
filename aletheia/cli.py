@@ -82,6 +82,7 @@ console = Console()
 
 thinking_interval = 2.0  # seconds
 
+
 def _build_plugins(config: Config,
                    prompt_loader: Loader,
                    llm_service: LLMService,
@@ -90,6 +91,9 @@ def _build_plugins(config: Config,
     """Build and return the list of available agent plugins."""
     # Currently, plugins are built directly in the _start_investigation function.
     # This function can be expanded in the future to dynamically load plugins.
+
+    plugins = []
+
     kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
                                                    config=config,
                                                    description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
@@ -97,6 +101,8 @@ def _build_plugins(config: Config,
                                                    service=llm_service.client,
                                                    session=session,
                                                    scratchpad=scratchpad)     
+    plugins.append(kubernetes_fetcher)
+
     log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
                                         config=config,
                                         description="Log File Data Fetcher Agent for collecting logs from log files.",
@@ -104,6 +110,7 @@ def _build_plugins(config: Config,
                                         service=llm_service.client,
                                         session=session,
                                         scratchpad=scratchpad)
+    plugins.append(log_file_fetcher)
 
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
                                         config=config,
@@ -112,6 +119,7 @@ def _build_plugins(config: Config,
                                         service=llm_service.client,
                                         session=session,
                                         scratchpad=scratchpad)                                              
+    plugins.append(pcap_file_fetcher)
 
     prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                             config=config,
@@ -120,28 +128,19 @@ def _build_plugins(config: Config,
                                             service=llm_service.client,
                                             session=session,
                                             scratchpad=scratchpad)
-    """
-    pattern_analyzer = PatternAnalyzerAgent(name="pattern_analyzer",
-                                            description="Pattern Analyzer Agent for analyzing collected data patterns.",
-                                            instructions=prompt_loader.load("pattern_analyzer", "instructions"),
-                                            service=llm_service.client,
-                                            session=session,
-                                            scratchpad=scratchpad)
-    """                                        
-    code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
-                                 config=config,
-                                 description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
-                                 instructions=prompt_loader.load("claude_code_analyzer", "instructions"),
-                                 service=llm_service.client,
-                                 session=session,
-                                 scratchpad=scratchpad)                                                   
-    return [
-        kubernetes_fetcher.agent,
-        log_file_fetcher.agent,
-        pcap_file_fetcher.agent,
-        prometheus_fetcher.agent,
-        code_analyzer.agent
-    ]
+    plugins.append(prometheus_fetcher)
+    
+    if config.code_analyzer is not None and config.code_analyzer.strip() != "":
+        code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
+                                    config=config,
+                                    description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
+                                    instructions=prompt_loader.load("claude_code_analyzer", "instructions"),
+                                    service=llm_service.client,
+                                    session=session,
+                                    scratchpad=scratchpad)                                                   
+        plugins.append(code_analyzer)
+
+    return plugins
 
 def thinking_animation(stop_event, session_id):
     thinking_interval = 2.0  # seconds
@@ -607,11 +606,12 @@ def session_view(
         raise typer.Exit(1)
 
 
-def show_banner():
+def show_banner(verbose: bool = False) -> None:
     banner_path = os.path.join(os.path.dirname(__file__), "banner.txt")
     try:
         with open(banner_path, "r", encoding="utf-8") as f:
             console.print(f.read())
+
     except Exception:
         pass
 
