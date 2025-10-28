@@ -101,3 +101,36 @@ aletheia --help
 aletheia version
 ```
 
+
+## Configuration
+
+
+Aletheia supports flexible configuration via environment variables, YAML files, and .env files. The following table summarizes the main configuration parameters available in `aletheia/config.py`:
+
+| Configuration Key | Description | Default Value |
+|-------------------|-------------|---------------|
+| `llm_use_azure` | Use Azure OpenAI by default | `False` |
+| `llm_azure_deployment` | Azure deployment name | `None` |
+| `llm_azure_endpoint` | Azure OpenAI endpoint URL | `None` |
+| `llm_azure_api_version` | Azure API version | `None` |
+| `llm_azure_api_key` | Environment variable for Azure OpenAI API key | `None` |
+| `cost_per_input_token` | Cost per input token | `0.0` |
+| `cost_per_output_token` | Cost per output token | `0.0` |
+| `code_analyzer` | Code analyzer to use (claude, copilot) | `""` |
+| `kubernetes_context` | Kubernetes context to use | `None` |
+| `kubernetes_namespace` | Default Kubernetes namespace | `default` |
+| `prometheus_endpoint` | Prometheus endpoint URL | `None` |
+| `prometheus_credentials_type` | Prometheus credentials type | `env` |
+| `prometheus_username_env` | Environment variable for Prometheus username | `None` |
+| `prometheus_password_env` | Environment variable for Prometheus password | `None` |
+| `prometheus_credentials_file` | Path to Prometheus credentials file | `None` |
+| `prometheus_timeout_seconds` | Timeout for Prometheus requests in seconds | `10` |
+
+**How to configure:**
+
+- Set environment variables (e.g. `ALETHEIA_LLM_DEFAULT_MODEL=gpt-4`)
+- Edit YAML config files (`./.aletheia/config.yaml`, `~/.aletheia/config.yaml`, `/etc/aletheia/config.yaml`)
+- Use `.env` files for local overrides
+
+See `aletheia/config.py` for advanced usage and helper methods.
+
