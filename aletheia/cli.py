@@ -101,7 +101,7 @@ def _build_plugins(config: Config,
                                                    service=llm_service.client,
                                                    session=session,
                                                    scratchpad=scratchpad)     
-    plugins.append(kubernetes_fetcher)
+    plugins.append(kubernetes_fetcher.agent)
 
     log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
                                         config=config,
@@ -110,7 +110,7 @@ def _build_plugins(config: Config,
                                         service=llm_service.client,
                                         session=session,
                                         scratchpad=scratchpad)
-    plugins.append(log_file_fetcher)
+    plugins.append(log_file_fetcher.agent)
 
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
                                         config=config,
@@ -119,7 +119,7 @@ def _build_plugins(config: Config,
                                         service=llm_service.client,
                                         session=session,
                                         scratchpad=scratchpad)                                              
-    plugins.append(pcap_file_fetcher)
+    plugins.append(pcap_file_fetcher.agent)
 
     prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                             config=config,
@@ -128,7 +128,7 @@ def _build_plugins(config: Config,
                                             service=llm_service.client,
                                             session=session,
                                             scratchpad=scratchpad)
-    plugins.append(prometheus_fetcher)
+    plugins.append(prometheus_fetcher.agent)
     
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
@@ -138,7 +138,7 @@ def _build_plugins(config: Config,
                                     service=llm_service.client,
                                     session=session,
                                     scratchpad=scratchpad)                                                   
-        plugins.append(code_analyzer)
+        plugins.append(code_analyzer.agent)
 
     return plugins
 
@@ -304,6 +304,7 @@ async def handle_intermediate_steps(message: ChatMessageContent) -> None:
             log_debug("<Function Result:> {item.result} for function: {item.name}")
         else:
             log_debug("{message.role}: {message.content}")
+        
 
 
 @app.command()
