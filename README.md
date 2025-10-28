@@ -94,6 +94,12 @@ aletheia --help
   aletheia session view <session_id> 
   ```
 
+- **View session timeline:**
+
+  ```bash
+  aletheia session timeline <session_id> 
+  ```  
+
 
 #### Version
 
