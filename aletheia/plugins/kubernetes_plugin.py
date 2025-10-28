@@ -233,7 +233,467 @@ class KubernetesPlugin:
                 "namespace": namespace,
                 "selector": selector
             })
-    
+
+    @kernel_function(
+        name="get_nodes",
+        description="Get the Kubernetes nodes list with status and resource information"
+    )
+    def get_nodes(
+        self,
+    ) -> Annotated[str, "JSON object with nodes information including status and resources"]:
+        """Get Kubernetes nodes.
+
+        Returns:
+            JSON string with nodes information including:
+            - name, status, roles
+            - conditions and capacity
+            - kernel version and container runtime
+        """
+        log_debug("KubernetesPlugin::get_nodes:: Getting cluster nodes")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "get", "nodes",
+            "-o", "json"
+        ])
+
+        try:
+            # Run kubectl command
+            log_debug(f"KubernetesPlugin::get_nodes:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                log_error(f"KubernetesPlugin::get_nodes:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl get nodes failed: {error_msg}"
+                })
+
+            # Parse kubectl JSON output
+            log_debug("KubernetesPlugin::get_nodes:: Parsing kubectl output")
+            kubectl_output = json.loads(process.stdout.decode())
+            nodes = []
+
+            for item in kubectl_output.get("items", []):
+                metadata = item.get("metadata", {})
+                status = item.get("status", {})
+
+                # Extract node roles from labels
+                labels = metadata.get("labels", {})
+                roles = []
+                for label_key in labels.keys():
+                    if label_key.startswith("node-role.kubernetes.io/"):
+                        role = label_key.replace("node-role.kubernetes.io/", "")
+                        roles.append(role)
+
+                # Get node conditions
+                conditions = status.get("conditions", [])
+                ready_condition = next(
+                    (c for c in conditions if c.get("type") == "Ready"),
+                    {}
+                )
+
+                nodes.append({
+                    "name": metadata.get("name"),
+                    "roles": roles if roles else ["<none>"],
+                    "status": ready_condition.get("status", "Unknown"),
+                    "age": metadata.get("creationTimestamp"),
+                    "version": status.get("nodeInfo", {}).get("kubeletVersion"),
+                    "internal_ip": next(
+                        (addr.get("address") for addr in status.get("addresses", [])
+                         if addr.get("type") == "InternalIP"),
+                        None
+                    ),
+                    "os_image": status.get("nodeInfo", {}).get("osImage"),
+                    "kernel_version": status.get("nodeInfo", {}).get("kernelVersion"),
+                    "container_runtime": status.get("nodeInfo", {}).get("containerRuntimeVersion"),
+                    "capacity": status.get("capacity", {}),
+                    "allocatable": status.get("allocatable", {}),
+                    "conditions": conditions
+                })
+
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, "nodes", json.dumps(nodes, indent=2))
+                log_debug(f"KubernetesPlugin::get_nodes:: Saved nodes information to {saved}")
+
+            return json.dumps({
+                "nodes": nodes,
+                "count": len(nodes),
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+
+        except Exception as e:
+            log_error(f"KubernetesPlugin::get_nodes:: Failed to get nodes: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to get nodes: {str(e)}"
+            })
+
+    @kernel_function(
+        name="describe_node",
+        description="Get detailed human-readable description of a specific Kubernetes node including events, conditions, and resource usage"
+    )
+    def describe_node(
+        self,
+        node: Annotated[str, "The name of the node to describe"],
+    ) -> Annotated[str, "Human-readable description of the node with events and detailed information"]:
+        """Describe a Kubernetes node in detail.
+
+        Args:
+            node: Node name to describe
+
+        Returns:
+            Human-readable description string with:
+            - Node information and labels
+            - Conditions and addresses
+            - Resource capacity and allocatable
+            - Allocated resources and usage
+            - Events related to the node
+        """
+        log_debug(f"KubernetesPlugin::describe_node:: Describing node '{node}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "describe", "node", node
+        ])
+
+        try:
+            # Run kubectl describe command
+            log_debug(f"KubernetesPlugin::describe_node:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True, text=True)
+
+            if process.returncode != 0:
+                error_msg = process.stderr.strip()
+                log_error(f"KubernetesPlugin::describe_node:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl describe node failed: {error_msg}",
+                    "node": node
+                })
+
+            # Get the describe output
+            description = process.stdout
+
+            # Save to session if available
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"node_describe_{node}", description)
+                log_debug(f"KubernetesPlugin::describe_node:: Saved node description to {saved}")
+
+            return json.dumps({
+                "node": node,
+                "description": description,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+
+        except Exception as e:
+            log_error(f"KubernetesPlugin::describe_node:: Failed to describe node: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to describe node: {str(e)}",
+                "node": node
+            })
+
+    @kernel_function(
+        name="get_namespaces",
+        description="Get the list of all Kubernetes namespaces with their status"
+    )
+    def get_namespaces(
+        self,
+    ) -> Annotated[str, "JSON object with namespaces information including status and age"]:
+        """Get Kubernetes namespaces.
+
+        Returns:
+            JSON string with namespaces information including:
+            - name, status, age
+            - labels and annotations
+            - creation timestamp
+        """
+        log_debug("KubernetesPlugin::get_namespaces:: Getting cluster namespaces")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "get", "namespaces",
+            "-o", "json"
+        ])
+
+        try:
+            # Run kubectl command
+            log_debug(f"KubernetesPlugin::get_namespaces:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                log_error(f"KubernetesPlugin::get_namespaces:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl get namespaces failed: {error_msg}"
+                })
+
+            # Parse kubectl JSON output
+            log_debug("KubernetesPlugin::get_namespaces:: Parsing kubectl output")
+            kubectl_output = json.loads(process.stdout.decode())
+            namespaces = []
+
+            for item in kubectl_output.get("items", []):
+                metadata = item.get("metadata", {})
+                status = item.get("status", {})
+
+                namespaces.append({
+                    "name": metadata.get("name"),
+                    "status": status.get("phase", "Unknown"),
+                    "age": metadata.get("creationTimestamp"),
+                    "labels": metadata.get("labels", {}),
+                    "annotations": metadata.get("annotations", {})
+                })
+
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, "namespaces", json.dumps(namespaces, indent=2))
+                log_debug(f"KubernetesPlugin::get_namespaces:: Saved namespaces information to {saved}")
+
+            return json.dumps({
+                "namespaces": namespaces,
+                "count": len(namespaces),
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+
+        except Exception as e:
+            log_error(f"KubernetesPlugin::get_namespaces:: Failed to get namespaces: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to get namespaces: {str(e)}"
+            })
+
+    @kernel_function(
+        name="describe_namespace",
+        description="Get detailed human-readable description of a specific Kubernetes namespace including resource quotas and limit ranges"
+    )
+    def describe_namespace(
+        self,
+        namespace: Annotated[str, "The name of the namespace to describe"],
+    ) -> Annotated[str, "Human-readable description of the namespace with resource quotas and limits"]:
+        """Describe a Kubernetes namespace in detail.
+
+        Args:
+            namespace: Namespace name to describe
+
+        Returns:
+            Human-readable description string with:
+            - Namespace information and labels
+            - Status and conditions
+            - Resource quotas
+            - Limit ranges
+            - Events related to the namespace
+        """
+        log_debug(f"KubernetesPlugin::describe_namespace:: Describing namespace '{namespace}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "describe", "namespace", namespace
+        ])
+
+        try:
+            # Run kubectl describe command
+            log_debug(f"KubernetesPlugin::describe_namespace:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True, text=True)
+
+            if process.returncode != 0:
+                error_msg = process.stderr.strip()
+                log_error(f"KubernetesPlugin::describe_namespace:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl describe namespace failed: {error_msg}",
+                    "namespace": namespace
+                })
+
+            # Get the describe output
+            description = process.stdout
+
+            # Save to session if available
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"namespace_describe_{namespace}", description)
+                log_debug(f"KubernetesPlugin::describe_namespace:: Saved namespace description to {saved}")
+
+            return json.dumps({
+                "namespace": namespace,
+                "description": description,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+
+        except Exception as e:
+            log_error(f"KubernetesPlugin::describe_namespace:: Failed to describe namespace: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to describe namespace: {str(e)}",
+                "namespace": namespace
+            })
+
+    @kernel_function(
+        name="get_services",
+        description="Get the list of Kubernetes services in a namespace or across all namespaces"
+    )
+    def get_services(
+        self,
+        namespace: Annotated[str, "The Kubernetes namespace to list services from. Use 'all' for all namespaces"] = "default",
+    ) -> Annotated[str, "JSON object with services information including type, cluster IP, and ports"]:
+        """Get Kubernetes services.
+
+        Args:
+            namespace: Kubernetes namespace (default: "default"), use "all" for all namespaces
+
+        Returns:
+            JSON string with services information including:
+            - name, namespace, type
+            - cluster IP and external IPs
+            - ports and selectors
+            - age and creation timestamp
+        """
+        log_debug(f"KubernetesPlugin::get_services:: Getting services in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        if namespace.lower() == "all":
+            cmd.extend(["get", "services", "--all-namespaces", "-o", "json"])
+        else:
+            cmd.extend(["--namespace", namespace, "get", "services", "-o", "json"])
+
+        try:
+            # Run kubectl command
+            log_debug(f"KubernetesPlugin::get_services:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                log_error(f"KubernetesPlugin::get_services:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl get services failed: {error_msg}",
+                    "namespace": namespace
+                })
+
+            # Parse kubectl JSON output
+            log_debug("KubernetesPlugin::get_services:: Parsing kubectl output")
+            kubectl_output = json.loads(process.stdout.decode())
+            services = []
+
+            for item in kubectl_output.get("items", []):
+                metadata = item.get("metadata", {})
+                spec = item.get("spec", {})
+                status = item.get("status", {})
+
+                services.append({
+                    "name": metadata.get("name"),
+                    "namespace": metadata.get("namespace"),
+                    "type": spec.get("type", "ClusterIP"),
+                    "cluster_ip": spec.get("clusterIP"),
+                    "external_ips": spec.get("externalIPs", []),
+                    "ports": spec.get("ports", []),
+                    "selector": spec.get("selector", {}),
+                    "age": metadata.get("creationTimestamp"),
+                    "load_balancer": status.get("loadBalancer", {})
+                })
+
+            saved = ""
+            if self.session:
+                filename = f"services_{namespace}" if namespace != "all" else "services_all"
+                saved = self.session.save_data(SessionDataType.INFO, filename, json.dumps(services, indent=2))
+                log_debug(f"KubernetesPlugin::get_services:: Saved services information to {saved}")
+
+            return json.dumps({
+                "services": services,
+                "count": len(services),
+                "namespace": namespace,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+
+        except Exception as e:
+            log_error(f"KubernetesPlugin::get_services:: Failed to get services: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to get services: {str(e)}",
+                "namespace": namespace
+            })
+
+    @kernel_function(
+        name="describe_service",
+        description="Get detailed human-readable description of a specific Kubernetes service including endpoints"
+    )
+    def describe_service(
+        self,
+        svc: Annotated[str, "The name of the service to describe"],
+        namespace: Annotated[str, "The Kubernetes namespace containing the service"] = "default",
+    ) -> Annotated[str, "Human-readable description of the service with endpoints and events"]:
+        """Describe a Kubernetes service in detail.
+
+        Args:
+            service: Service name to describe
+            namespace: Kubernetes namespace (default: "default")
+
+        Returns:
+            Human-readable description string with:
+            - Service information and labels
+            - Type, cluster IP, and ports
+            - Endpoints and pod selectors
+            - Events related to the service
+        """
+        log_debug(f"KubernetesPlugin::describe_service:: Describing service '{svc}' in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        print(cmd)
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "describe", "service", svc
+        ])
+
+        try:
+            # Run kubectl describe command
+            log_debug(f"KubernetesPlugin::describe_service:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True, text=True)
+
+            if process.returncode != 0:
+                error_msg = process.stderr.strip()
+                log_error(f"KubernetesPlugin::describe_service:: Command failed with return code {process.returncode}, error: {error_msg}")
+                return json.dumps({
+                    "error": f"kubectl describe service failed: {error_msg}",
+                    "service": svc,
+                    "namespace": namespace
+                })
+
+            # Get the describe output
+            description = process.stdout
+
+            # Save to session if available
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"service_describe_{namespace}_{svc}", description)
+                log_debug(f"KubernetesPlugin::describe_service:: Saved service description to {saved}")
+
+            return json.dumps({
+                "service": svc,
+                "namespace": namespace,
+                "description": description,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+
+        except Exception as e:
+            log_error(f"KubernetesPlugin::describe_service:: Failed to describe service: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to describe service: {str(e)}",
+                "service": svc,
+                "namespace": namespace
+            })
+
     @kernel_function(
         name="get_pod_status",
         description="Get detailed status information for a specific Kubernetes pod"

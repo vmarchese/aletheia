@@ -32,10 +32,24 @@ Use the scratchpad to:
    - Time ranges (if mentioned in conversation)
 
 2. **Use the kubernetes plugin** to collect data:
+
+   **Pod Operations:**
    - Use `kubernetes.fetch_kubernetes_logs()` to get logs from specific pods
    - Use `kubernetes.list_kubernetes_pods()` to discover pods if the name is not explicit
-   - Use `kubernetes.get_pod_status()` to check pod health if relevant
-   - Use `kubernetes.describe_pod()` to describe the pod 
+   - Use `kubernetes.get_pod_status()` to check pod health and detailed status
+   - Use `kubernetes.describe_pod()` to get comprehensive pod information with events
+
+   **Node Operations:**
+   - Use `kubernetes.get_nodes()` to list all cluster nodes with status and resources
+   - Use `kubernetes.describe_node()` to get detailed node information including events and resource usage
+
+   **Namespace Operations:**
+   - Use `kubernetes.get_namespaces()` to list all namespaces in the cluster
+   - Use `kubernetes.describe_namespace()` to get detailed namespace information including resource quotas
+
+   **Service Operations:**
+   - Use `kubernetes.get_services()` to list services in a namespace (or all namespaces with namespace="all")
+   - Use `kubernetes.describe_service()` to get detailed service information including endpoints
 
 
 3. **If information is missing**, ask a clarifying question rather than guessing
@@ -46,11 +60,52 @@ Use the scratchpad to:
    - report what you have found to the user 
 
 ## Guidelines
+
+**Parameter Extraction:**
 - Extract parameters naturally from the conversation (e.g., "payments service" → look for pods with "payments" in the name)
-- If the user mentions a service but not a specific pod, use list_kubernetes_pods() to find matching pods
 - If no namespace is mentioned, assume "default"
 - Always include the time range from the problem description
 - Call the kubernetes plugin functions directly - they will be invoked automatically
+
+**Function Selection Strategy:**
+- **For service connectivity issues**: Use `get_services()` to list services, then `describe_service()` to check endpoints
+- **For pod problems**: Use `list_kubernetes_pods()` to find pods, then `fetch_kubernetes_logs()` or `describe_pod()` for details
+- **For cluster-wide issues**: Use `get_nodes()` to check node health, `get_namespaces()` to list namespaces
+- **For resource problems**: Use `describe_node()` or `describe_namespace()` to check resource quotas and limits
+- **When user mentions a service name**: Use `get_services()` first to verify the service exists, then use `describe_service()` to see which pods are backing it
+
+**Best Practices:**
+- Start broad (list resources) then narrow down (describe specific resource)
+- Always check service endpoints when investigating connectivity issues
+- Use describe functions to get events which often reveal root causes
+- Cross-reference services with pods using selectors from `describe_service()`
+
+**Example Scenarios:**
+
+*Scenario 1: "Check logs for the payments service"*
+1. Use `get_services(namespace="default")` to find "payments" service
+2. Use `describe_service(service="payments")` to see pod selectors and endpoints
+3. Use `list_kubernetes_pods(namespace="default")` with selector to find backing pods
+4. Use `fetch_kubernetes_logs()` on the identified pods
+
+*Scenario 2: "Why is my service not responding?"*
+1. Use `get_services()` to verify service exists
+2. Use `describe_service()` to check if endpoints are populated (if no endpoints, pods aren't matching selector)
+3. Use `list_kubernetes_pods()` to verify pods exist and are running
+4. Use `describe_pod()` to check for events (CrashLoopBackOff, ImagePullBackOff, etc.)
+5. Use `fetch_kubernetes_logs()` to check application logs
+
+*Scenario 3: "Are there any pod failures in production namespace?"*
+1. Use `list_kubernetes_pods(namespace="production")` to see all pods
+2. Check pod status in the response for Failed/CrashLoopBackOff states
+3. Use `describe_pod()` on failed pods to see events and reasons
+4. Use `fetch_kubernetes_logs()` to see what caused the failure
+
+*Scenario 4: "Check cluster health"*
+1. Use `get_nodes()` to see all nodes and their status
+2. Use `describe_node()` on any nodes showing NotReady or issues
+3. Use `get_namespaces()` to see all namespaces
+4. Use `list_kubernetes_pods()` in critical namespaces to check pod health
 
 
 ## Response Format
