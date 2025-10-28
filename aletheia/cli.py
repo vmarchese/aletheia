@@ -34,6 +34,7 @@ from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer import CodeAnalyzer
 from aletheia.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
@@ -435,6 +436,81 @@ def session_delete(
     except Exception as e:
         typer.echo(f"Error deleting session: {e}", err=True)
         raise typer.Exit(1)
+
+@session_app.command("timeline")
+def session_timeline(
+    session_id: str = typer.Argument(..., help="Session ID to export"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
+) -> None:
+    """prints a session timeline"""
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
+    
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
+    
+    try:
+        # Load configuration
+        config= load_config()
+        # Resume session to access metadata
+        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
+        metadata = session.get_metadata()
+
+        # Load scratchpad
+        scratchpad_file = session.scratchpad_file
+        if not scratchpad_file.exists():
+            console.print("[yellow]No scratchpad data found for this session[/yellow]")
+            return
+
+        scratchpad = Scratchpad(
+            session_dir=session.session_path,
+            encryption_key=session._get_key()
+        )
+
+        # Display scratchpad contents (raw journal)
+        journal_content = scratchpad.read_scratchpad()        
+
+        prompt_loader = Loader()        
+        # get LLM Service
+        llm_service = LLMService(config=config)        
+
+        timeline_agent = TimelineAgent(name="timeline_agent", 
+                                       instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
+                                       description="Timeline Agent for generating session timeline",
+                                       service=llm_service.client)
+
+        message = ChatMessageContent(role="user", content=f"""
+                                       Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
+                                       The timeline should summarize key actions, findings, and next steps in chronological order.
+                                       The output should be in the following format:
+                                       - [Time/Step]: Short description of action or finding
+                                       No additional commentary is needed.
+                                       """)
+        response = asyncio.run(timeline_agent.agent.get_response(messages=message))
+        if response:
+            console.print(f"\n{response}\n")
+
+
+
+
+
+
+    except FileNotFoundError:
+        typer.echo(f"Error: Session '{session_id}' not found", err=True)
+        raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Error exporting session: {e}", err=True)
+        raise typer.Exit(1)        
+
 
 
 @session_app.command("export")

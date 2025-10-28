@@ -28,8 +28,8 @@ class BaseAgent(ABC):
         description: str,
         instructions: str,
         service: ChatCompletionClientBase,
-        session: Session,
         scratchpad: Scratchpad,
+        session: Session = None,
         plugins: list[KernelPlugin] = None,
     ):
         """Initialize the base agent.
@@ -46,7 +46,8 @@ class BaseAgent(ABC):
         self.description = description
         self.session = session  
         _plugins = []
-        _plugins.append(scratchpad)
+        if scratchpad:  
+            _plugins.append(scratchpad)
         _plugins.extend(plugins or [])
 
         self.agent = ChatCompletionAgent(
