@@ -128,7 +128,7 @@ Aletheia supports flexible configuration via environment variables, YAML files, 
 
 **How to configure:**
 
-- Set environment variables (e.g. `ALETHEIA_LLM_DEFAULT_MODEL=gpt-4`)
+- Set environment variables with the `ALETHEIA_` prefix (e.g. `ALETHEIA_LLM_AZURE_DEPLOYMENT=gpt-4.1`)
 - Edit YAML config files (`./.aletheia/config.yaml`, `~/.aletheia/config.yaml`, `/etc/aletheia/config.yaml`)
 - Use `.env` files for local overrides
 
