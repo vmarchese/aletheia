@@ -328,7 +328,7 @@ class TestSKBaseAgentPromptLogging:
     async def test_invoke_async_logs_prompt(self, tmp_path):
         """Test that invoke_async logs prompts when trace enabled."""
         from aletheia.agents.sk_base import SKBaseAgent
-        from aletheia.scratchpad import Scratchpad
+        from aletheia.plugins.scratchpad import Scratchpad
         
         # Enable trace logging
         enable_trace_logging(tmp_path)
@@ -381,7 +381,7 @@ class TestOrchestratorAgentTransitions:
     def test_route_to_agent_logs_transition(self, tmp_path):
         """Test that route_to_agent logs transitions when trace enabled."""
         from aletheia.agents.orchestrator import OrchestratorAgent
-        from aletheia.scratchpad import Scratchpad
+        from aletheia.plugins.scratchpad import Scratchpad
         
         # Enable trace logging
         enable_trace_logging(tmp_path)

@@ -15,6 +15,7 @@ from semantic_kernel.functions import kernel_function
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class LogFilePlugin:
@@ -26,7 +27,10 @@ class LogFilePlugin:
         Args:
             config: Configuration object for the plugin
         """
+        self.name = "LogFilePlugin"
         self.config = config
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("log_file_plugin")        
 
     @kernel_function(description="Fetch logs from a file.")
     async def fetch_logs_from_file(

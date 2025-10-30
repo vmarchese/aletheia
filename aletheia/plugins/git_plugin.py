@@ -18,6 +18,7 @@ from typing import Annotated
 from semantic_kernel.functions import kernel_function
 from aletheia.session import Session
 from aletheia.utils.logging import log_debug
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class GitPlugin:
@@ -41,7 +42,11 @@ class GitPlugin:
             repositories: Optional list of repository paths to search.
                          Can be set later via set_repositories().
         """
+        self.name = "GitPlugin"
         self.session = session
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("git_plugin")
+
     
 
     @kernel_function(

@@ -10,7 +10,7 @@ from semantic_kernel.connectors.ai.chat_completion_client_base import ChatComple
 from semantic_kernel.functions.kernel_plugin import KernelPlugin
 
 
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.utils.logging import log_debug
 from aletheia.session import Session
 from aletheia.agents.base import BaseAgent
@@ -41,5 +41,4 @@ class Orchestrator(BaseAgent):
                          instructions=instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad,
-                         plugins=sub_agents)
+                         plugins=[sub_agents, scratchpad])

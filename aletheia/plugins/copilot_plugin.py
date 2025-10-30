@@ -5,6 +5,7 @@ from semantic_kernel.functions import kernel_function
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class CopilotPlugin:
@@ -19,6 +20,9 @@ class CopilotPlugin:
         """
         self.session = session
         self.config = config
+        self.name = "CopilotPlugin"
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("copilot_plugin")        
 
     @kernel_function(description="Launches Copilot code with -p in non interactive mode on a folder containing the repository to analyze.")
     async def code_analyze(

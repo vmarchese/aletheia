@@ -36,7 +36,7 @@ from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
 from aletheia.agents.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer import CodeAnalyzer
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.llm.prompts.loader import Loader
 from aletheia.agents.entrypoint import Orchestrator

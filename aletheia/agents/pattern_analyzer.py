@@ -14,7 +14,7 @@ from typing import Any, Dict
 import json
 
 from aletheia.agents.base import BaseAgent
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.utils.logging import log_debug
 
 

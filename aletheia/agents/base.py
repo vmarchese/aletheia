@@ -4,7 +4,7 @@ from semantic_kernel.agents import ChatCompletionAgent
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
 from semantic_kernel.functions.kernel_plugin import KernelPlugin
 
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.session import Session
 
 
@@ -28,7 +28,7 @@ class BaseAgent(ABC):
         description: str,
         instructions: str,
         service: ChatCompletionClientBase,
-        scratchpad: Scratchpad,
+        scratchpad: Scratchpad = None,
         session: Session = None,
         plugins: list[KernelPlugin] = None,
     ):

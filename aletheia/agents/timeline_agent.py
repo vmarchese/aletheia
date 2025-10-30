@@ -16,7 +16,7 @@ from semantic_kernel.connectors.ai.chat_completion_client_base import ChatComple
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config

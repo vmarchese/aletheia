@@ -1,0 +1,3 @@
+You have access to the Copilot Code plugin for code analysis:
+
+- **code_analyze(prompt, repo_path)**: Launches Copilot with `-p` in non-interactive mode on a folder containing the repository to analyze. The `prompt` parameter is the analysis instruction, and `repo_path` is the path to the repository, local or cloned. Use the path returned by `git_clone_repo` if you cloned a repository, or the user-provided local path.

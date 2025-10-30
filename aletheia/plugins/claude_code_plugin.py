@@ -5,6 +5,7 @@ from semantic_kernel.functions import kernel_function
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class ClaudeCodePlugin:
@@ -19,6 +20,9 @@ class ClaudeCodePlugin:
         """
         self.session = session
         self.config = config
+        self.name = "ClaudeCodePlugin"
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("claude_code_plugin")
 
     @kernel_function(description="Launches claude code with -p in non interactive mode on a folder containing the repository to analyze.")
     async def code_analyze(

@@ -13,7 +13,7 @@ from rich.table import Table
 
 from aletheia.demo.scenario import DEMO_SCENARIOS, DemoScenario
 from aletheia.demo.agents import create_mock_agents
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.ui.output import OutputFormatter
 
 
