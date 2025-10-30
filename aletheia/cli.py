@@ -30,15 +30,15 @@ from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
 from aletheia.llm.service import LLMService
-from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
-from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
-from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
-from aletheia.agents.pcap_file_data_fetcher import PCAPFileDataFetcher
-from aletheia.agents.timeline_agent import TimelineAgent
-from aletheia.agents.code_analyzer import CodeAnalyzer
+from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import KubernetesDataFetcher
+from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
+from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
+from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.timeline.timeline_agent import TimelineAgent
+from aletheia.agents.code_analyzer.code_analyzer import CodeAnalyzer
 from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
-from aletheia.llm.prompts.loader import Loader
+from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.history import ConversationHistory
 from aletheia.utils.logging import log_debug
@@ -135,7 +135,7 @@ def _build_plugins(config: Config,
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
                                     config=config,
                                     description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
-                                    instructions=prompt_loader.load("claude_code_analyzer", "instructions"),
+                                    instructions=prompt_loader.load("code_analyzer", "instructions", prefix=config.code_analyzer.lower()),
                                     service=llm_service.client,
                                     session=session,
                                     scratchpad=scratchpad)                                                   
@@ -481,7 +481,7 @@ def session_timeline(
         llm_service = LLMService(config=config)        
 
         timeline_agent = TimelineAgent(name="timeline_agent", 
-                                       instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
+                                       instructions=prompt_loader.load("timeline", "instructions"),
                                        description="Timeline Agent for generating session timeline",
                                        service=llm_service.client)
 
@@ -501,8 +501,8 @@ def session_timeline(
 
 
 
-    except FileNotFoundError:
-        typer.echo(f"Error: Session '{session_id}' not found", err=True)
+    except FileNotFoundError as fne:
+        typer.echo(f"Error: Session '{session_id}' not found {fne}", err=True)
         raise typer.Exit(1)
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)

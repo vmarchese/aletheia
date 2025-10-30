@@ -380,7 +380,7 @@ class TestOrchestratorAgentTransitions:
     
     def test_route_to_agent_logs_transition(self, tmp_path):
         """Test that route_to_agent logs transitions when trace enabled."""
-        from aletheia.agents.orchestrator import OrchestratorAgent
+        from aletheia.agents.orchestrator.orchestrator import OrchestratorAgent
         from aletheia.plugins.scratchpad import Scratchpad
         
         # Enable trace logging
