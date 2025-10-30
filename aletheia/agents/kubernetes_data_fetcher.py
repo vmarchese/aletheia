@@ -48,5 +48,5 @@ class KubernetesDataFetcher(BaseAgent):
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad)
+                         plugins=plugins)
     

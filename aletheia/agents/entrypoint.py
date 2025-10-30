@@ -35,10 +35,14 @@ class Orchestrator(BaseAgent):
         scratchpad: Scratchpad,
         sub_agents: List[KernelPlugin]):
 
+        plugins = []
+        plugins.extend(sub_agents)
+        plugins.append(scratchpad)
+
         log_debug("Orchestrator::__init__:: called")
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
                          service=service,
                          session=session,
-                         plugins=[sub_agents, scratchpad])
+                         plugins=plugins)

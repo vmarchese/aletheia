@@ -49,6 +49,5 @@ class LogFileDataFetcher(BaseAgent):
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad,
-                         plugins=[log_file_plugin, scratchpad])        
+                         plugins=plugins)
     
