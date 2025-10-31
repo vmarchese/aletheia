@@ -19,6 +19,7 @@ from semantic_kernel.functions import kernel_function
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class KubernetesPlugin:
@@ -47,9 +48,13 @@ class KubernetesPlugin:
         Raises:
             ValueError: If required configuration is missing
         """
+        self.name = "KubernetesPlugin"
         self.context = config.kubernetes_context 
         self.namespace = config.kubernetes_namespace or "default"
         self.session = session
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("kubernetes_plugin")
+
     
     @kernel_function(
         name="fetch_kubernetes_logs",

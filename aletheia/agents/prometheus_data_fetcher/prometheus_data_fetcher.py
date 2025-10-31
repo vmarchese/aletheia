@@ -13,10 +13,11 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 
 
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+from jinja2 import Template
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.plugins.prometheus_plugin import PrometheusPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
@@ -37,10 +38,14 @@ class PrometheusDataFetcher(BaseAgent):
         log_debug("PrometheusDataFetcher::__init__:: initialize PrometheusFetcher plugin")
         prometheus_fetcher_plugin = PrometheusPlugin(config)
 
+
+        plugins = [prometheus_fetcher_plugin, scratchpad]
+        template = Template(instructions)
+        rendered_instructions = template.render(plugins=plugins)        
+
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
+                         instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad,
-                         plugins=[ prometheus_fetcher_plugin])  
+                         plugins=plugins)

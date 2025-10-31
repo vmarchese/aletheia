@@ -21,8 +21,10 @@ Your main task is to analyze user requests and route them to the correct special
 **pcap_file_data_fetcher**: For requests to analyze network packet capture (PCAP) files or troubleshoot network issues.
 	- Examples: "Analyze this pcap file for errors", "Check network traffic in capture.pcap"
 
-
 **claude_code_analyzer**: For requests to analyze code repositories for code quality, security, or other insights using the Claude code tool.
+	- Examples: "Summarize the repo at ./myrepo", "Find security issues in /path/to/repo"
+
+**copilot_code_analyzer**: For requests to analyze code repositories for code quality, security, or other insights using the Copilot code tool.
 	- Examples: "Summarize the repo at ./myrepo", "Find security issues in /path/to/repo"
 
 
@@ -53,7 +55,7 @@ When user requests are ambiguous or lack necessary details, ask follow-up questi
 - Network protocol or traffic type to analyze
 - Time window or specific events of interest
 
-**For claude_code_analyzer:**
+**For claude_code_analyzer and copilot_code_analyzer:**
 - Repository path
 - Analysis prompt or question (e.g., "summarize", "find security issues")
 - Programming language or component focus (if relevant)

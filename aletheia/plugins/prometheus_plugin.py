@@ -19,6 +19,7 @@ from semantic_kernel.functions import kernel_function
 
 from aletheia.config import Config
 from aletheia.utils.logging import log_debug, log_error
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 # PromQL query templates for common use cases
@@ -58,6 +59,7 @@ class PrometheusPlugin:
             ValueError: If required configuration is missing
         """
         log_debug("PrometheusPlugin::__init__:: called")
+        self.name = "PrometheusPlugin"
         
         if config.prometheus_endpoint:
             self.endpoint = config.prometheus_endpoint.rstrip('/')
@@ -66,6 +68,8 @@ class PrometheusPlugin:
         
         # Store auth config if provided
         self.auth_config = config.prometheus_credentials_type
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("prometheus_plugin")        
     
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for authentication.

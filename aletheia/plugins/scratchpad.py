@@ -10,6 +10,7 @@ from pathlib import Path
 from semantic_kernel.functions import kernel_function
 
 from aletheia.encryption import encrypt_data, decrypt_data, EncryptionError, DecryptionError
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class ScratchpadFileName(Enum):
@@ -44,6 +45,7 @@ class Scratchpad:
             session_dir: Path to session directory
             encryption_key: Encryption key for saving/loading (None for plaintext mode)
         """
+        self.name = "Scratchpad"        
         self.session_dir = Path(session_dir)
         self.encryption_key = encryption_key
         self.unsafe = encryption_key is None
@@ -54,6 +56,8 @@ class Scratchpad:
         
         # Load existing scratchpad if it exists
         self._load_from_disk()
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("scratchpad")        
 
     def _load_from_disk(self) -> None:
         """Load scratchpad from file (encrypted or plaintext)."""

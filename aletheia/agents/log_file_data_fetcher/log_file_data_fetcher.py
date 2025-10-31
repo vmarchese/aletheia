@@ -13,16 +13,17 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 
 
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+from jinja2 import Template
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.scratchpad import Scratchpad
-from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
+from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.log_file_plugin import LogFilePlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
 
-class KubernetesDataFetcher(BaseAgent):
+class LogFileDataFetcher(BaseAgent):
     def __init__(self, 
                  name: str, 
                  config: Config,
@@ -32,17 +33,21 @@ class KubernetesDataFetcher(BaseAgent):
                  session: Session,
                  scratchpad: Scratchpad):
 
-        log_debug("KubernetesDataFetcher::__init__:: called")
+        log_debug("LogFileDataFetcher::__init__:: called")
 
-        log_debug("KubernetesDataFetcher::__init__:: setup plugins")
-        kube_fetcher_plugin = KubernetesPlugin(config=config, session=session)
+        log_debug("LogFileDataFetcher::__init__:: setup plugins")
+        log_file_plugin = LogFilePlugin(config)
+
+        plugins = [log_file_plugin, scratchpad]
+
+        template = Template(instructions)
+        rendered_instructions = template.render(plugins=plugins)        
 
 
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
+                         instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad,
-                         plugins=[kube_fetcher_plugin])        
+                         plugins=plugins)
     

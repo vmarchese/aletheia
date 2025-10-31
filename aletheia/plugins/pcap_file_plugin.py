@@ -16,6 +16,7 @@ from semantic_kernel.functions import kernel_function
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
+from aletheia.plugins.loader import PluginInfoLoader
 
 
 class PCAPFilePlugin:
@@ -28,8 +29,11 @@ class PCAPFilePlugin:
             config: Configuration object for the plugin
             session: Session object for managing state
         """
+        self.name = "PCAPFilePlugin"
         self.session = session
         self.config = config
+        loader = PluginInfoLoader()
+        self.instructions = loader.load("pcap_file_plugin")
 
     @kernel_function(description="Read a pcap file and return packet details as CSV (verbose mode).")
     async def read_pcap_from_file(

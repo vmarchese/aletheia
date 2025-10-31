@@ -13,16 +13,18 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 
 
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+from jinja2 import Template
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.scratchpad import Scratchpad
-from aletheia.plugins.log_file_plugin import LogFilePlugin
+from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.pcap_file_plugin import PCAPFilePlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
 
-class LogFileDataFetcher(BaseAgent):
+class PCAPFileDataFetcher(BaseAgent):
+
     def __init__(self, 
                  name: str, 
                  config: Config,
@@ -32,17 +34,21 @@ class LogFileDataFetcher(BaseAgent):
                  session: Session,
                  scratchpad: Scratchpad):
 
-        log_debug("LogFileDataFetcher::__init__:: called")
+        log_debug("PCAPFileDataFetcher::__init__:: called")
 
-        log_debug("LogFileDataFetcher::__init__:: setup plugins")
-        log_file_plugin = LogFilePlugin(config)
+        log_debug("PCAPFileDataFetcher::__init__:: setup plugins")
+        pcap_file_plugin = PCAPFilePlugin(config=config, session=session)
+
+        plugins = [pcap_file_plugin, scratchpad]
+        template = Template(instructions)
+        rendered_instructions = template.render(plugins=plugins)
+
 
 
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
+                         instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad,
-                         plugins=[log_file_plugin])        
+                         plugins=plugins)
     

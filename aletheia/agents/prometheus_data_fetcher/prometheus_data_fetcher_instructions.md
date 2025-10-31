@@ -5,17 +5,12 @@ Your task is ONLY to collect metrics and time-series data from Prometheus based 
 
 ## Available Tools
 
-### Scratchpad Plugin
+You have access to the following plugins
 
-You have access to the Scratchpad plugin with the following functions:
-
-- **read_scratchpad()**: Read the entire scratchpad journal to see all previous entries and context from other agents
-- **write_journal_entry(description, text)**: Append a new timestamped entry to the scratchpad journal with a description and detailed text
-
-Use the scratchpad to:
-- Read previous context with `read_scratchpad()` to understand what other agents have discovered
-- Document your findings with `write_journal_entry("PrometheusDataFetcher", "<description of findings>","<your findings>")`
-- Share collected metrics and anomalies so other agents can use your findings
+{% for plugin in plugins %}
+### {{ plugin.name }}
+  {{ plugin.instructions }}
+{% endfor %}
 
 ## Your Task
 1. **Extract Prometheus parameters** from the conversation and problem description:
@@ -24,10 +19,7 @@ Use the scratchpad to:
    - Time ranges (if mentioned in conversation)
    - Specific PromQL queries (if the user provided them)
 
-2. **Use the prometheus plugin** to collect metrics:
-   - Use `prometheus.fetch_prometheus_metrics()` to execute PromQL queries
-   - Use `prometheus.build_promql_from_template()` to use predefined templates for common patterns
-   - Use `prometheus.execute_promql_query()` for custom queries
+2. **Use the prometheus plugin** to collect metrics
 
 3. **Focus on anomalies** - look for spikes, drops, or unusual patterns in the metrics
 

@@ -6,11 +6,11 @@ from semantic_kernel.agents import HandoffOrchestration, OrchestrationHandoffs
 from semantic_kernel.agents.runtime import InProcessRuntime
 from semantic_kernel.contents import ChatMessageContent, AuthorRole
 
-from aletheia.agents.orchestrator import OrchestratorAgent
-from aletheia.agents.kubernetes_data_fetcher import KubernetesDataFetcher
-from aletheia.agents.prometheus_data_fetcher import PrometheusDataFetcher
+from aletheia.agents.orchestrator.orchestrator import OrchestratorAgent
+from aletheia.agents.kubernetes.kubernetes_data_fetcher import KubernetesDataFetcher
+from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.pattern_analyzer import PatternAnalyzerAgent
-from aletheia.agents.log_file_data_fetcher import LogFileDataFetcher
+from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.utils.logging import log_debug
 from aletheia.session import Session
 from aletheia.agents.history import ConversationHistory

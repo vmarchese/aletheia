@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from aletheia.scratchpad import ScratchpadFileName
+from aletheia.plugins.scratchpad import ScratchpadFileName
 
 from aletheia.encryption import (
     create_session_encryption,

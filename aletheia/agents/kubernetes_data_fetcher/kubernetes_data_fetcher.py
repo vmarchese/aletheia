@@ -12,18 +12,18 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 """
 
 
+from jinja2 import Template
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.scratchpad import Scratchpad
-from aletheia.plugins.pcap_file_plugin import PCAPFilePlugin
+from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
 
-class PCAPFileDataFetcher(BaseAgent):
-
+class KubernetesDataFetcher(BaseAgent):
     def __init__(self, 
                  name: str, 
                  config: Config,
@@ -33,17 +33,20 @@ class PCAPFileDataFetcher(BaseAgent):
                  session: Session,
                  scratchpad: Scratchpad):
 
-        log_debug("PCAPFileDataFetcher::__init__:: called")
+        log_debug("KubernetesDataFetcher::__init__:: called")
 
-        log_debug("PCAPFileDataFetcher::__init__:: setup plugins")
-        pcap_file_plugin = PCAPFilePlugin(config=config, session=session)
+        log_debug("KubernetesDataFetcher::__init__:: setup plugins")
+        kube_fetcher_plugin = KubernetesPlugin(config=config, session=session)
 
+        plugins = [kube_fetcher_plugin, scratchpad]
+
+        template = Template(instructions)
+        rendered_instructions = template.render(plugins=plugins)
 
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
+                         instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         scratchpad=scratchpad,
-                         plugins=[pcap_file_plugin])        
+                         plugins=plugins)
     
