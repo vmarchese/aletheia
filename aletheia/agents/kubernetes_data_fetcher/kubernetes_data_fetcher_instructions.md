@@ -20,6 +20,7 @@ You have access to the following plugins
    - Namespace (look for "namespace: name", "in namespace xyz", or use "default" if not specified)
    - Container names (if mentioned)
    - Time ranges (if mentioned in conversation)
+   - PID if you need to get a thread dump
 
 2. **Use the kubernetes plugin** to collect data:
 
@@ -44,6 +45,11 @@ You have access to the following plugins
 - **For cluster-wide issues**: Use `get_nodes()` to check node health, `get_namespaces()` to list namespaces
 - **For resource problems**: Use `describe_node()` or `describe_namespace()` to check resource quotas and limits
 - **When user mentions a service name**: Use `get_services()` first to verify the service exists, then use `describe_service()` to see which pods are backing it
+- **When user wants to find the running processes in a container in a pod**: 
+  - Use `describe_pod()` to find the containers in the pod
+  - If there is only one container use `ps()` to find the processes and report the ones the user has asked
+  - If there are multiple containers ask the user for which container
+- **When user wants to analyze a thread dump of a java container in a pod**: Use `ps()` to find the java process, extract the PID from the result, use `thread_dump()` on the PID to get a thread dump and read the logs
 
 **Best Practices:**
 - Start broad (list resources) then narrow down (describe specific resource)
@@ -77,6 +83,11 @@ You have access to the following plugins
 2. Use `describe_node()` on any nodes showing NotReady or issues
 3. Use `get_namespaces()` to see all namespaces
 4. Use `list_kubernetes_pods()` in critical namespaces to check pod health
+
+*Scenario 5: "Analyze the thread dump of the java pod pod-1234"*
+1. Use `ps()` to get the java process and extract the pid
+2. Use `thread_dump(pid=pid)` on the extracted pid
+3. Use `fetch_kubernetes_logs()` to read the thread dump and to analyze it
 
 
 ## Response Format

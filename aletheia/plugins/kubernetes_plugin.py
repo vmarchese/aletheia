@@ -877,3 +877,149 @@ class KubernetesPlugin:
                 "pod": pod,
                 "namespace": namespace
             })
+
+    @kernel_function(
+        name="thread_dump",
+        description="Sends a SIGQUIT to all Java processes in a Kubernetes pod to generate thread dumps"
+    )
+    def thread_dump(
+        self,
+        pod: Annotated[str, "The name of the pod"],
+        container: Annotated[str, "The name of the container"] = "",
+        namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
+        pid: Annotated[str, "The PID of the Java process to dump"] = ""
+    ) -> Annotated[str, "Detailed pod description including events and configuration"]:
+        """Gets the thread dumps from all Java processes inside a container of a Kubernetes pod.
+
+        This function runs 'kubectl exec <pod> -n <namespace> -- kill -QUIT <pid>' to get comprehensive information
+        about the thread dumps from the specified container.
+
+        Args:
+            pod: Pod name to describe
+            container: Container name (if multiple containers in pod)
+            namespace: Kubernetes namespace (default: "default")
+            pid: The PID of the Java process to dump
+        
+        Returns:
+            n/A
+        """
+        log_debug(f"KubernetesPlugin::thread_dump:: Getting thread dumps for pod '{pod}'.'{container}'in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "exec", pod, "-n", namespace
+        ])
+        if container != "":
+            cmd.extend(["-c", container])
+        cmd.extend(["--", "kill", "-QUIT", pid])
+        
+        try:
+            # Run kubectl command
+            log_debug(f"KubernetesPlugin::thread_dump:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": f"kubectl thread dump failed: {error_msg}",
+                    "pod": pod,
+                    "container": container,
+                    "pid": pid,
+                    "namespace": namespace
+                })
+            
+            # Return the describe output as-is (it's already human-readable)
+            description = process.stdout.decode()
+
+            return json.dumps({
+                "pod": pod,
+                "pid": pid,
+                "container": container,
+                "namespace": namespace,
+            }, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to get pod processes: {str(e)}",
+                "pod": pod,
+                "pid": pid,
+                "container": container,
+                "namespace": namespace
+            })
+
+    @kernel_function(
+        name="ps",
+        description="Lists all processes running in a Kubernetes pod"
+    )
+    def ps(
+        self,
+        pod: Annotated[str, "The name of the pod"],
+        container: Annotated[str, "The name of the container"] = "",
+        namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default"
+    ) -> Annotated[str, "Detailed process list from the pod"]:
+        """Lists all processes running in a Kubernetes pod.
+
+        This function runs 'kubectl exec <pod> -n <namespace> -- ps aux" to get comprehensive information
+        about the processes from the specified container.
+
+        Args:
+            pod: Pod name to describe
+            container: Container name (if multiple containers in pod)
+            namespace: Kubernetes namespace (default: "default")
+        
+        Returns:
+            n/A
+        """
+        log_debug(f"KubernetesPlugin::ps:: Getting process list for pod '{pod}'.'{container}'in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        if self.context:
+            cmd.extend(["--context", self.context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "exec", pod, "-n", namespace
+        ])
+        if container != "":
+            cmd.extend(["-c", container])
+        cmd.extend(["--", "ps", "aux"])
+        
+        try:
+            # Run kubectl command
+            log_debug(f"KubernetesPlugin::ps:: Running command: [{' '.join(cmd)}]")
+            process = subprocess.run(args=cmd, capture_output=True)
+            
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": f"kubectl thread dump failed: {error_msg}",
+                    "pod": pod,
+                    "container": container,
+                    "namespace": namespace
+                })
+            
+            # Return the describe output as-is (it's already human-readable)
+            description = process.stdout.decode()
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"{pod}_ps", description)
+                log_debug(f"KubernetesPlugin::ps:: Saved pod process list to {saved}")
+
+
+            return json.dumps({
+                "process_list": description,
+                "pod": pod,
+                "container": container,
+                "namespace": namespace,
+            }, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "error": f"Failed to get pod processes: {str(e)}",
+                "pod": pod,
+                "pid": pid,
+                "container": container,
+                "namespace": namespace
+            })
