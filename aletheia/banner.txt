@@ -1,15 +1,15 @@
-[gold1]
- █  █████████████ █
-  ██    █   █    █                                                                          
-  █  ██  █ █  ██  █     █████╗ ██╗     ███████╗████████╗██╗  ██╗███████╗██╗ █████╗                                                                        
-   █    ██ ██    █     ██╔══██╗██║     ██╔════╝╚══██╔══╝██║  ██║██╔════╝██║██╔══██╗                                                                       
-  █ ████  █  ██████    ██║  ██║██║     ██║        ██║   ██║  ██║██║     ██║██║  ██║                                                                      
-  █           █████    ███████║██║     █████╗     ██║   ███████║█████╗  ██║███████║                                                                       
-   ██          ████    ██╔══██║██║     ██╔══╝     ██║   ██╔══██║██╔══╝  ██║██╔══██║                                                                     
-     ████        █     ██║  ██║███████╗███████╗   ██║   ██║  ██║███████╗██║██║  ██║                                                                     
-          ████████     ╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝╚═╝  ╚═╝    
-[/gold1]                                                     
+
+[bright_white] █  █████████████ █ [/bright_white]
+[bright_white]  ██    █   █    █  [/bright_white]
+[bright_white]  █  ██  █ █  ██  █ [/bright_white] [gold1] █████╗ ██╗     ███████╗████████╗██╗  ██╗███████╗██╗ █████╗  [/gold1]
+[bright_white]   █    ██ ██    █  [/bright_white] [gold1]██╔══██╗██║     ██╔════╝╚══██╔══╝██║  ██║██╔════╝██║██╔══██╗ [/gold1]
+[bright_white]  █ ████  █  ██████ [/bright_white] [gold1]██║  ██║██║     ██║        ██║   ██║  ██║██║     ██║██║  ██║ [/gold1]
+[bright_white]  █           █████ [/bright_white] [gold1]███████║██║     █████╗     ██║   ███████║█████╗  ██║███████║ [/gold1]
+[bright_white]   ██          ████ [/bright_white] [gold1]██╔══██║██║     ██╔══╝     ██║   ██╔══██║██╔══╝  ██║██╔══██║ [/gold1]
+[bright_white]     ████        █  [/bright_white] [gold1]██║  ██║███████╗███████╗   ██║   ██║  ██║███████╗██║██║  ██║ [/gold1]
+[bright_white]          ████████  [/bright_white] [gold1]╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝╚═╝  ╚═╝ [/gold1]
+                     
                      [bright_cyan]* Un-hide incidents - Explain the why *[/bright_cyan]
 [italic]  
-        Aletheia may confidently explain the wrong thing -- verify before you 
-        change anything, and keep your rollback nearby.            [/italic]
+  Aletheia may confidently explain the wrong thing -- verify before you change 
+  anything, and keep your rollback nearby. Happy Troubleshooting!           [/italic]
