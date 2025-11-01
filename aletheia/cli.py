@@ -34,6 +34,7 @@ from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import Kube
 from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.aws.aws import AWSAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer.code_analyzer import CodeAnalyzer
 from aletheia.plugins.scratchpad import Scratchpad
@@ -130,6 +131,15 @@ def _build_plugins(config: Config,
                                             session=session,
                                             scratchpad=scratchpad)
     plugins.append(prometheus_fetcher.agent)
+
+    aws_agent = AWSAgent(name="aws",
+                         config=config,
+                         description="AWS Agent for fetching AWS related data using AWS CLI.",
+                         instructions=prompt_loader.load("aws", "instructions"),
+                         service=llm_service.client,
+                         session=session,
+                         scratchpad=scratchpad)
+    plugins.append(aws_agent.agent)    
     
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
