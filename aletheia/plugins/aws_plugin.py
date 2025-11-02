@@ -100,3 +100,43 @@ class AWSPlugin:
         except Exception as e:
             log_error(f"Error launching aws cli: {str(e)}")
             return f"Error launching aws cli: {e}"
+
+    @kernel_function(description="Gets Route Tables the requested profile")
+    async def aws_ec2_route_tables(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws ec2 describe-route-tables for the given profile."""
+        try:
+            log_debug(f"AWSPlugin::aws_ec2_route_tables:: Launching aws ec2 describe-route-tables for profile: {profile}")
+            import subprocess
+
+            # Construct the command to run aws cli
+            command = [
+                "aws", 
+                "ec2",
+                "describe-route-tables",
+                "--profile",
+                profile
+            ]
+
+            # Run the command and capture output
+            log_debug(f"AWSPlugin::aws_ec2_route_tables:: Running command: [{' '.join(command)}]")
+            process = subprocess.run(args=command, capture_output=True)
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": ' '.join(command) + f" failed: {error_msg}"
+                })            
+
+
+            saved = ""
+            description = process.stdout.decode()
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, "ec2_describe_route_tables", description)
+                log_debug(f"AWSPlugin::aws_ec2_route_tables:: Saved EC2 route tables description to {saved}")
+
+            return description
+        except Exception as e:
+            log_error(f"Error launching aws cli: {str(e)}")
+            return f"Error launching aws cli: {e}"

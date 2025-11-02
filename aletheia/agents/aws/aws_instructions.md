@@ -48,6 +48,11 @@ You have access to the following plugins
 3. If the user has not specified a profile, ask him which one to use
 4. If the profile is there call `aws_ec2_instances(profile)`
 
+*Scenario 3: "Get me the route tables for EC2"
+1. Use `aws_profiles()` to find the list of profiles
+2. If the user has specified a profile check against the results returned
+3. If the user has not specified a profile, ask him which one to use
+4. If the profile is there call `aws_ec2_route_tables(profile)`
 ## Response Format
 After collecting the data:
 
