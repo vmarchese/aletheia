@@ -117,3 +117,21 @@ class AWSPlugin:
         """Launches aws elbv2 describe-target-group attributes for the given profile and target group ARN."""
         command = ["aws", "elbv2", "describe-target-group-attributes", "--target-group-arn", arn, "--profile", profile]
         return await self._run_aws_command(command, save_key="elbv2_describe_target_group_attributes", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
+
+    @kernel_function(description="Gets the VPCs for a profile")
+    async def aws_ec2_vpcs(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws ec2 describe-vpcs for the given profile."""
+        command = ["aws", "ec2", "describe-vpcs", "--profile", profile]
+        return await self._run_aws_command(command, save_key="ec2_describe_vpcs", log_prefix="AWSPlugin::aws_vpcs::")
+
+    @kernel_function(description="Gets the VPC endpoints for a profile")
+    async def aws_ec2_vpc_endpoints(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws ec2 describe-vpc-endpoints for the given profile."""
+        command = ["aws", "ec2", "describe-vpc-endpoints", "--profile", profile]
+        return await self._run_aws_command(command, save_key="ec2_describe_vpc_endpoints", log_prefix="AWSPlugin::aws_vpc_endpoints::")
