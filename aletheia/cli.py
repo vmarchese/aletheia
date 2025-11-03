@@ -35,6 +35,7 @@ from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import Prom
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
 from aletheia.agents.aws.aws import AWSAgent
+from aletheia.agents.azure.azure import AzureAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer.code_analyzer import CodeAnalyzer
 from aletheia.plugins.scratchpad import Scratchpad
@@ -140,6 +141,15 @@ def _build_plugins(config: Config,
                          session=session,
                          scratchpad=scratchpad)
     plugins.append(aws_agent.agent)    
+
+    azure_agent = AzureAgent(name="azure",
+                              config=config,
+                              description="Azure Agent for fetching Azure related data using Azure CLI.",
+                              instructions=prompt_loader.load("azure", "instructions"),
+                              service=llm_service.client,
+                              session=session,
+                         scratchpad=scratchpad)
+    plugins.append(azure_agent.agent)        
     
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
