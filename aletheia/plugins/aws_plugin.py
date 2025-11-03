@@ -68,3 +68,52 @@ class AWSPlugin:
         """Launches aws ec2 describe-route-tables for the given profile."""
         command = ["aws", "ec2", "describe-route-tables", "--profile", profile]
         return await self._run_aws_command(command, save_key="ec2_describe_route_tables", log_prefix="AWSPlugin::aws_ec2_route_tables::")
+
+    @kernel_function(description="Gets ELBV2  Load Balancers for the requested profile")
+    async def aws_elbv2_load_balancers(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-load-balancers for the given profile."""
+        command = ["aws", "elbv2", "describe-load-balancers", "--profile", profile]
+        return await self._run_aws_command(command, save_key="elbv2_describe_load_balancers", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
+
+    @kernel_function(description="Gets Listeners for the requested ELBV2 Load Balancer ARN and profile")
+    async def aws_elbv2_listeners(
+        self,
+        arn: Annotated[str, "The Load Balancer ARN"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-listeners for the given profile and load balancer ARN."""
+        command = ["aws", "elbv2", "describe-listeners", "--load-balancer-arn", arn, "--profile", profile]
+        return await self._run_aws_command(command, save_key="elbv2_describe_listeners", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
+
+    @kernel_function(description="Gets the Listener attributes for the requested ELBV2 Listener ARN and profile")
+    async def aws_elbv2_listener_attributes(
+        self,
+        arn: Annotated[str, "The Listener ARN"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-listener attributes for the given profile and listener ARN."""
+        command = ["aws", "elbv2", "describe-listener-attributes", "--listener-arn", arn, "--profile", profile]
+        return await self._run_aws_command(command, save_key="elbv2_describe_listener_attributes", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
+
+    @kernel_function(description="Gets Target groups for the requested ELBV2 Load Balancer ARN and profile")
+    async def aws_elbv2_target_groups(
+        self,
+        arn: Annotated[str, "The Load Balancer ARN"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-target-groups for the given profile and load balancer ARN."""
+        command = ["aws", "elbv2", "describe-target-groups", "--load-balancer-arn", arn, "--profile", profile]
+        return await self._run_aws_command(command, save_key="elbv2_describe_target_groups", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
+
+    @kernel_function(description="Gets the Target Groups attributes for the requested ELBV2 Target Group ARN and profile")
+    async def aws_elbv2_target_group_attributes(
+        self,
+        arn: Annotated[str, "The Target Group ARN"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-target-group attributes for the given profile and target group ARN."""
+        command = ["aws", "elbv2", "describe-target-group-attributes", "--target-group-arn", arn, "--profile", profile]
+        return await self._run_aws_command(command, save_key="elbv2_describe_target_group_attributes", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
