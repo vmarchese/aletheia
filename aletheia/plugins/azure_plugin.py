@@ -61,3 +61,24 @@ class AzurePlugin:
             command.extend(["--query", f"[?location=='{region}']"])
 
         return await self._run_azure_command(command, save_key="azure_resource_groups", log_prefix="AzurePlugin::azure_resource_groups::")
+
+    @kernel_function(description="Gets Azure virtual machines for a resource group.")
+    async def azure_vm(self,
+                       resource_group: Annotated[str, "The resource group name"] = "") -> str:
+        """Launches az vm list."""
+        command = ["az", "vm", "list"]
+        if resource_group and resource_group.strip() != "":
+            command.extend(["--resource-group", resource_group])
+        return await self._run_azure_command(command, save_key="azure_vm", log_prefix="AzurePlugin::azure_vm::")
+
+
+    @kernel_function(description="Gets Azure virtual machine details")
+    async def azure_vm_show(self,
+                             vm_name: Annotated[str, "The virtual machine name"],
+                             resource_group: Annotated[str, "The resource group name"] = "") -> str:
+        """Launches az vm show."""
+        command = ["az", "vm", "show", "--name", vm_name]
+        if resource_group and resource_group.strip() != "":
+            command.extend(["--resource-group", resource_group])
+        return await self._run_azure_command(command, save_key="azure_vm_show", log_prefix="AzurePlugin::azure_vm_show::")
+
