@@ -1,243 +1,118 @@
-"""Semantic Kernel plugin for Kubernetes operations.
 
-This plugin exposes Kubernetes operations as kernel functions that can be
-automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
-
-The plugin provides simplified async functions for:
-- Fetching logs from pods
-- Listing pods in namespaces
-- Getting pod status information
-"""
 
 import json
 import subprocess
-from datetime import datetime
-from typing import Annotated, Any, Dict, Optional
-
+from typing import Annotated, Optional
 from semantic_kernel.functions import kernel_function
-
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
+from datetime import datetime
 
 
 class KubernetesPlugin:
-    """Semantic Kernel plugin for Kubernetes operations.
-    
-    This plugin provides simplified async kernel functions for Kubernetes
-    operations, allowing SK agents to automatically invoke them via function calling.
-    
-    All functions use Annotated type hints to provide SK with parameter
-    descriptions for the LLM to understand how to call them.
-    
-    Attributes:
-        context: Kubernetes context name
-        namespace: Default namespace for operations
-    """
-    
-    def __init__(self, 
-                 config: Config,
-                 session: Session):
-        """Initialize the Kubernetes plugin.
-        
-        Args:
-            config: Configuration dictionary with Kubernetes settings.
-                   Must contain 'context' key for kubectl context.
-        
-        Raises:
-            ValueError: If required configuration is missing
-        """
-        self.name = "KubernetesPlugin"
-        self.context = config.kubernetes_context 
-        self.namespace = config.kubernetes_namespace or "default"
+    """Semantic Kernel plugin for Kubernetes operations."""
+
+    def __init__(self, config: Config, session: Session):
         self.session = session
+        self.config = config
+        self.name = "KubernetesPlugin"
         loader = PluginInfoLoader()
         self.instructions = loader.load("kubernetes_plugin")
+        self.context = getattr(config, "kubernetes_context", None)
+        self.namespace = getattr(config, "kubernetes_namespace", "default") or "default"
+
+    async def _run_kubectl(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
+        """Helper to run kubectl commands and handle output, errors, and saving."""
+        try:
+            import subprocess
+            log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
+            process = subprocess.run(args=command, capture_output=True)
+            if process.returncode != 0:
+                error_msg = process.stderr.decode().strip()
+                return json.dumps({
+                    "error": ' '.join(command) + f" failed: {error_msg}"
+                })
+            output = process.stdout.decode()
+            if self.session and save_key:
+                saved = self.session.save_data(SessionDataType.INFO, save_key, output)
+                log_debug(f"{log_prefix} Saved output to {saved}")
+            return output
+        except Exception as e:
+            log_error(f"{log_prefix} Error launching kubectl: {str(e)}")
+            return f"Error launching kubectl: {e}"
 
     
-    @kernel_function(
-        name="fetch_kubernetes_logs",
-        description="Fetch logs from a Kubernetes pod with optional filtering and limiting"
-    )
-    def fetch_kubernetes_logs(
+    @kernel_function(description="Fetch logs from a Kubernetes pod with optional filtering and limiting")
+    async def fetch_kubernetes_logs(
         self,
         pod: Annotated[str, "The name of the pod to fetch logs from"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
         container: Annotated[str, "Optional container name within the pod"] = None,
         tail_lines: Annotated[int, "Number of lines to fetch from the end of logs (default: 100)"] = 100,
         since_minutes: Annotated[str, "Fetch logs from the last N minutes (default: 30m)"] = "30",
-    ) -> Annotated[str, "JSON string containing logs and metadata"]:
-        """Fetch logs from a Kubernetes pod.
-        
-        This function fetches logs from the specified pod and returns them
-        in a structured format with metadata.
-        
-        Args:
-            pod: Pod name to fetch logs from
-            namespace: Kubernetes namespace (default: "default")
-            container: Optional container name within the pod
-            tail_lines: Number of lines to fetch from end of logs (default: 100)
-            since_minutes: Optional time window in minutes (fetch logs from last N minutes)
-        
-        Returns:
-            JSON string with structure:
-            {
-                "logs": [...],
-                "pod": "pod-name",
-                "namespace": "namespace",
-                "container": "container-name",
-                "count": 123
-            }
-        """
+        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
+    ) -> str:
         cmd = ["kubectl"]
-        log_debug(f"KubernetesPlugin::fetch_kubernetes_logs:: Fetching logs for pod '{pod}' in namespace '{namespace}'")
-        if self.context:
-            cmd.extend(["--context", self.context])
-
-        cmd.extend([
-            "--namespace", namespace,
-            "logs", pod,
-            "--tail", str(tail_lines)
-        ])
-        # Defensive: Coerce container to None if it's 'None', empty string, or not a string
-        if container in ("None", "", None):
-            container = None
-        elif not isinstance(container, str):
-            container = str(container)
-        
+        _context = context or self.context
+        if _context:
+            cmd.extend(["--context", _context])
+        cmd.extend(["--namespace", namespace, "logs", pod, "--tail", str(tail_lines)])
         if container:
             cmd.extend(["--container", container])
-        
         if since_minutes:
             cmd.extend(["--since", f"{since_minutes}m"])
-        
+        output = await self._run_kubectl(cmd, save_key=f"{pod}_logs", log_prefix="KubernetesPlugin::fetch_kubernetes_logs::")
         try:
-            # Run kubectl command asynchronously
-            log_debug(f"KubernetesPlugin::fetch_kubernetes_logs:: Running command: {' '.join(cmd)}")
-            process = subprocess.run(args=cmd, capture_output=True)
-            
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": f"kubectl logs failed: {error_msg}",
-                    "pod": pod,
-                    "namespace": namespace,
-                    "container": container
-                })
-            
-            # Parse logs into lines
-            log_text = process.stdout.decode()
-            log_lines = [line for line in log_text.split('\n') if line.strip()]
-
-            # save log lines to session folder
-            saved = ""
-            if self.session:
-                saved = self.session.save_data(SessionDataType.LOGS, f"{pod}_logs", log_text)
-                log_debug(f"KubernetesPlugin::fetch_kubernetes_logs:: Saved logs to {saved}")
-            
+            log_lines = [line for line in output.split('\n') if line.strip()]
             return json.dumps({
                 "logs": log_lines,
                 "pod": pod,
                 "namespace": namespace,
                 "container": container,
                 "count": len(log_lines),
-                "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-            
-        except Exception as e:
-            return json.dumps({
-                "error": f"Failed to fetch logs: {str(e)}",
-                "pod": pod,
-                "namespace": namespace,
-                "container": container
-            })
+        except Exception:
+            return output
     
-    @kernel_function(
-        name="list_kubernetes_pods",
-        description="List all pods in a Kubernetes namespace, optionally filtered by label selector"
-    )
-    def list_kubernetes_pods(
+    @kernel_function(description="List all pods in a Kubernetes namespace, optionally filtered by label selector")
+    async def list_kubernetes_pods(
         self,
         namespace: Annotated[str, "The Kubernetes namespace to list pods from"] = "default",
         selector: Annotated[Optional[str], "Optional label selector (e.g., 'app=payments-svc')"] = None,
-    ) -> Annotated[str, "JSON array of pod information"]:
-        """List pods in a Kubernetes namespace.
-        
-        Args:
-            namespace: Kubernetes namespace to list pods from (default: "default")
-            selector: Optional label selector for filtering pods (e.g., "app=payments-svc")
-        
-        Returns:
-            JSON array of pod information including names, status, and age
-        """
-        log_debug(f"KubernetesPlugin::list_kubernetes_pods:: Listing pods in namespace '{namespace}' with selector '{selector}'")
+        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
+    ) -> str:
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
-
-        cmd.extend([
-            "--namespace", namespace,
-            "get", "pods",
-            "-o", "json"
-        ])
-        
+        _context = context or self.context
+        if _context:
+            cmd.extend(["--context", _context])
+        cmd.extend(["--namespace", namespace, "get", "pods", "-o", "json"])
         if selector:
             cmd.extend(["-l", selector])
-        
+        output = await self._run_kubectl(cmd, save_key="pods", log_prefix="KubernetesPlugin::list_kubernetes_pods::")
         try:
-            # Run kubectl command asynchronously
-            log_debug(f"KubernetesPlugin::list_kubernetes_pods:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-            log_debug("KubernetesPlugin::list_kubernetes_pods:: Command completed")
-            
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                log_error(f"KubernetesPlugin::list_kubernetes_pods:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl get pods failed: {error_msg}",
-                    "namespace": namespace,
-                    "selector": selector
-                })
-            
-            # Parse kubectl JSON output
-            log_debug("KubernetesPlugin::list_kubernetes_pods:: Parsing kubectl output: " + process.stdout.decode())
-            kubectl_output = json.loads(process.stdout.decode())
+            kubectl_output = json.loads(output)
             pods = []
-            
             for item in kubectl_output.get("items", []):
                 metadata = item.get("metadata", {})
                 status = item.get("status", {})
-                
                 pods.append({
                     "name": metadata.get("name"),
                     "namespace": metadata.get("namespace"),
                     "phase": status.get("phase"),
-                    "created": metadata.get("creationTimestamp"),
-                    "ready": self._count_ready_containers(status)
+                    "created": metadata.get("creationTimestamp")
                 })
-
-                saved = ""
-                if self.session:
-                    saved = self.session.save_data(SessionDataType.INFO, "pods", json.dumps(pods, indent=2))
-                    log_debug(f"KubernetesPlugin::list_kubernetes_pods:: Saved pod information to {saved}")
-            
             return json.dumps({
                 "pods": pods,
                 "namespace": namespace,
                 "selector": selector,
                 "count": len(pods),
-                "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-            
-        except Exception as e:
-            return json.dumps({
-                "error": f"Failed to list pods: {str(e)}",
-                "namespace": namespace,
-                "selector": selector
-            })
+        except Exception:
+            return output
 
     @kernel_function(
         name="get_nodes",
@@ -245,6 +120,7 @@ class KubernetesPlugin:
     )
     def get_nodes(
         self,
+        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
     ) -> Annotated[str, "JSON object with nodes information including status and resources"]:
         """Get Kubernetes nodes.
 
@@ -256,8 +132,12 @@ class KubernetesPlugin:
         """
         log_debug("KubernetesPlugin::get_nodes:: Getting cluster nodes")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "get", "nodes",
@@ -343,7 +223,8 @@ class KubernetesPlugin:
     )
     def describe_node(
         self,
-        node: Annotated[str, "The name of the node to describe"],
+        node: Annotated[str, "The name of the node to describe"] = "",
+        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
     ) -> Annotated[str, "Human-readable description of the node with events and detailed information"]:
         """Describe a Kubernetes node in detail.
 
@@ -360,8 +241,12 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::describe_node:: Describing node '{node}'")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "describe", "node", node
@@ -409,6 +294,7 @@ class KubernetesPlugin:
     )
     def get_namespaces(
         self,
+        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
     ) -> Annotated[str, "JSON object with namespaces information including status and age"]:
         """Get Kubernetes namespaces.
 
@@ -420,8 +306,11 @@ class KubernetesPlugin:
         """
         log_debug("KubernetesPlugin::get_namespaces:: Getting cluster namespaces")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "get", "namespaces",
@@ -482,6 +371,7 @@ class KubernetesPlugin:
     def describe_namespace(
         self,
         namespace: Annotated[str, "The name of the namespace to describe"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
     ) -> Annotated[str, "Human-readable description of the namespace with resource quotas and limits"]:
         """Describe a Kubernetes namespace in detail.
 
@@ -498,8 +388,11 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::describe_namespace:: Describing namespace '{namespace}'")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "describe", "namespace", namespace
@@ -547,6 +440,7 @@ class KubernetesPlugin:
     )
     def get_services(
         self,
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         namespace: Annotated[str, "The Kubernetes namespace to list services from. Use 'all' for all namespaces"] = "default",
     ) -> Annotated[str, "JSON object with services information including type, cluster IP, and ports"]:
         """Get Kubernetes services.
@@ -563,8 +457,11 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::get_services:: Getting services in namespace '{namespace}'")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         if namespace.lower() == "all":
             cmd.extend(["get", "services", "--all-namespaces", "-o", "json"])
@@ -634,6 +531,7 @@ class KubernetesPlugin:
     def describe_service(
         self,
         svc: Annotated[str, "The name of the service to describe"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         namespace: Annotated[str, "The Kubernetes namespace containing the service"] = "default",
     ) -> Annotated[str, "Human-readable description of the service with endpoints and events"]:
         """Describe a Kubernetes service in detail.
@@ -651,9 +549,11 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::describe_service:: Describing service '{svc}' in namespace '{namespace}'")
         cmd = ["kubectl"]
-        print(cmd)
-        if self.context:
-            cmd.extend(["--context", self.context])
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "--namespace", namespace,
@@ -699,64 +599,24 @@ class KubernetesPlugin:
                 "namespace": namespace
             })
 
-    @kernel_function(
-        name="get_pod_status",
-        description="Get detailed status information for a specific Kubernetes pod"
-    )
-    def get_pod_status(
+    @kernel_function(description="Get detailed status information for a specific Kubernetes pod")
+    async def get_pod_status(
         self,
         pod: Annotated[str, "The name of the pod to get status for"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-    ) -> Annotated[str, "JSON object with detailed pod status information"]:
-        """Get status information for a Kubernetes pod.
-        
-        Args:
-            pod: Pod name to get status for
-            namespace: Kubernetes namespace (default: "default")
-        
-        Returns:
-            JSON string with pod status including:
-            - name, namespace, phase
-            - conditions and container statuses
-            - start time and IP address
-        """
-        log_debug(f"KubernetesPlugin::get_pod_status:: Getting status for pod '{pod}' in namespace '{namespace}'")
+    ) -> str:
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context]) 
-
-        cmd.extend([
-            "--namespace", namespace,
-            "get", "pod", pod,
-            "-o", "json"
-        ])
-        
+        _context = context or self.context
+        if _context:
+            cmd.extend(["--context", _context])
+        cmd.extend(["--namespace", namespace, "get", "pod", pod, "-o", "json"])
+        output = await self._run_kubectl(cmd, save_key=f"{pod}_status", log_prefix="KubernetesPlugin::get_pod_status::")
         try:
-            # Run kubectl command asynchronously
-            log_debug(f"KubernetesPlugin::get_pod_status:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-            
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": f"kubectl get pod failed: {error_msg}",
-                    "pod": pod,
-                    "namespace": namespace
-                })
-            
-            # Parse kubectl JSON output
-            pod_info = json.loads(process.stdout.decode())
+            pod_info = json.loads(output)
             metadata = pod_info.get("metadata", {})
             status = pod_info.get("status", {})
             spec = pod_info.get("spec", {})
-
-
-            saved = ""
-            if self.session:
-                saved = self.session.save_data(SessionDataType.INFO, f"{pod}_status", json.dumps(pod_info, indent=2))
-                log_debug(f"KubernetesPlugin::get_pod_status:: Saved pod information to {saved}")
-            
-            # Extract key status information
             result = {
                 "name": metadata.get("name"),
                 "namespace": metadata.get("namespace"),
@@ -767,50 +627,13 @@ class KubernetesPlugin:
                 "start_time": status.get("startTime"),
                 "conditions": status.get("conditions", []),
                 "container_statuses": status.get("containerStatuses", []),
-                "ready": self._count_ready_containers(status),
-                "restarts": self._count_restarts(status),
-                "timestamp": datetime.now().isoformat(),
-                "saved": str(saved)
+                "timestamp": datetime.now().isoformat()
             }
-            
             return json.dumps(result, indent=2)
-            
-        except Exception as e:
-            return json.dumps({
-                "error": f"Failed to get pod status: {str(e)}",
-                "pod": pod,
-                "namespace": namespace
-            })
+        except Exception:
+            return output
     
-    def _count_ready_containers(self, status: Dict[str, Any]) -> str:
-        """Count ready vs total containers in pod status.
-        
-        Args:
-            status: Pod status dict from kubectl
-            
-        Returns:
-            String like "2/3" indicating ready/total containers
-        """
-        container_statuses = status.get("containerStatuses", [])
-        if not container_statuses:
-            return "0/0"
-        
-        ready_count = sum(1 for cs in container_statuses if cs.get("ready", False))
-        total_count = len(container_statuses)
-        
-        return f"{ready_count}/{total_count}"
-    
-    def _count_restarts(self, status: Dict[str, Any]) -> int:
-        """Count total restarts across all containers in pod.
-        
-        Args:
-            status: Pod status dict from kubectl
-            
-        Returns:
-            Total restart count
-        """
-        container_statuses = status.get("containerStatuses", [])
-        return sum(cs.get("restartCount", 0) for cs in container_statuses)
+    # ...existing code for other kernel functions...
     
     @kernel_function(
         name="describe_pod",
@@ -819,6 +642,7 @@ class KubernetesPlugin:
     def describe_pod(
         self,
         pod: Annotated[str, "The name of the pod to describe"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
     ) -> Annotated[str, "Detailed pod description including events and configuration"]:
         """Describe a Kubernetes pod with full details.
@@ -835,8 +659,12 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::describe_pod:: Describing pod '{pod}' in namespace '{namespace}'")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "--namespace", namespace,
@@ -885,6 +713,7 @@ class KubernetesPlugin:
     def thread_dump(
         self,
         pod: Annotated[str, "The name of the pod"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         container: Annotated[str, "The name of the container"] = "",
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
         pid: Annotated[str, "The PID of the Java process to dump"] = ""
@@ -905,8 +734,12 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::thread_dump:: Getting thread dumps for pod '{pod}'.'{container}'in namespace '{namespace}'")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "--namespace", namespace,
@@ -957,6 +790,7 @@ class KubernetesPlugin:
     def ps(
         self,
         pod: Annotated[str, "The name of the pod"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         container: Annotated[str, "The name of the container"] = "",
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default"
     ) -> Annotated[str, "Detailed process list from the pod"]:
@@ -975,8 +809,11 @@ class KubernetesPlugin:
         """
         log_debug(f"KubernetesPlugin::ps:: Getting process list for pod '{pod}'.'{container}'in namespace '{namespace}'")
         cmd = ["kubectl"]
-        if self.context:
-            cmd.extend(["--context", self.context])
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context 
+        if _context:
+            cmd.extend(["--context", _context])
 
         cmd.extend([
             "--namespace", namespace,
@@ -1019,7 +856,6 @@ class KubernetesPlugin:
             return json.dumps({
                 "error": f"Failed to get pod processes: {str(e)}",
                 "pod": pod,
-                "pid": pid,
                 "container": container,
                 "namespace": namespace
             })
