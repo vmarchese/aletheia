@@ -397,7 +397,7 @@ class Session:
                         "path": str(session_path),
                         "created": datetime.fromtimestamp(
                             session_path.stat().st_ctime
-                        ).isoformat(),
+                        ).strftime("%Y-%m-%d %H:%M:%S"),
                         "unsafe": str((session_path / "metadata.json").exists()),
                     }
                 )
