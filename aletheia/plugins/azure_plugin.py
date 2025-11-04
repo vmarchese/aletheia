@@ -147,3 +147,26 @@ class AzurePlugin:
             command.extend(["--resource-group", resource_group])
         return await self._run_azure_command(command, save_key="azure_keyvault_key_show", log_prefix="AzurePlugin::azure_keyvault_key_show::")
 
+
+    @kernel_function(description="Gets Azure Keyvault secrets for a Keyvault.")
+    async def azure_keyvault_secrets(self,
+                                   keyvault_name: Annotated[str, "The Keyvault name"],
+                                   resource_group: Annotated[str, "The resource group name"] = "") -> str:
+        """Launches az keyvault secret list."""
+        command = ["az", "keyvault", "secret", "list", "--vault-name", keyvault_name]
+        if resource_group and resource_group.strip() != "":
+            command.extend(["--resource-group", resource_group])
+        return await self._run_azure_command(command, save_key="azure_keyvault_secrets", log_prefix="AzurePlugin::azure_keyvault_secrets::")
+
+
+    @kernel_function(description="Gets Azure Keyvault Secret details")
+    async def azure_keyvault_secret_show(self,
+                             keyvault_name: Annotated[str, "The Keyvault name"],
+                             secret_name: Annotated[str, "The Secret name"],
+                             resource_group: Annotated[str, "The resource group name"] = "") -> str:
+        """Launches az keyvault secret show."""
+        command = ["az", "keyvault", "secret", "show", "--vault-name", keyvault_name, "--name", secret_name]
+        if resource_group and resource_group.strip() != "":
+            command.extend(["--resource-group", resource_group])
+        return await self._run_azure_command(command, save_key="azure_keyvault_secret_show", log_prefix="AzurePlugin::azure_keyvault_secret_show::")
+
