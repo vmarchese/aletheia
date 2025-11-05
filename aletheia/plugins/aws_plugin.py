@@ -145,3 +145,84 @@ class AWSPlugin:
         """Launches aws ec2 describe-vpc-endpoints for the given profile."""
         command = ["aws", "ec2", "describe-vpc-endpoints", "--profile", profile]
         return await self._run_aws_command(command, save_key="ec2_describe_vpc_endpoints", log_prefix="AWSPlugin::aws_vpc_endpoints::")
+
+    @kernel_function(description="Gets the caller identity")
+    async def aws_sts_caller_identity(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws sts get-caller-identity for the given profile."""
+        command = ["aws", "sts", "get-caller-identity", "--profile", profile, "--output", "text"]
+        return await self._run_aws_command(command, save_key="sts_get_caller_identity", log_prefix="AWSPlugin::aws_sts_caller_identity::")
+
+    @kernel_function(description="Gets the S3 Buckets for a profile")
+    async def aws_s3_buckets(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws s3 ls for the given profile."""
+        command = ["aws", "s3", "ls", "--profile", profile]
+        return await self._run_aws_command(command, save_key="s3_ls", log_prefix="AWSPlugin::aws_s3_buckets::")
+
+    @kernel_function(description="Gets the ELBV2 Connection Logs from a bucket for a profile")
+    async def aws_elbv2_connection_logs(
+        self,
+        bucket: Annotated[str, "The S3 Bucket name"],
+        caller_identity: Annotated[str, "The sts caller identity"],
+        cutoff_date: Annotated[str, "The cutoff date in YYYY-MM-DDTHH:mm:ss format"] = "",
+        region: Annotated[str, "The AWS region"] = "eu-central-1",
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws s3 ls for the given profile."""
+
+        log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Starting with bucket: {bucket}, cutoff_date: {cutoff_date}, profile: {profile}")
+        # Set default cutoff_date to now - 2 days if not provided
+        if cutoff_date is None or cutoff_date.strip() == "":
+            log_debug("AWSPlugin::aws_elbv2_connection_logs:: No cutoff_date provided, defaulting to 24 hours ago")
+            from datetime import datetime, timedelta
+            cutoff_dt = datetime.utcnow() - timedelta(days=1)
+            cutoff_date = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+        # Calculating path prefix from cutoff date
+        date_segment = ""
+        if cutoff_date:
+            date_parts = cutoff_date.split("T")
+            if len(date_parts) != 2:
+                return "Error: cutoff_date must be in YYYY-MM-DDTHH:mm:ss format"
+            date_segment = date_parts[0].replace("-", "/")
+            time_segment = date_parts[1].split(":")[0]
+
+        log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Using cutoff_date: {cutoff_date}")
+        log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Using date_segment: {date_segment}")
+        prefix = f"AWSLogs/{caller_identity}/elasticloadbalancing/{region}/{date_segment}/"
+
+        # List s3 objects by last modified date
+        command = ["aws", "s3api", "list-objects-v2",
+                   "--bucket", bucket,
+                   "--prefix", prefix,
+                   "--query", f"Contents[?LastModified>=`{cutoff_date}`].Key",
+                   "--profile", profile,
+                   "--output", "json"]
+        return await self._run_aws_command(command, save_key="s3_lsv2", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
+
+    @kernel_function(description="Gets a S3 Object or file from a bucket for a profile")
+    async def aws_s3_cp(
+        self,
+        bucket: Annotated[str, "The S3 Bucket name"],
+        key: Annotated[str, "The S3 Object key"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Copies a S3 Object to a local directory."""
+
+        dest_dir = self.session.data_dir / "aws_s3_downloads"
+        basename_key = key.split("/")[-1]
+        destination = f"{dest_dir}/{basename_key}"
+        log_debug(f"AWSPlugin::aws_s3_cp:: Downloading s3://{bucket}/{key} to {destination}")
+
+        command = ["aws", "s3", "cp", f"s3://{bucket}/{key}", destination, "--profile", profile]
+        await self._run_aws_command(command, save_key="s3_cp", log_prefix="AWSPlugin::aws_s3_cp::")
+
+        if self.session:
+            saved = self.session.save_data(SessionDataType.INFO, "s3_cp", f"Saved s3://{bucket}/{key} to {destination}")
+        return destination

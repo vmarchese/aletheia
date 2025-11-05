@@ -16,12 +16,13 @@ from semantic_kernel.functions import kernel_function
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.session import Session
 
 
 class LogFilePlugin:
     """Semantic Kernel plugin for log file operations."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, session: Session):
         """Initialize the LogFilePlugin.
 
         Args:
@@ -29,6 +30,7 @@ class LogFilePlugin:
         """
         self.name = "LogFilePlugin"
         self.config = config
+        self.session = session
         loader = PluginInfoLoader()
         self.instructions = loader.load("log_file_plugin")        
 
