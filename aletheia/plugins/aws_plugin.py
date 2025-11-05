@@ -78,6 +78,16 @@ class AWSPlugin:
         command = ["aws", "elbv2", "describe-load-balancers", "--profile", profile]
         return await self._run_aws_command(command, save_key="elbv2_describe_load_balancers", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
 
+    @kernel_function(description="Gets the attributes for the requested ELBV2 Load Balancer ARN and profile")
+    async def aws_elbv2_load_balancer_attributes(
+        self,
+        arn: Annotated[str, "The Load Balancer ARN"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-load-balancer-attributes for the given profile and load balancer ARN."""
+        command = ["aws", "elbv2", "describe-load-balancer-attributes", "--load-balancer-arn", arn, "--profile", profile]
+        return await self._run_aws_command(command, save_key="elbv2_describe_load_balancer_attributes", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
+
     @kernel_function(description="Gets Listeners for the requested ELBV2 Load Balancer ARN and profile")
     async def aws_elbv2_listeners(
         self,
