@@ -11,6 +11,7 @@ from semantic_kernel.functions import kernel_function
 
 from aletheia.encryption import encrypt_data, decrypt_data, EncryptionError, DecryptionError
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.utils.logging import log_debug
 
 
 class ScratchpadFileName(Enum):
@@ -123,6 +124,8 @@ class Scratchpad:
             ...     "Collected 200 logs from payments-svc pod"
             ... )
         """
+        log_debug(f"Scratchpad::write_journal_entry: Writing journal entry by agent '{agent}' with description '{description}'")
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = f"## Date: {timestamp}\n"
         entry += f"- **Agent:** {agent}\n"

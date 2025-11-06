@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from aletheia.plugins.scratchpad import ScratchpadFileName
+from aletheia.plugins.scratchpad import Scratchpad
 
 from aletheia.encryption import (
     create_session_encryption,
@@ -103,6 +104,7 @@ class Session:
     def __init__(
         self,
         session_id: str,
+        scratchpad: Optional[Scratchpad] = None,
         session_dir: Optional[Path] = None,
         password: Optional[str] = None,
         unsafe: bool = False,
@@ -123,6 +125,7 @@ class Session:
         self.unsafe = unsafe
         self._key: Optional[bytes] = None
         self._metadata: Optional[SessionMetadata] = None
+        self._scratchpad = scratchpad
 
     @property
     def metadata_file(self) -> Path:
@@ -142,6 +145,16 @@ class Session:
     def data_dir(self) -> Path:
         """Path to data directory."""
         return self.session_path / "data"
+
+    @property
+    def scratchpad(self) -> Optional[Scratchpad]:
+        """Get the scratchpad associated with this session."""
+        return self._scratchpad
+
+    @scratchpad.setter
+    def scratchpad(self, value: Scratchpad) -> None:
+        """Set the scratchpad associated with this session."""
+        self._scratchpad = value 
 
 
     def save_data(self, type: SessionDataType, name: str, data: str) -> Path:
@@ -169,6 +182,11 @@ class Session:
             ciphertext = encrypt_data(data.encode('utf-8'), self._get_key())
             with open(file_path, 'wb') as f:
                 f.write(ciphertext)
+
+        if self._scratchpad:
+            self._scratchpad.write_journal_entry("Session",
+                                                  f"Saved {type.value} data",
+                                                  f"Saved {type.value} data to {file_path}\n")
         return file_path
 
 

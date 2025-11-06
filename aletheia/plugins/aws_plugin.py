@@ -260,7 +260,12 @@ class AWSPlugin:
         await self._run_aws_command(command, save_key="s3_cp", log_prefix="AWSPlugin::aws_s3_cp::")
 
         if self.session:
-            saved = self.session.save_data(SessionDataType.INFO, "s3_cp", f"Saved s3://{bucket}/{key} to {destination}")
+            self.session.save_data(SessionDataType.INFO, "s3_cp", f"Saved s3://{bucket}/{key} to {destination}")
+
+        if self.scratchpad:
+            self.scratchpad.write_journal_entry(self.name, 
+                                                f"Copied S3 object s3://{bucket}/{key}",
+                                                f"Copied S3 object s3://{bucket}/{key} to {destination}.")
         return destination
 
     @kernel_function(description="List the ELBV2 Connection Logs from a bucket for a profile")
@@ -317,12 +322,12 @@ class AWSPlugin:
 
         if self.session:
             saved = self.session.save_data(SessionDataType.INFO, "s3_ls", str(keys))
-            log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Saved {str(keys)} to {saved}")
+            log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: List: {str(keys)} to {saved}")
 
-        if self.scratchpad:
-            self.scratchpad.write_journal_entry(self.name, 
-                                                f"List {len(keys)} connection log files from bucket {bucket} for profile {profile}.",
-                                                str(keys))
+#        if self.scratchpad:
+#            self.scratchpad.write_journal_entry(self.name, 
+#                                                f"List of {len(keys)} remote connection log files from bucket {bucket} for profile {profile}.",
+#                                                str(keys))
 
 
         return keys

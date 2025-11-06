@@ -208,6 +208,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
                 session_dir=session.session_path,
                 encryption_key=session._get_key()
         )
+        session.scratchpad = scratchpad
 
         # get LLM Service
         llm_service = LLMService(config=config)
