@@ -5,6 +5,7 @@ replacing the custom routing logic with Semantic Kernel's orchestration pattern.
 """
 
 from typing import List
+from jinja2 import Template
 
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
 from semantic_kernel.functions.kernel_plugin import KernelPlugin
@@ -39,10 +40,14 @@ class Orchestrator(BaseAgent):
         plugins.extend(sub_agents)
         plugins.append(scratchpad)
 
+        template = Template(instructions)
+        rendered_instructions = template.render(plugins=plugins)   
+
+
         log_debug("Orchestrator::__init__:: called")
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
+                         instructions=rendered_instructions,
                          service=service,
                          session=session,
                          plugins=plugins)

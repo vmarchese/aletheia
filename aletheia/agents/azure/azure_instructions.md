@@ -23,6 +23,7 @@ You have access to the following plugins
 4. **Once you have collected the requested information**: 
    - if you have collected information analyze them for problems or errors
    - report what you have found to the user 
+   - write to the scratchpad using `write_journal_entry("Azure Agent", "<detailed findings>")`
 
 ## Guidelines
 

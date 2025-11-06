@@ -30,6 +30,7 @@ You have access to the following plugins
    - if you have collected the logs, analyze them for errors or problems
    - if you have collected information on pods analyze them for problems or errors
    - report what you have found to the user 
+   - write to the scratchpad using `write_journal_entry("Kubernetes Agent", "<detailed findings>")`
 
 ## Guidelines
 

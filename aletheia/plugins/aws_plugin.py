@@ -7,12 +7,13 @@ from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.plugins.scratchpad import Scratchpad
 
 
 class AWSPlugin:
     """Semantic Kernel plugin for AWS operations."""
 
-    def __init__(self, config: Config, session: Session):
+    def __init__(self, config: Config, session: Session, scratchpad: Scratchpad):
         """Initialize the AWSPlugin.
 
         Args:
@@ -24,6 +25,7 @@ class AWSPlugin:
         self.name = "AWSPlugin"
         loader = PluginInfoLoader()
         self.instructions = loader.load("aws_plugin")
+        self.scratchpad = scratchpad
 
     async def _run_aws_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run AWS CLI commands and handle output, errors, and saving."""
@@ -165,7 +167,7 @@ class AWSPlugin:
         return await self._run_aws_command(command, save_key="s3_ls", log_prefix="AWSPlugin::aws_s3_buckets::")
 
     @kernel_function(description="Gets the ELBV2 Connection Logs from a bucket for a profile")
-    async def aws_elbv2_connection_logs(
+    async def aws_elbv2_get_connection_logs(
         self,
         bucket: Annotated[str, "The S3 Bucket name"],
         caller_identity: Annotated[str, "The sts caller identity"],
@@ -204,9 +206,43 @@ class AWSPlugin:
                    "--query", f"Contents[?LastModified>=`{cutoff_date}`].Key",
                    "--profile", profile,
                    "--output", "json"]
-        return await self._run_aws_command(command, save_key="s3_lsv2", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
+        # List objects in S3
+        s3_keys_json = await self._run_aws_command(command, save_key="s3_lsv2", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
+        try:
+            keys = json.loads(s3_keys_json)
+        except Exception as e:
+            log_error(f"AWSPlugin::aws_elbv2_connection_logs:: Failed to parse S3 keys: {e}")
+            return s3_keys_json
 
-    @kernel_function(description="Gets a S3 Object or file from a bucket for a profile")
+        if not keys or not isinstance(keys, list):
+            log_debug("AWSPlugin::aws_elbv2_connection_logs:: No log files found to download.")
+            return json.dumps({"downloaded": [], "message": "No log files found."})
+
+        # Download each log file to aws_s3_downloads
+        dest_dir = self.session.data_dir / "aws_s3_downloads"
+        downloaded = []
+        for key in keys:
+            basename_key = key.split("/")[-1]
+            destination = f"{dest_dir}/{basename_key}"
+            log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Downloading s3://{bucket}/{key} to {destination}")
+            cp_command = [
+                "aws", "s3", "cp", f"s3://{bucket}/{key}", destination, "--profile", profile
+            ]
+            await self._run_aws_command(cp_command, save_key="s3_cp", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
+            downloaded.append(destination)
+
+        if self.session:
+            saved = self.session.save_data(SessionDataType.INFO, "s3_cp", str(downloaded))
+            log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Saved {str(downloaded)} to {saved}")
+
+        if self.scratchpad:
+            self.scratchpad.write_journal_entry(self.name, 
+                                                f"Downloaded {len(downloaded)} connection log files from bucket {bucket} for profile {profile}.",
+                                                str(downloaded))
+
+        return json.dumps({"downloaded": downloaded, "count": len(downloaded)})
+
+    @kernel_function(description="Retrieves a S3 Object, file or connection log from a bucket for a profile")
     async def aws_s3_cp(
         self,
         bucket: Annotated[str, "The S3 Bucket name"],
@@ -226,3 +262,67 @@ class AWSPlugin:
         if self.session:
             saved = self.session.save_data(SessionDataType.INFO, "s3_cp", f"Saved s3://{bucket}/{key} to {destination}")
         return destination
+
+    @kernel_function(description="List the ELBV2 Connection Logs from a bucket for a profile")
+    async def aws_elbv2_list_connection_logs(
+        self,
+        bucket: Annotated[str, "The S3 Bucket name"],
+        caller_identity: Annotated[str, "The sts caller identity"],
+        cutoff_date: Annotated[str, "The cutoff date in YYYY-MM-DDTHH:mm:ss format"] = "",
+        region: Annotated[str, "The AWS region"] = "eu-central-1",
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws s3 ls for the given profile."""
+
+        log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Starting with bucket: {bucket}, cutoff_date: {cutoff_date}, profile: {profile}")
+        # Set default cutoff_date to now - 2 days if not provided
+        if cutoff_date is None or cutoff_date.strip() == "":
+            log_debug("AWSPlugin::aws_elbv2_list_connection_logs:: No cutoff_date provided, defaulting to 24 hours ago")
+            from datetime import datetime, timedelta
+            cutoff_dt = datetime.utcnow() - timedelta(days=1)
+            cutoff_date = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+        # Calculating path prefix from cutoff date
+        date_segment = ""
+        if cutoff_date:
+            date_parts = cutoff_date.split("T")
+            if len(date_parts) != 2:
+                return "Error: cutoff_date must be in YYYY-MM-DDTHH:mm:ss format"
+            date_segment = date_parts[0].replace("-", "/")
+            time_segment = date_parts[1].split(":")[0]
+
+        log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Using cutoff_date: {cutoff_date}")
+        log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Using date_segment: {date_segment}")
+        prefix = f"AWSLogs/{caller_identity}/elasticloadbalancing/{region}/{date_segment}/"
+
+        # List s3 objects by last modified date
+        command = ["aws", "s3api", "list-objects-v2",
+                   "--bucket", bucket,
+                   "--prefix", prefix,
+                   "--query", f"Contents[?LastModified>=`{cutoff_date}`].Key",
+                   "--profile", profile,
+                   "--output", "json"]
+        # List objects in S3
+        s3_keys_json = await self._run_aws_command(command, save_key="s3_lsv2", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
+        try:
+            keys = json.loads(s3_keys_json)
+        except Exception as e:
+            log_error(f"AWSPlugin::aws_elbv2_connection_logs:: Failed to parse S3 keys: {e}")
+            return s3_keys_json
+
+        if not keys or not isinstance(keys, list):
+            log_debug("AWSPlugin::aws_elbv2_connection_logs:: No log files found to download.")
+            return json.dumps({"downloaded": [], "message": "No log files found."})
+
+        if self.session:
+            saved = self.session.save_data(SessionDataType.INFO, "s3_ls", str(keys))
+            log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Saved {str(keys)} to {saved}")
+
+        if self.scratchpad:
+            self.scratchpad.write_journal_entry(self.name, 
+                                                f"List {len(keys)} connection log files from bucket {bucket} for profile {profile}.",
+                                                str(keys))
+
+
+        return keys

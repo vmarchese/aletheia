@@ -30,6 +30,10 @@ You have access to the following plugins
    - If no repo path, URL, or prompt is mentioned, ask the user for the missing information.
    - If the repo path or URL is ambiguous, ask for clarification.
 
+4. **Once you have analyzed the code**
+   - report what you have found to the user 
+   - write to the scratchpad using `write_journal_entry("Claude Code Agent", "<detailed findings>")`   
+
 ## Guidelines
 - Extract the repo path and prompt naturally from the conversation
 - If the user mentions a project or codebase without a specific path, ask where the repository is located

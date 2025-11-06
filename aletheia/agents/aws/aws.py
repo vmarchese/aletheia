@@ -24,7 +24,7 @@ class AWSAgent(BaseAgent):
         log_debug("AWSAgent::__init__:: called")
 
         log_debug("AWSAgent::__init__:: setup plugins")
-        aws_plugin = AWSPlugin(config=config, session=session)
+        aws_plugin = AWSPlugin(config=config, session=session, scratchpad=scratchpad)
 
 
         plugins = [aws_plugin, 

@@ -1,5 +1,7 @@
 import json
 from typing import Annotated
+import dateparser
+from datetime import datetime
 
 from semantic_kernel.functions import kernel_function
 
@@ -45,10 +47,28 @@ class UtilsPlugin:
             return f"Error launching command: {e}"        
 
     @kernel_function(description="Gunzips a file at the given path")
-    async def gunzip_file(
+    async def utils_gunzip_file(
         self,
         file_path: Annotated[str, "The path to the gzipped file"],
     ) -> str:
         """Gunzips the file at the given path."""
         command = ["gunzip", "-f", file_path]
-        return await self._run_command(command, save_key=None, log_prefix="UtilsPlugin::gunzip_file::")
+        await self._run_command(command, save_key="gunzip", log_prefix="UtilsPlugin::gunzip_file::")
+        gunzipped_path = file_path.rstrip('.gz')
+        if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, "gunzip", f"file gunzipped to {gunzipped_path}")
+        return f"File {gunzipped_path} gunzipped successfully."
+
+    @kernel_function(description="Gets a date offset in natural language (e.g., '5 days ago', '3 hours ago')")
+    async def utils_get_date_offset(
+        self,
+        time_delta: Annotated[str, "The time delta (e.g., '5 days', '3 hours', '5d', '3h')"],
+    ) -> str:
+        """Gets the date string for a time delta ago in ISO format (YYYY-MM-DDTHH:MM:SS)."""
+
+        # Use dateparser to parse the time delta string relative to now
+        now = datetime.now()
+        dt = dateparser.parse(f"{time_delta} ago", settings={"RELATIVE_BASE": now})
+        if not dt:
+            return "Invalid time_delta format. Use e.g. '5 days', '3 hours', '5d', '3h', or combinations."
+        return dt.isoformat(sep="T", timespec="seconds")

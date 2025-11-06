@@ -47,11 +47,30 @@ class LogFilePlugin:
         Returns:
             Logs from the specified file
         """
-        try:
-            log_debug(f"Fetching logs from file: {file_path}")
-            with open(file_path, 'r') as f:
-                logs = f.read()
-            return logs
-        except Exception as e:
-            log_error(f"Error fetching logs from file {file_path}: {e}")
-            return f"Error fetching logs: {e}"
+        import os
+
+        def try_read(path: str) -> str:
+            try:
+                log_debug(f"Fetching logs from file: {path}")
+                with open(path, 'r') as f:
+                    return f.read()
+            except Exception as e:
+                log_error(f"Error fetching logs from file {path}: {e}")
+                return f"Error fetching logs: {e}"
+
+        # 1. Check if the file exists at the given path
+        if os.path.isfile(file_path):
+            return try_read(file_path)
+
+        # 2. If not, traverse session.data_dir to find the file by name
+        log_debug(f"File not found at {file_path}, searching in session.data_dir: {self.session.data_dir}")
+        file_name = os.path.basename(file_path)
+        for root, _, files in os.walk(self.session.data_dir):
+            if file_name in files:
+                found_path = os.path.join(root, file_name)
+                log_debug(f"Found file {file_name} at {found_path}")
+                return try_read(found_path)
+
+        # 3. If still not found, return error
+        log_error(f"Log file {file_path} not found in session.data_dir: {self.session.data_dir}")
+        return f"Error: Log file '{file_path}' not found in session data directory."
