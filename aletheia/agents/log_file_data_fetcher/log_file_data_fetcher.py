@@ -19,6 +19,7 @@ from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.plugins.log_file_plugin import LogFilePlugin
+from aletheia.plugins.utils_plugin import UtilsPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
@@ -36,9 +37,9 @@ class LogFileDataFetcher(BaseAgent):
         log_debug("LogFileDataFetcher::__init__:: called")
 
         log_debug("LogFileDataFetcher::__init__:: setup plugins")
-        log_file_plugin = LogFilePlugin(config)
+        log_file_plugin = LogFilePlugin(config=config, session=session)
 
-        plugins = [log_file_plugin, scratchpad]
+        plugins = [log_file_plugin, scratchpad, UtilsPlugin(config=config, session=session)]
 
         template = Template(instructions)
         rendered_instructions = template.render(plugins=plugins)        

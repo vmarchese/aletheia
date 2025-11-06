@@ -27,6 +27,7 @@ You have access to the following plugins
 
 5. **Once you have collected the requested metrics**: 
    - report what you have found to the user 
+   - write to the scratchpad using `write_journal_entry("Prometheus Agent", "<detailed findings>")`   
 
 ## Available Templates
 You can use these templates with prometheus.build_promql_from_template():

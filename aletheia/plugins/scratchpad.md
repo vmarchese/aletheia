@@ -5,5 +5,5 @@ The Scratchpad plugin gives access to a scratchpad file to read and write the ac
 
 Use the scratchpad to:
 - Read previous context with `read_scratchpad()` to understand what other agents have discovered
-- Document your findings with `write_journal_entry("KubernetesDataFetcher", "<description of your findings>","<your findings>")`
+- Document ALL your operations and findings with `write_journal_entry("KubernetesDataFetcher", "<description of your findings>","<your findings>")`
 - Share collected logs and metadata so other agents can use your findings

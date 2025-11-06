@@ -18,6 +18,7 @@ You have access to the following plugins
    - Look for file paths mentioned by the user (e.g., "/var/log/app.log", "./logs/service.log")
    - Look for patterns like "check file xyz", "analyze logs in abc.log", or "read the log at /path/to/file"
    - If a relative path is mentioned, note it but use it as provided
+   - If the file is compressed (e.g.: *.gz) decompress it first (e.g. with gunzip)
 
 2. **Use the log_file plugin** to collect data:
    - Use `fetch_logs_from_file()` to read the contents of the specified log file
@@ -26,6 +27,7 @@ You have access to the following plugins
 3. **If information is missing**, ask a clarifying question:
    - If no file path is mentioned, ask the user for the log file path
    - If the file path is ambiguous, ask for clarification
+   - write to the scratchpad using `write_journal_entry("Log File Agent", "<detailed findings>")`
 
 ## Guidelines
 - Extract the file path naturally from the conversation (e.g., "check /var/log/myapp.log" → file_path="/var/log/myapp.log")
