@@ -1,15 +1,16 @@
-from typing import Annotated
+from typing import Annotated, List
 
-from semantic_kernel.functions import kernel_function
+from agent_framework import ai_function, ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.plugins.base import BasePlugin
 
 
 class CopilotPlugin:
-    """Semantic Kernel plugin for Copilot code operations."""
+    """plugin for Copilot code operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the CopilotPlugin .
@@ -24,8 +25,8 @@ class CopilotPlugin:
         loader = PluginInfoLoader()
         self.instructions = loader.load("copilot_plugin")        
 
-    @kernel_function(description="Launches Copilot code with -p in non interactive mode on a folder containing the repository to analyze.")
-    async def code_analyze(
+    #@ai_function(description="Launches Copilot code with -p in non interactive mode on a folder containing the repository to analyze.")
+    def code_analyze(
         self,
         prompt: str,
         repo_path: Annotated[str, "Path to the repository to analyze"]
@@ -53,3 +54,7 @@ class CopilotPlugin:
         except Exception as e:
             log_error(f"Error launching copilot: {str(e)}")
             return f"Error launching copilot: {e}"
+
+    def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by this plugin."""
+        return [self.code_analyze]

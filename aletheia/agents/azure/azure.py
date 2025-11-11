@@ -1,5 +1,6 @@
 from jinja2 import Template
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+
+from agent_framework import  BaseChatClient
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
@@ -15,7 +16,7 @@ class AzureAgent(BaseAgent):
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase,
+                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -24,15 +25,17 @@ class AzureAgent(BaseAgent):
         log_debug("AzureAgent::__init__:: setup plugins")
         azure_plugin = AzurePlugin(config=config, session=session)
 
-        plugins = [azure_plugin, scratchpad]
+        tools = []
+        tools.extend(azure_plugin.get_tools())
+        tools.extend(scratchpad.get_tools())
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)
+        rendered_instructions = template.render(plugins=tools)
 
         super().__init__(name=name,
                          description=description,
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=tools)
     

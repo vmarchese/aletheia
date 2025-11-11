@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Prometheus operations.
+"""plugin for Prometheus operations.
 
 This plugin exposes Prometheus operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -13,13 +13,14 @@ The plugin provides synchronous functions for:
 import json
 import requests
 from datetime import datetime, timedelta
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional, List
 
-from semantic_kernel.functions import kernel_function
+from agent_framework import ai_function, ToolProtocol
 
 from aletheia.config import Config
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.plugins.base import BasePlugin
 
 
 # PromQL query templates for common use cases
@@ -33,8 +34,8 @@ PROMQL_TEMPLATES = {
 }
 
 
-class PrometheusPlugin:
-    """Semantic Kernel plugin for Prometheus operations.
+class PrometheusPlugin(BasePlugin):
+    """plugin for Prometheus operations.
     
     This plugin provides synchronous kernel functions for Prometheus
     operations, allowing SK agents to automatically invoke them via function calling.
@@ -132,10 +133,7 @@ class PrometheusPlugin:
             log_error(f"PrometheusPlugin::_make_request:: HTTP request error: {str(e)}")
             raise Exception(f"HTTP request failed: {str(e)}")
     
-    @kernel_function(
-        name="fetch_prometheus_metrics",
-        description="Fetch metrics from Prometheus using a PromQL query with optional time window filtering"
-    )
+    #@ai_function( name="fetch_prometheus_metrics", description="Fetch metrics from Prometheus using a PromQL query with optional time window filtering")
     def fetch_prometheus_metrics(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
@@ -252,10 +250,7 @@ class PrometheusPlugin:
                 "endpoint": self.endpoint
             })
     
-    @kernel_function(
-        name="execute_promql_query",
-        description="Execute a PromQL query for instant values (single point in time)"
-    )
+    #@ai_function( name="execute_promql_query", description="Execute a PromQL query for instant values (single point in time)")
     def execute_promql_query(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
@@ -337,10 +332,7 @@ class PrometheusPlugin:
                 "endpoint": self.endpoint
             })
     
-    @kernel_function(
-        name="build_promql_from_template",
-        description="Build a PromQL query from a predefined template with parameter substitution"
-    )
+    #@ai_function( name="build_promql_from_template", description="Build a PromQL query from a predefined template with parameter substitution")
     def build_promql_from_template(
         self,
         template: Annotated[
@@ -425,10 +417,7 @@ class PrometheusPlugin:
                 "template": template
             })
     
-    @kernel_function(
-        name="list_promql_templates",
-        description="List all available PromQL query templates with their descriptions"
-    )
+    #@ai_function( name="list_promql_templates", description="List all available PromQL query templates with their descriptions")
     def list_promql_templates(self) -> Annotated[str, "JSON object mapping template names to their descriptions"]:
         """List available PromQL query templates.
         
@@ -502,10 +491,7 @@ class PrometheusPlugin:
             "usage": "Use build_promql_from_template to create queries from these templates"
         }, indent=2)
     
-    @kernel_function(
-        name="test_prometheus_connection",
-        description="Test connectivity to the Prometheus server"
-    )
+    #@ai_function( name="test_prometheus_connection", description="Test connectivity to the Prometheus server")
     def test_prometheus_connection(self) -> Annotated[str, "Connection test result message"]:
         """Test connection to Prometheus server.
         
@@ -541,3 +527,13 @@ class PrometheusPlugin:
         """Cleanup session on deletion."""
         if hasattr(self, 'session'):
             self.session.close()
+
+    def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by this plugin."""
+        return [
+            self.fetch_prometheus_metrics,
+            self.execute_promql_query,
+            self.build_promql_from_template,
+            self.list_promql_templates,
+            self.test_prometheus_connection
+        ]

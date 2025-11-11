@@ -1,22 +1,14 @@
-"""Semantic Kernel orchestration integration for Aletheia.
-
-This module provides SK HandoffOrchestration integration for agent coordination,
-replacing the custom routing logic with Semantic Kernel's orchestration pattern.
-"""
-
 from typing import List
 from jinja2 import Template
 
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
-from semantic_kernel.functions.kernel_plugin import KernelPlugin
 
+from agent_framework import  BaseChatClient, ToolProtocol
+from agent_framework import ChatMessageStore
 
 from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.utils.logging import log_debug
 from aletheia.session import Session
 from aletheia.agents.base import BaseAgent
-
-
 
 
 class Orchestrator(BaseAgent):
@@ -31,14 +23,14 @@ class Orchestrator(BaseAgent):
         name: str, 
         description: str,
         instructions: str,
-        service: ChatCompletionClientBase,
+        service: BaseChatClient,
         session: Session,
         scratchpad: Scratchpad,
-        sub_agents: List[KernelPlugin]):
+        sub_agents: List[ToolProtocol]):
 
         plugins = []
         plugins.extend(sub_agents)
-        plugins.append(scratchpad)
+        plugins.extend(scratchpad.get_tools())
 
         template = Template(instructions)
         rendered_instructions = template.render(plugins=plugins)   
@@ -50,4 +42,5 @@ class Orchestrator(BaseAgent):
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=plugins
+                         )

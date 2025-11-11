@@ -13,7 +13,7 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 
 
 from jinja2 import Template
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+from agent_framework import  BaseChatClient
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
@@ -29,7 +29,7 @@ class KubernetesDataFetcher(BaseAgent):
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase,
+                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -38,15 +38,17 @@ class KubernetesDataFetcher(BaseAgent):
         log_debug("KubernetesDataFetcher::__init__:: setup plugins")
         kube_fetcher_plugin = KubernetesPlugin(config=config, session=session)
 
-        plugins = [kube_fetcher_plugin, scratchpad]
+        tools = []
+        tools.extend(kube_fetcher_plugin.get_tools())
+        tools.extend(scratchpad.get_tools())
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)
+        rendered_instructions = template.render(plugins=tools)
 
         super().__init__(name=name,
                          description=description,
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=tools)
     

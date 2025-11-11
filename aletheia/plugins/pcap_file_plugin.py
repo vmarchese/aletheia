@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Kubernetes operations.
+"""plugin for Kubernetes operations.
 
 This plugin exposes Kubernetes operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -9,18 +9,19 @@ The plugin provides simplified async functions for:
 - Getting pod status information
 """
 
-from typing import Annotated
+from typing import Annotated, List
 
-from semantic_kernel.functions import kernel_function
+from agent_framework import ai_function, ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.plugins.base import BasePlugin
 
 
 class PCAPFilePlugin:
-    """Semantic Kernel plugin for PCAP file operations."""
+    """plugin for PCAP file operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the PCAPFilePlugin.
@@ -35,8 +36,8 @@ class PCAPFilePlugin:
         loader = PluginInfoLoader()
         self.instructions = loader.load("pcap_file_plugin")
 
-    @kernel_function(description="Read a pcap file and return packet details as CSV (verbose mode).")
-    async def read_pcap_from_file(
+    #@ai_function(description="Read a pcap file and return packet details as CSV (verbose mode).")
+    def read_pcap_from_file(
         self,
         file_path: Annotated[str, "Path to the pcap file"]
     ) -> str:
@@ -130,3 +131,7 @@ class PCAPFilePlugin:
         except Exception as e:
             log_error(f"Error reading pcap file {file_path}: {e}")
             return f"Error reading pcap file: {e}"
+
+    def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by this plugin."""
+        return [self.read_pcap_from_file]

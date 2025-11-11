@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Kubernetes operations.
+"""plugin for Kubernetes operations.
 
 This plugin exposes Kubernetes operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -9,18 +9,19 @@ The plugin provides simplified async functions for:
 - Getting pod status information
 """
 
-from typing import Annotated
+from typing import Annotated, List
 
-from semantic_kernel.functions import kernel_function
+from agent_framework import ai_function, ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.session import Session
+from aletheia.plugins.base import BasePlugin
 
 
 class LogFilePlugin:
-    """Semantic Kernel plugin for log file operations."""
+    """plugin for log file operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the LogFilePlugin.
@@ -34,8 +35,8 @@ class LogFilePlugin:
         loader = PluginInfoLoader()
         self.instructions = loader.load("log_file_plugin")        
 
-    @kernel_function(description="Fetch logs from a file.")
-    async def fetch_logs_from_file(
+    #@ai_function(description="Fetch logs from a file.")
+    def fetch_logs_from_file(
         self,
         file_path: Annotated[str, "Path to the log file"]
     ) -> str:
@@ -74,3 +75,7 @@ class LogFilePlugin:
         # 3. If still not found, return error
         log_error(f"Log file {file_path} not found in session.data_dir: {self.session.data_dir}")
         return f"Error: Log file '{file_path}' not found in session data directory."
+
+    def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by this plugin."""
+        return [self.fetch_logs_from_file]

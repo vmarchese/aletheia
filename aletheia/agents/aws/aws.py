@@ -1,5 +1,6 @@
 from jinja2 import Template
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+
+from agent_framework import  BaseChatClient
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
@@ -17,7 +18,7 @@ class AWSAgent(BaseAgent):
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase,
+                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -27,18 +28,19 @@ class AWSAgent(BaseAgent):
         aws_plugin = AWSPlugin(config=config, session=session, scratchpad=scratchpad)
 
 
-        plugins = [aws_plugin, 
-                   scratchpad, 
-                   UtilsPlugin(config=config, session=session),
-                   LogFilePlugin(config=config, session=session)]
+        tools = []
+        tools.extend(aws_plugin.get_tools())
+        tools.extend(scratchpad.get_tools())
+        tools.extend(UtilsPlugin(config=config, session=session).get_tools())
+        tools.extend(LogFilePlugin(config=config, session=session).get_tools())
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)
+        rendered_instructions = template.render(plugins=tools)
 
         super().__init__(name=name,
                          description=description,
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=tools)
     
