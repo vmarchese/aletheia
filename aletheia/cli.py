@@ -253,9 +253,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
                 chatting = False
                 console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
                 break
-#            chat_history.add_message(ChatMessage(role="user", text=user_input))
 
-#            log_debug(f"cli::start_investigation - Sending input to orchestrator agent{chat_history.to_prompt()}")
 
             # Start thinking animation in a background thread
             stop_event = threading.Event()
@@ -287,25 +285,13 @@ async def _start_investigation(session: Session, console: Console) -> None:
                         for content in response.contents:
                             if isinstance(content, UsageContent ):
                                completion_usage += content.details
-#                    thread = response.thread
             finally:
                 if stop_event and not stop_event.is_set():
                     stop_event.set()
                     animation_thread.join()
                     clear_line()
 
-#            chat_history.add_message(ChatMessage(role="assistant", text=full_response))
             console.print("\n\n")
-#            console.print(f"[grey89]({completion_usage.completion_tokens} tokens used)[/grey89]\n")
-            """
-            response = await entry.agent.invoke(
-                messages=chat_history.to_prompt(),
-                on_intermediate_message=lambda msg: console.print(f"[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Thinking...[/bold green]\n{msg}\n"),
-            )
-            if response:
-                chat_history.add_message(response.content)
-                console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n{response}\n")
-            """
 
         # evaluate total session cost
         input_token = completion_usage.input_token_count
@@ -324,18 +310,6 @@ async def _start_investigation(session: Session, console: Console) -> None:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
-
-"""
-async def handle_intermediate_steps(message: ChatMessage) -> None:
-    for item in message.items or []:
-        if isinstance(item, FunctionCallContent):
-            log_debug(f"<Function Call:> {item.name} with arguments: {item.arguments}")
-        elif isinstance(item, FunctionResultContent):
-            log_debug("<Function Result:> {item.result} for function: {item.name}")
-        else:
-            log_debug("{message.role}: {message.content}")
-"""            
-        
 
 
 @app.command()
