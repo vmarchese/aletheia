@@ -32,13 +32,13 @@ class LoggingAgentMiddleware(AgentMiddleware):
         next: Callable[[AgentRunContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before agent execution
-        print(f"[Agent::{context.agent.name}] Starting execution {context.metadata}")
+        log_debug(f"[Agent::{context.agent.name}] Starting execution {context.metadata}")
 
         # Continue to next middleware or agent execution
         await next(context)
 
         # Post-processing: Log after agent execution
-        print(f"[Agent::{context.agent.name}] Execution completed: {context.result}")
+        log_debug(f"[Agent::{context.agent.name}] Execution completed: {context.result}")
 
 
 

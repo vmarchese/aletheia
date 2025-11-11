@@ -88,7 +88,8 @@ class BaseAgent(ABC):
             instructions=instructions,
             chat_client=AzureOpenAIChatClient(credential=AzureCliCredential()),
             tools=_tools,
-            chat_store=ChatMessageStoreSingleton.get_instance
+            chat_store=ChatMessageStoreSingleton.get_instance,
+            middleware=[logging_agent_middleware]
         )
 
 

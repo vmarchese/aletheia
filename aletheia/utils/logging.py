@@ -42,14 +42,19 @@ def enable_trace_logging(session_dir: Path) -> None:
         session_dir: Session directory path for trace log file
     """
     global _TRACE_ENABLED, _TRACE_LOGGER, _TRACE_FILE_PATH
+
     
+    logging.basicConfig(level=logging.CRITICAL, handlers=[])
     _TRACE_ENABLED = True
     _TRACE_FILE_PATH = session_dir / "aletheia_trace.log"
     
     # Create logger
     _TRACE_LOGGER = logging.getLogger("aletheia.trace")
     _TRACE_LOGGER.setLevel(logging.DEBUG)
-    
+
+    # Prevent propagation to root logger (which may have stdout handlers)
+    _TRACE_LOGGER.propagate = False
+
     # Remove existing handlers
     _TRACE_LOGGER.handlers.clear()
     
