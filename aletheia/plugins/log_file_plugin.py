@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Kubernetes operations.
+"""plugin for Kubernetes operations.
 
 This plugin exposes Kubernetes operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -21,7 +21,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class LogFilePlugin:
-    """Semantic Kernel plugin for log file operations."""
+    """plugin for log file operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the LogFilePlugin.

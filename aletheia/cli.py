@@ -31,10 +31,6 @@ from agent_framework import (
     UsageDetails,
     Role
 )
-#from semantic_kernel.contents.chat_history import ChatMessageContent
-#from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, FunctionResultContent
-#from semantic_kernel.agents import ChatHistoryAgentThread
-#from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError

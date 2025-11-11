@@ -13,7 +13,6 @@ and intent-based routing.
 
 Routing strategies:
 1. Custom routing (legacy): Direct agent-to-agent routing
-2. SK HandoffOrchestration: Using Semantic Kernel's orchestration pattern
 """
 
 

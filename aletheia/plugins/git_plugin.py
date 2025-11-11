@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Git operations.
+"""plugin for Git operations.
 
 This plugin exposes Git operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -24,7 +24,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class GitPlugin(BasePlugin):
-    """Semantic Kernel plugin for Git operations.
+    """plugin for Git operations.
     
     This plugin provides kernel functions for common Git operations used
     in code inspection and analysis, allowing SK agents to automatically

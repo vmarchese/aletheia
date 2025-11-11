@@ -1,6 +1,5 @@
 from typing import List, Optional
 from aletheia.session import Session
-#from semantic_kernel.contents import ChatMessageContent
 
 class ConversationHistory:
     """

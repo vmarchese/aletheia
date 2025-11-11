@@ -1,9 +1,3 @@
-"""Semantic Kernel orchestration integration for Aletheia.
-
-This module provides SK HandoffOrchestration integration for agent coordination,
-replacing the custom routing logic with Semantic Kernel's orchestration pattern.
-"""
-
 from typing import List
 from jinja2 import Template
 

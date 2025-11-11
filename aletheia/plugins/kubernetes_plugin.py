@@ -15,7 +15,7 @@ from datetime import datetime
 
 
 class KubernetesPlugin(BasePlugin):
-    """Semantic Kernel plugin for Kubernetes operations."""
+    """plugin for Kubernetes operations."""
 
     def __init__(self, config: Config, session: Session):
         self.session = session

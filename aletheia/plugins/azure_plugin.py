@@ -11,7 +11,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class AzurePlugin(BasePlugin):
-    """Semantic Kernel plugin for Azure operations."""
+    """plugin for Azure operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the AzurePlugin.

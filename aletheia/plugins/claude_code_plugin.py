@@ -10,7 +10,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class ClaudeCodePlugin(BasePlugin):
-    """Semantic Kernel plugin for Claude code operations."""
+    """plugin for Claude code operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the ClaudeCodePlugin.

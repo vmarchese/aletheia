@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Kubernetes operations.
+"""plugin for Kubernetes operations.
 
 This plugin exposes Kubernetes operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -21,7 +21,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class PCAPFilePlugin:
-    """Semantic Kernel plugin for PCAP file operations."""
+    """plugin for PCAP file operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the PCAPFilePlugin.

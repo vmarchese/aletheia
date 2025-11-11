@@ -12,7 +12,6 @@ from aletheia.plugins.base import BasePlugin
 
 
 class AWSPlugin(BasePlugin):
-    """Semantic Kernel plugin for AWS operations."""
 
     def __init__(self, config: Config, session: Session, scratchpad: Scratchpad):
         """Initialize the AWSPlugin.

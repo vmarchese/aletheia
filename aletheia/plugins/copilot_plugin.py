@@ -10,7 +10,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class CopilotPlugin:
-    """Semantic Kernel plugin for Copilot code operations."""
+    """plugin for Copilot code operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the CopilotPlugin .

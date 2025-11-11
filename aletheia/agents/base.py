@@ -5,9 +5,6 @@ from agent_framework import ChatAgent, BaseChatClient, ChatMessageStore, ToolPro
 from agent_framework.azure import AzureOpenAIChatClient
 from azure.identity import AzureCliCredential   
 
-#from semantic_kernel.agents import ChatCompletionAgent
-#from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
-#from semantic_kernel.functions.kernel_plugin import KernelPlugin
 
 from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.session import Session

@@ -1,4 +1,4 @@
-"""Semantic Kernel plugin for Prometheus operations.
+"""plugin for Prometheus operations.
 
 This plugin exposes Prometheus operations as kernel functions that can be
 automatically invoked by SK agents using FunctionChoiceBehavior.Auto().
@@ -35,7 +35,7 @@ PROMQL_TEMPLATES = {
 
 
 class PrometheusPlugin(BasePlugin):
-    """Semantic Kernel plugin for Prometheus operations.
+    """plugin for Prometheus operations.
     
     This plugin provides synchronous kernel functions for Prometheus
     operations, allowing SK agents to automatically invoke them via function calling.

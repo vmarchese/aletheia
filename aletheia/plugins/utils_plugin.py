@@ -13,7 +13,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class UtilsPlugin:
-    """Semantic Kernel plugin for utility operations."""
+    """plugin for utility operations."""
 
     def __init__(self, config: Config, session: Session):
         """Initialize the UtilsPlugin.
