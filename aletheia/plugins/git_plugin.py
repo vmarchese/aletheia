@@ -13,15 +13,17 @@ The plugin provides annotated functions for:
 import re
 import subprocess
 import os
-from typing import Annotated
+from typing import Annotated, List
 
-from semantic_kernel.functions import kernel_function
+from agent_framework import ai_function, ToolProtocol
+
 from aletheia.session import Session
 from aletheia.utils.logging import log_debug
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.plugins.base import BasePlugin
 
 
-class GitPlugin:
+class GitPlugin(BasePlugin):
     """Semantic Kernel plugin for Git operations.
     
     This plugin provides kernel functions for common Git operations used
@@ -49,10 +51,7 @@ class GitPlugin:
 
     
 
-    @kernel_function(
-        name="git_clone_repo",
-        description="Clones a git repository by URL into the current session folder (/data/src/<repo_name>). Optionally specify a tag or branch to clone."
-    )
+    #@ai_function( name="git_clone_repo", description="Clones a git repository by URL into the current session folder (/data/src/<repo_name>). Optionally specify a tag or branch to clone.")
     def git_clone_repo(
         self,
         repo_url: Annotated[str, "The URL of the git repository to clone (https or ssh)"],
@@ -86,3 +85,7 @@ class GitPlugin:
             return dest_dir
         except Exception as e:
             return f"Exception during git clone: {e}"
+
+    def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by this plugin."""
+        return [self.git_clone_repo]

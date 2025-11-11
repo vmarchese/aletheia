@@ -18,7 +18,7 @@ Routing strategies:
 
 
 
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+from agent_framework import  BaseChatClient,ChatMessageStore
 
 from aletheia.agents.base import BaseAgent
 from aletheia.plugins.scratchpad import Scratchpad
@@ -30,16 +30,18 @@ class OrchestratorAgent(BaseAgent):
                  name: str, 
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase,
+                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
         log_debug("OrchestratorAgent::__init__:: called")
         
 
-        plugins = [scratchpad]
+        plugins = []
+        plugins.extend(scratchpad.get_tools())
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=plugins
+                         )

@@ -1,14 +1,15 @@
 import json
-from typing import Annotated
+from typing import Annotated, List
 import dateparser
 from datetime import datetime
 
-from semantic_kernel.functions import kernel_function
+from agent_framework import ai_function, ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.plugins.base import BasePlugin
 
 
 class UtilsPlugin:
@@ -26,7 +27,7 @@ class UtilsPlugin:
         loader = PluginInfoLoader()
         self.instructions = loader.load("utils_plugin")
 
-    async def _run_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
+    def _run_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run commands and handle output, errors, and saving."""
         try:
             import subprocess
@@ -46,21 +47,21 @@ class UtilsPlugin:
             log_error(f"{log_prefix} Error launching command: {str(e)}")
             return f"Error launching command: {e}"        
 
-    @kernel_function(description="Gunzips a file at the given path")
-    async def utils_gunzip_file(
+    #@ai_function(description="Gunzips a file at the given path")
+    def utils_gunzip_file(
         self,
         file_path: Annotated[str, "The path to the gzipped file"],
     ) -> str:
         """Gunzips the file at the given path."""
         command = ["gunzip", "-f", file_path]
-        await self._run_command(command, save_key="gunzip", log_prefix="UtilsPlugin::gunzip_file::")
+        self._run_command(command, save_key="gunzip", log_prefix="UtilsPlugin::gunzip_file::")
         gunzipped_path = file_path.rstrip('.gz')
         if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, "gunzip", f"file gunzipped to {gunzipped_path}")
         return f"File {gunzipped_path} gunzipped successfully."
 
-    @kernel_function(description="Gets a date offset in natural language (e.g., '5 days ago', '3 hours ago')")
-    async def utils_get_date_offset(
+    #@ai_function(description="Gets a date offset in natural language (e.g., '5 days ago', '3 hours ago')")
+    def utils_get_date_offset(
         self,
         time_delta: Annotated[str, "The time delta (e.g., '5 days', '3 hours', '5d', '3h')"],
     ) -> str:
@@ -72,3 +73,10 @@ class UtilsPlugin:
         if not dt:
             return "Invalid time_delta format. Use e.g. '5 days', '3 hours', '5d', '3h', or combinations."
         return dt.isoformat(sep="T", timespec="seconds")
+
+    def get_tools(self) -> List[ToolProtocol]: 
+        """Get the list of tools provided by this plugin."""
+        return [
+            self.utils_gunzip_file,
+            self.utils_get_date_offset
+        ]   

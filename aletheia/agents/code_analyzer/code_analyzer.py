@@ -1,6 +1,7 @@
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
-from jinja2 import Template
 
+from agent_framework import BaseChatClient
+
+from jinja2 import Template
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
@@ -17,7 +18,7 @@ class CodeAnalyzer(BaseAgent):
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase,
+                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -34,13 +35,16 @@ class CodeAnalyzer(BaseAgent):
 
         git_plugin = GitPlugin(session=session)
 
-        plugins = [code_plugin, git_plugin, scratchpad]
+        tools = []
+        tools.extend(code_plugin.get_tools())
+        tools.extend(git_plugin.get_tools())
+        tools.extend(scratchpad.get_tools())
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)        
+        rendered_instructions = template.render(plugins=tools)        
 
         super().__init__(name=name,
                          description=description,
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=tools)

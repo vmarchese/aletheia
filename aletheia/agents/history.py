@@ -1,6 +1,6 @@
 from typing import List, Optional
 from aletheia.session import Session
-from semantic_kernel.contents import ChatMessageContent
+#from semantic_kernel.contents import ChatMessageContent
 
 class ConversationHistory:
     """
@@ -8,7 +8,10 @@ class ConversationHistory:
     """
 
     def __init__(self,  session: Optional[Session] = None):
-        self.history: List[ChatMessageContent] = []
+
+        pass
+#        self.history: List[ChatMessageContent] = []
+"""
 
     def add_message(self, message: ChatMessageContent):
         self.history.append(message)
@@ -21,3 +24,4 @@ class ConversationHistory:
         for msg in self.history:
             p += f"{msg.role}: {msg.content}\n"
         return p
+        """

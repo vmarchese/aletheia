@@ -12,7 +12,7 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 """
 
 
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+from agent_framework import  BaseChatClient
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
@@ -27,7 +27,7 @@ class TimelineAgent(BaseAgent):
                  name: str, 
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase):
+                 service: BaseChatClient):
 
         log_debug("TimelineAgent::__init__:: called")
 

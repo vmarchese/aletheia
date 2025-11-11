@@ -7,11 +7,14 @@ All data is encrypted at rest using session encryption keys.
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from semantic_kernel.functions import kernel_function
+from typing import Annotated, List
+
+from agent_framework import ai_function, ToolProtocol
 
 from aletheia.encryption import encrypt_data, decrypt_data, EncryptionError, DecryptionError
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.utils.logging import log_debug
+from aletheia.plugins.base import BasePlugin
 
 
 class ScratchpadFileName(Enum):
@@ -21,7 +24,7 @@ class ScratchpadFileName(Enum):
     ENCRYPTED = "scratchpad.encrypted"
 
 
-class Scratchpad:
+class Scratchpad(BasePlugin):
     """Simplified scratchpad for agent communication.
 
     The scratchpad maintains a simple journal of entries with timestamps
@@ -100,7 +103,7 @@ class Scratchpad:
         except EncryptionError as e:
             raise EncryptionError(f"Failed to save scratchpad: {e}") from e
 
-    @kernel_function
+#    #@ai_function
     def read_scratchpad(self) -> str:
         """Read the whole scratchpad.
 
@@ -109,8 +112,11 @@ class Scratchpad:
         """
         return self._journal
 
-    @kernel_function
-    def write_journal_entry(self, agent: str, description: str, text: str) -> None:
+#    #@ai_function
+    def write_journal_entry(self, 
+                            agent: Annotated[str,"The name of the agent writing the entry"],
+                            description: Annotated[str,"Description of the entry"],
+                            text: Annotated[str,"Text content of the entry"]) -> str:
         """Append an entry to the scratchpad and save to disk.
 
         Args:
@@ -133,4 +139,12 @@ class Scratchpad:
         entry += f"{text}\n"
         self._journal += entry
         self._save_to_disk()
+        return "Entry added to scratchpad."
+
+    def get_tools(self) -> List[ToolProtocol]:
+        return [
+            self.write_journal_entry,
+            self.read_scratchpad
+        ]
+
 

@@ -21,10 +21,18 @@ from typing import Optional, List
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
-from semantic_kernel.contents.chat_history import ChatMessageContent
-from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, FunctionResultContent
-from semantic_kernel.agents import ChatHistoryAgentThread
-from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
+
+
+from agent_framework import (
+    AgentThread,
+    ChatMessage,
+    TextContent,
+    Role
+)
+#from semantic_kernel.contents.chat_history import ChatMessageContent
+#from semantic_kernel.contents import ChatMessageContent, FunctionCallContent, FunctionResultContent
+#from semantic_kernel.agents import ChatHistoryAgentThread
+#from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError
@@ -104,7 +112,7 @@ def _build_plugins(config: Config,
                                                    service=llm_service.client,
                                                    session=session,
                                                    scratchpad=scratchpad)     
-    plugins.append(kubernetes_fetcher.agent)
+    plugins.append(kubernetes_fetcher.agent.as_tool())
 
     log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
                                         config=config,
@@ -113,7 +121,7 @@ def _build_plugins(config: Config,
                                         service=llm_service.client,
                                         session=session,
                                         scratchpad=scratchpad)
-    plugins.append(log_file_fetcher.agent)
+    plugins.append(log_file_fetcher.agent.as_tool())
 
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
                                         config=config,
@@ -122,7 +130,7 @@ def _build_plugins(config: Config,
                                         service=llm_service.client,
                                         session=session,
                                         scratchpad=scratchpad)                                              
-    plugins.append(pcap_file_fetcher.agent)
+    plugins.append(pcap_file_fetcher.agent.as_tool())
 
     prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                             config=config,
@@ -131,7 +139,7 @@ def _build_plugins(config: Config,
                                             service=llm_service.client,
                                             session=session,
                                             scratchpad=scratchpad)
-    plugins.append(prometheus_fetcher.agent)
+    plugins.append(prometheus_fetcher.agent.as_tool())
 
     aws_agent = AWSAgent(name="aws",
                          config=config,
@@ -140,7 +148,7 @@ def _build_plugins(config: Config,
                          service=llm_service.client,
                          session=session,
                          scratchpad=scratchpad)
-    plugins.append(aws_agent.agent)    
+    plugins.append(aws_agent.agent.as_tool())    
 
     azure_agent = AzureAgent(name="azure",
                               config=config,
@@ -149,7 +157,7 @@ def _build_plugins(config: Config,
                               service=llm_service.client,
                               session=session,
                          scratchpad=scratchpad)
-    plugins.append(azure_agent.agent)        
+    plugins.append(azure_agent.agent.as_tool())        
     
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
@@ -159,7 +167,7 @@ def _build_plugins(config: Config,
                                     service=llm_service.client,
                                     session=session,
                                     scratchpad=scratchpad)                                                   
-        plugins.append(code_analyzer.agent)
+        plugins.append(code_analyzer.agent.as_tool())
 
     return plugins
 
@@ -231,9 +239,10 @@ async def _start_investigation(session: Session, console: Console) -> None:
 
         chatting = True
         chat_history = ConversationHistory()
-        completion_usage = CompletionUsage()
+#        completion_usage = CompletionUsage()
 
-        thread: ChatHistoryAgentThread = None
+        thread: AgentThread = entry.agent.get_new_thread()
+        
 
         while chatting:
             console.print(f"\n[cyan]You can ask questions about the investigation or type 'exit' to end the session.[/cyan]\n")
@@ -242,9 +251,9 @@ async def _start_investigation(session: Session, console: Console) -> None:
                 chatting = False
                 console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
                 break
-            chat_history.add_message(ChatMessageContent(role="user", content=user_input))
+#            chat_history.add_message(ChatMessage(role="user", text=user_input))
 
-            log_debug(f"cli::start_investigation - Sending input to orchestrator agent{chat_history.to_prompt()}")
+#            log_debug(f"cli::start_investigation - Sending input to orchestrator agent{chat_history.to_prompt()}")
 
             # Start thinking animation in a background thread
             stop_event = threading.Event()
@@ -254,37 +263,36 @@ async def _start_investigation(session: Session, console: Console) -> None:
             full_response = ""
             first_message = 0
             try:
-                async for response in entry.agent.invoke_stream(
-                    messages=chat_history.to_prompt(),
-                    on_intermediate_message=handle_intermediate_steps,
+                async for response in entry.agent.run_stream(
+                    messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
                     thread=thread
                 ):
                     # Stop animation and clear line before streaming response
-                    if (stop_event and not stop_event.is_set()) and (response is not None and str(response.content) != ""):
+                    if (stop_event and not stop_event.is_set()) and (response is not None and response.text.strip() != ""):
                         stop_event.set()
                         animation_thread.join()
                         # Overwrite the animation line with spaces to clear
                         clear_line()
                         console.print("")
 
-                    if response and str(response.content) != "":
-                        full_response += str(response.content)
+                    if response and str(response.text) != "":
+                        full_response += str(response.text)
                         if first_message == 0:
                             first_message +=1
                             console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n", end="")
-                        console.print(f"{response.content}", end="")
-                    if response.metadata.get("usage"):
-                        completion_usage += response.metadata["usage"]
-                    thread = response.thread
+                        console.print(f"{response.text}", end="")
+#                    if response.metadata.get("usage"):
+#                        completion_usage += response.metadata["usage"]
+#                    thread = response.thread
             finally:
                 if stop_event and not stop_event.is_set():
                     stop_event.set()
                     animation_thread.join()
                     clear_line()
 
-            chat_history.add_message(ChatMessageContent(role="assistant", content=full_response))
+#            chat_history.add_message(ChatMessage(role="assistant", text=full_response))
             console.print("\n\n")
-            console.print(f"[grey89]({completion_usage.completion_tokens} tokens used)[/grey89]\n")
+#            console.print(f"[grey89]({completion_usage.completion_tokens} tokens used)[/grey89]\n")
             """
             response = await entry.agent.invoke(
                 messages=chat_history.to_prompt(),
@@ -296,6 +304,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
             """
 
         # evaluate total session cost
+        """
         input_token = completion_usage.prompt_tokens
         output_token = completion_usage.completion_tokens
         total_tokens = input_token + output_token
@@ -303,6 +312,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
         console.print(f"[bold cyan]Session completed.[/bold cyan] Total tokens used: [bold]{total_tokens}[/bold] (Input: [bold]{input_token}[/bold], Output: [bold]{output_token}[/bold]).")
         console.print(f"[bold cyan]Estimated session cost:[/bold cyan] €[bold]{total_cost:.6f}[/bold] (Input: €[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: €[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
 
+"""
 
              
 
@@ -318,7 +328,8 @@ async def _start_investigation(session: Session, console: Console) -> None:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
 
-async def handle_intermediate_steps(message: ChatMessageContent) -> None:
+"""
+async def handle_intermediate_steps(message: ChatMessage) -> None:
     for item in message.items or []:
         if isinstance(item, FunctionCallContent):
             log_debug(f"<Function Call:> {item.name} with arguments: {item.arguments}")
@@ -326,6 +337,7 @@ async def handle_intermediate_steps(message: ChatMessageContent) -> None:
             log_debug("<Function Result:> {item.result} for function: {item.name}")
         else:
             log_debug("{message.role}: {message.content}")
+"""            
         
 
 
@@ -506,14 +518,14 @@ def session_timeline(
                                        description="Timeline Agent for generating session timeline",
                                        service=llm_service.client)
 
-        message = ChatMessageContent(role="user", content=f"""
+        message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""   
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        The timeline should summarize key actions, findings, and next steps in chronological order.
                                        The output should be in the following format:
                                        - [Time/Step]: Short description of action or finding
                                        No additional commentary is needed.
-                                       """)
-        response = asyncio.run(timeline_agent.agent.get_response(messages=message))
+                                       """)])
+        response = asyncio.run(timeline_agent.agent.run(message))
         if response:
             console.print(f"\n{response}\n")
 

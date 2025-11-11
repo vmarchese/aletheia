@@ -12,8 +12,9 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 """
 
 
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
 from jinja2 import Template
+
+from agent_framework import  BaseChatClient, ChatMessageStore
 
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
@@ -29,7 +30,7 @@ class PrometheusDataFetcher(BaseAgent):
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: ChatCompletionClientBase,
+                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -39,13 +40,15 @@ class PrometheusDataFetcher(BaseAgent):
         prometheus_fetcher_plugin = PrometheusPlugin(config)
 
 
-        plugins = [prometheus_fetcher_plugin, scratchpad]
+        tools = []
+        tools.extend(prometheus_fetcher_plugin.get_tools())
+        tools.extend(scratchpad.get_tools())
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)        
+        rendered_instructions = template.render(plugins=tools)        
 
         super().__init__(name=name,
                          description=description,
                          instructions=rendered_instructions,
                          service=service,
                          session=session,
-                         plugins=plugins)
+                         tools=tools)
