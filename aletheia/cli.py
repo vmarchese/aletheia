@@ -27,6 +27,8 @@ from agent_framework import (
     AgentThread,
     ChatMessage,
     TextContent,
+    UsageContent,
+    UsageDetails,
     Role
 )
 #from semantic_kernel.contents.chat_history import ChatMessageContent
@@ -239,7 +241,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
 
         chatting = True
         chat_history = ConversationHistory()
-#        completion_usage = CompletionUsage()
+        completion_usage = UsageDetails()
 
         thread: AgentThread = entry.agent.get_new_thread()
         
@@ -281,8 +283,10 @@ async def _start_investigation(session: Session, console: Console) -> None:
                             first_message +=1
                             console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n", end="")
                         console.print(f"{response.text}", end="")
-#                    if response.metadata.get("usage"):
-#                        completion_usage += response.metadata["usage"]
+                    if response and response.contents:
+                        for content in response.contents:
+                            if isinstance(content, UsageContent ):
+                               completion_usage += content.details
 #                    thread = response.thread
             finally:
                 if stop_event and not stop_event.is_set():
@@ -304,20 +308,13 @@ async def _start_investigation(session: Session, console: Console) -> None:
             """
 
         # evaluate total session cost
-        """
-        input_token = completion_usage.prompt_tokens
-        output_token = completion_usage.completion_tokens
+        input_token = completion_usage.input_token_count
+        output_token = completion_usage.output_token_count
         total_tokens = input_token + output_token
         total_cost = (input_token * config.cost_per_input_token) + (output_token * config.cost_per_output_token)
         console.print(f"[bold cyan]Session completed.[/bold cyan] Total tokens used: [bold]{total_tokens}[/bold] (Input: [bold]{input_token}[/bold], Output: [bold]{output_token}[/bold]).")
         console.print(f"[bold cyan]Estimated session cost:[/bold cyan] €[bold]{total_cost:.6f}[/bold] (Input: €[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: €[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
 
-"""
-
-             
-
-
-        
             
     except KeyboardInterrupt:
         console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")

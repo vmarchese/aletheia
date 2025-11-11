@@ -12,7 +12,7 @@ Aletheia provides an interactive, agent-based workflow for troubleshooting distr
 
 ## Installation
 
-Aletheia requires Python 3.8+ and uses [uv](https://github.com/astral-sh/uv) for dependency management.
+Aletheia requires Python 3.12 and uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
 ### 1. Install uv
 
@@ -110,16 +110,21 @@ aletheia version
 
 ## Configuration
 
+### Azure OpenAI
+Aletheia needs three environment variables to be set to work:
+
+```bash
+AZURE_OPENAI_API_KEY=<azure openai api key >
+AZURE_OPENAI_ENDPOINT=<azure openai endpoint >
+AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=<azure deployment name>
+```
+
+### Additional configuration 
 
 Aletheia supports flexible configuration via environment variables, YAML files, and .env files. The following table summarizes the main configuration parameters available in `aletheia/config.py`:
 
 | Configuration Key | Description | Default Value |
 |-------------------|-------------|---------------|
-| `llm_use_azure` | Use Azure OpenAI by default | `False` |
-| `llm_azure_deployment` | Azure deployment name | `None` |
-| `llm_azure_endpoint` | Azure OpenAI endpoint URL | `None` |
-| `llm_azure_api_version` | Azure API version | `None` |
-| `llm_azure_api_key` | Environment variable for Azure OpenAI API key | `None` |
 | `cost_per_input_token` | Cost per input token | `0.0` |
 | `cost_per_output_token` | Cost per output token | `0.0` |
 | `code_analyzer` | Code analyzer to use (claude, copilot) | `""` |
@@ -134,7 +139,7 @@ Aletheia supports flexible configuration via environment variables, YAML files, 
 
 **How to configure:**
 
-- Set environment variables with the `ALETHEIA_` prefix (e.g. `ALETHEIA_LLM_AZURE_DEPLOYMENT=gpt-4.1`)
+- Set environment variables 
 - Edit YAML config files (`./.aletheia/config.yaml`, `~/.aletheia/config.yaml`, `/etc/aletheia/config.yaml`)
 - Use `.env` files for local overrides
 
