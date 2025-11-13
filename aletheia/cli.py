@@ -40,6 +40,7 @@ from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import Kube
 from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.network.network import NetworkAgent
 from aletheia.agents.aws.aws import AWSAgent
 from aletheia.agents.azure.azure import AzureAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
@@ -156,6 +157,15 @@ def _build_plugins(config: Config,
                               session=session,
                          scratchpad=scratchpad)
     plugins.append(azure_agent.agent.as_tool())        
+
+    network_agent = NetworkAgent(name="network",  
+                                config=config,
+                                description="Network Agent for fetching TCP Network related data.",
+                                instructions=prompt_loader.load("network", "instructions"),
+                                service=llm_service.client,
+                                session=session,
+                                scratchpad=scratchpad)
+    plugins.append(network_agent.agent.as_tool())
     
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",

@@ -41,11 +41,12 @@ class PCAPFileDataFetcher(BaseAgent):
         pcap_file_plugin = PCAPFilePlugin(config=config, session=session)
 
         tools = []
-        tools.extend(pcap_file_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
+        plugins = [pcap_file_plugin, scratchpad]
+        for plugin in plugins:
+            tools.extend(plugin.get_tools())
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=tools)
+        rendered_instructions = template.render(plugins=plugins)
 
 
 

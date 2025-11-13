@@ -41,13 +41,14 @@ class LogFileDataFetcher(BaseAgent):
         log_file_plugin = LogFilePlugin(config=config, session=session)
 
         tools = []
-        tools.extend(log_file_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
-        tools.extend(UtilsPlugin(config=config, session=session).get_tools())
+        plugins = [log_file_plugin, scratchpad, UtilsPlugin(config=config, session=session)]
+
+        for plugin in plugins:
+            tools.extend(plugin.get_tools())    
 
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=tools)        
+        rendered_instructions = template.render(plugins=plugins)        
 
 
         super().__init__(name=name,
