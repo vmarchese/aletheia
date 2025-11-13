@@ -1,5 +1,3 @@
-from jinja2 import Template
-
 from agent_framework import  BaseChatClient
 
 from aletheia.agents.base import BaseAgent
@@ -30,17 +28,11 @@ class AWSAgent(BaseAgent):
         log_file_plugin = LogFilePlugin(config=config, session=session)
         plugins = [aws_plugin, scratchpad, utils_plugin, log_file_plugin]
 
-        tools = []
-        for plugin in plugins:
-            tools.extend(plugin.get_tools())
-
-        template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)
 
         super().__init__(name=name,
                          description=description,
-                         instructions=rendered_instructions,
+                         instructions=instructions,
                          service=service,
                          session=session,
-                         tools=tools)
+                         plugins=plugins)
     
