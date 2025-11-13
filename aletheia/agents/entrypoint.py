@@ -28,20 +28,17 @@ class Orchestrator(BaseAgent):
         scratchpad: Scratchpad,
         sub_agents: List[ToolProtocol]):
 
-        plugins = []
-        plugins.extend(sub_agents)
-        plugins.extend(scratchpad.get_tools())
-
-        template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)   
-        print(rendered_instructions)
+        tools = []
+        tools.extend(sub_agents)
+        tools.extend(scratchpad.get_tools())
 
 
         log_debug("Orchestrator::__init__:: called")
         super().__init__(name=name,
                          description=description,
-                         instructions=rendered_instructions,
+                         instructions=instructions,
                          service=service,
                          session=session,
-                         tools=plugins
+                         tools=tools,
+                         render_instructions=False
                          )

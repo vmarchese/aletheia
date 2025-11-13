@@ -37,5 +37,6 @@ class TimelineAgent(BaseAgent):
                          description=description,
                          instructions=instructions,
                          scratchpad=None,
-                         service=service)
+                         service=service,
+                         render_instructions=False)
     

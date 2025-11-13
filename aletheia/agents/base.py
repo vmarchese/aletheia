@@ -1,5 +1,6 @@
 from abc import ABC
 from typing import Sequence
+from jinja2 import Template
 
 from agent_framework import ChatAgent, BaseChatClient, ChatMessageStore, ToolProtocol
 from agent_framework.azure import AzureOpenAIChatClient
@@ -10,6 +11,7 @@ from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.session import Session
 from aletheia.agents.middleware import LoggingFunctionMiddleware, LoggingAgentMiddleware, LoggingChatMiddleware
 from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
+from aletheia.plugins.base import BasePlugin
 
 
 class BaseAgent(ABC):
@@ -34,7 +36,9 @@ class BaseAgent(ABC):
         service: BaseChatClient,
         scratchpad: Scratchpad = None,
         session: Session = None,
-        tools: Sequence[ToolProtocol] = None
+        plugins: Sequence[BasePlugin] = None,
+        tools: Sequence[ToolProtocol] = None,
+        render_instructions: bool = True,
     ):
         """Initialize the base agent.
         
@@ -50,39 +54,28 @@ class BaseAgent(ABC):
         self.description = description
         self.session = session  
         _tools = []
+        if plugins:
+           for plugin in plugins:
+                _tools.extend(plugin.get_tools())
+
         if scratchpad:  
-            _tools.append(scratchpad)
+            _tools.append(scratchpad.get_tools())
+
         _tools.extend(tools or [])
 
-        
-        """
-        self.agent = ChatAgent(
-            name=self.name,
-            description=description,
-            instructions=instructions,
-            chat_client=service,
-            tools=_tools,
-            chat_store=create_message_store() if chat_store_enabled else None
-        )
-        """
+        rendered_instructions = instructions
+        if render_instructions:
+            template = Template(instructions)
+            rendered_instructions = template.render(plugins=plugins)
 
-        logging_middleware = LoggingFunctionMiddleware()
+#        logging_middleware = LoggingFunctionMiddleware()
         logging_agent_middleware = LoggingAgentMiddleware()
-        logging_chat_middleware = LoggingChatMiddleware()
-        """
-        self.agent = AzureOpenAIChatClient(credential=AzureCliCredential()).create_agent(
-            name=self.name,
-            description=description,
-            instructions=instructions,
-            tools=_tools,
-            chat_message_store_factory=ChatMessageStoreSingleton.get_instance
-#            middleware=[logging_middleware, logging_agent_middleware, logging_chat_middleware]
-        )
-        """
+#        logging_chat_middleware = LoggingChatMiddleware()
+
         self.agent = ChatAgent(
             name=self.name,
             description=description,
-            instructions=instructions,
+            instructions=rendered_instructions,
             chat_client=AzureOpenAIChatClient(credential=AzureCliCredential()),
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,

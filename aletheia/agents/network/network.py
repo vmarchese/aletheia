@@ -1,5 +1,3 @@
-from jinja2 import Template
-
 from agent_framework import  BaseChatClient
 
 from aletheia.agents.base import BaseAgent
@@ -26,18 +24,10 @@ class NetworkAgent(BaseAgent):
         network_plugin = NetworkPlugin(config=config, session=session, scratchpad=scratchpad)
         plugins = [network_plugin,scratchpad]
 
-
-        tools = []
-        tools.extend(network_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
-
-        template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)
-
         super().__init__(name=name,
                          description=description,
-                         instructions=rendered_instructions,
+                         instructions=instructions,
                          service=service,
                          session=session,
-                         tools=tools)
+                         plugins=plugins)
     

@@ -35,12 +35,12 @@ class OrchestratorAgent(BaseAgent):
         log_debug("OrchestratorAgent::__init__:: called")
         
 
-        plugins = []
-        plugins.extend(scratchpad.get_tools())
+        plugins= [scratchpad]
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
                          service=service,
                          session=session,
-                         tools=plugins
+                         plugins=plugins,
+                         render_instructions=False
                          )

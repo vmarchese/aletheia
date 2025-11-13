@@ -1,7 +1,6 @@
 
 from agent_framework import BaseChatClient
 
-from jinja2 import Template
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
@@ -36,16 +35,11 @@ class CodeAnalyzer(BaseAgent):
         git_plugin = GitPlugin(session=session)
 
 
-        tools = []
         plugins = [code_plugin, git_plugin, scratchpad]
-        for plugin in plugins:
-            tools.extend(plugin.get_tools())
-        template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)        
 
         super().__init__(name=name,
                          description=description,
-                         instructions=rendered_instructions,
+                         instructions=instructions,
                          service=service,
                          session=session,
-                         tools=tools)
+                         plugins=plugins)

@@ -10,10 +10,6 @@ This specialized agent is responsible for:
 This agent focuses exclusively on Kubernetes data sources, providing better
 separation of concerns and easier maintenance compared to the generic DataFetcherAgent.
 """
-
-
-from jinja2 import Template
-
 from agent_framework import  BaseChatClient, ChatMessageStore
 
 from aletheia.agents.base import BaseAgent
@@ -40,21 +36,13 @@ class LogFileDataFetcher(BaseAgent):
         log_debug("LogFileDataFetcher::__init__:: setup plugins")
         log_file_plugin = LogFilePlugin(config=config, session=session)
 
-        tools = []
         plugins = [log_file_plugin, scratchpad, UtilsPlugin(config=config, session=session)]
-
-        for plugin in plugins:
-            tools.extend(plugin.get_tools())    
-
-
-        template = Template(instructions)
-        rendered_instructions = template.render(plugins=plugins)        
 
 
         super().__init__(name=name,
                          description=description,
-                         instructions=rendered_instructions,
+                         instructions=instructions,
                          service=service,
                          session=session,
-                         tools=tools)
+                         plugins=plugins)
     
