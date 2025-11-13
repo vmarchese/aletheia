@@ -74,9 +74,25 @@ class UtilsPlugin:
             return "Invalid time_delta format. Use e.g. '5 days', '3 hours', '5d', '3h', or combinations."
         return dt.isoformat(sep="T", timespec="seconds")
 
+    def ip_in_cidr(
+        self,
+        ip_address: Annotated[str, "The IP address to check"],
+        cidr_block: Annotated[str, "The CIDR block to check against"],
+    ) -> bool:
+        """Checks if the given IP address is in the specified CIDR block."""
+        import ipaddress
+        try:
+            ip = ipaddress.ip_address(ip_address)
+            network = ipaddress.ip_network(cidr_block, strict=False)
+            return ip in network
+        except ValueError as e:
+            log_error(f"UtilsPlugin::ip_in_cidr:: Invalid IP address or CIDR block: {str(e)}")
+            return False
+
     def get_tools(self) -> List[ToolProtocol]: 
         """Get the list of tools provided by this plugin."""
         return [
             self.utils_gunzip_file,
-            self.utils_get_date_offset
+            self.utils_get_date_offset,
+            self.ip_in_cidr
         ]   

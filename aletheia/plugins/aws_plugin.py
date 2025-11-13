@@ -89,6 +89,15 @@ class AWSPlugin(BasePlugin):
         command = ["aws", "elbv2", "describe-load-balancer-attributes", "--load-balancer-arn", arn, "--profile", profile]
         return self._run_aws_command(command, save_key="elbv2_describe_load_balancer_attributes", log_prefix="AWSPlugin::aws_elbv2_load_balancers::")
 
+    def aws_elbv2_security_groups(
+        self,
+        arn: Annotated[str, "The Load Balancer ARN"],
+        profile: Annotated[str, "The default profile"] = "default",
+    ) -> str:
+        """Launches aws elbv2 describe-load-balancer-attributes for the given profile and load balancer ARN."""
+        command = ["aws", "elbv2", "describe-load-balancers", "--load-balancer-arn", arn, "--profile", profile, "--query", "LoadBalancers[0].SecurityGroups", "--output", "json"]
+        return self._run_aws_command(command, save_key="elbv2_security_groups", log_prefix="AWSPlugin::aws_elbv2_security_groups::")        
+
 #    @ai_function(description="Gets Listeners for the requested ELBV2 Load Balancer ARN and profile")
     def aws_elbv2_listeners(
         self,
@@ -323,25 +332,64 @@ class AWSPlugin(BasePlugin):
             saved = self.session.save_data(SessionDataType.INFO, "s3_ls", str(keys))
             log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: List: {str(keys)} to {saved}")
 
-#        if self.scratchpad:
-#            self.scratchpad.write_journal_entry(self.name, 
-#                                                f"List of {len(keys)} remote connection log files from bucket {bucket} for profile {profile}.",
-#                                                str(keys))
-
 
         return keys
+
+    
+    def aws_ec2_describe_eni_security_groups(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+        private_ip: Annotated[str, "The private IP address of the ENI"] = ""
+    ) -> str:
+        """Launches aws ec2 describe-network-interfaces for the given profile and private IP to find security groups."""
+        command = ["aws", "ec2", "describe-network-interfaces", "--profile", profile]
+        if private_ip and private_ip.strip() != "":
+            command += ["--filters", f"Name=private-ip-address,Values={private_ip}"]
+        command.extend(["--query", "NetworkInterfaces[0].Groups[*].[GroupId,GroupName]", "--output", "json" ])
+        return self._run_aws_command(command, save_key="ec2_describe_eni_security_groups", log_prefix="AWSPlugin::aws_ec2_describe_eni_security_groups::")
+
+    def aws_ec2_describe_security_group_inbound_rules(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+        group_id: Annotated[str, "The security group ID"] = ""
+    ) -> str:
+        """Launches aws ec2 describe-security-groups for the given profile and security group ID."""
+        command = ["aws", "ec2", "describe-security-groups", "--profile", profile]
+        if group_id and group_id.strip() != "":
+            command += ["--group-ids", group_id]
+        command.extend(["--query","SecurityGroups[0].IpPermissions[*].[IpProtocol,FromPort,ToPort,IpRanges[].CidrIp,UserIdGroupPairs[].GroupId]", "--output", "json"])
+        return self._run_aws_command(command, save_key="ec2_describe_security_group_inbound_rules", log_prefix="AWSPlugin::aws_ec2_describe_security_group_inbound_rules::")
+
+
+    def aws_ec2_describe_security_group_outbound_rules(
+        self,
+        profile: Annotated[str, "The default profile"] = "default",
+        group_id: Annotated[str, "The security group ID"] = ""
+    ) -> str:
+        """Launches aws ec2 describe-security-groups for the given profile and security group ID."""
+        command = ["aws", "ec2", "describe-security-groups", "--profile", profile]
+        if group_id and group_id.strip() != "":
+            command += ["--group-ids", group_id]
+        command.extend(["--query","SecurityGroups[0].IpPermissionsEgress[*].[IpProtocol,FromPort,ToPort,IpRanges[].CidrIp,UserIdGroupPairs[].GroupId]", "--output", "json"])
+        return self._run_aws_command(command, save_key="ec2_describe_security_group_outbound_rules", log_prefix="AWSPlugin::aws_ec2_describe_security_group_outbound_rules::"
+    )
+
 
     def get_tools(self) -> List[ToolProtocol]:
         return [
             self.aws_profiles,
             self.aws_ec2_instances,
             self.aws_ec2_route_tables,
+            self.aws_ec2_describe_eni_security_groups,
+            self.aws_ec2_describe_security_group_inbound_rules,
+            self.aws_ec2_describe_security_group_outbound_rules,
             self.aws_elbv2_load_balancers,
             self.aws_elbv2_load_balancer_attributes,
             self.aws_elbv2_listeners,
             self.aws_elbv2_listener_attributes,
             self.aws_elbv2_target_groups,
             self.aws_elbv2_target_group_attributes,
+            self.aws_elbv2_security_groups,
             self.aws_ec2_vpcs,
             self.aws_ec2_vpc_endpoints,
             self.aws_sts_caller_identity,

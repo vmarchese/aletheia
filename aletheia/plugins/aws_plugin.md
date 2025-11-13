@@ -9,6 +9,9 @@ You have access to the AWS cli to fetch resources on AWS:
 - **aws_ec2_route_tables(profile)**: gets the EC2 route tables
 - **aws_ec2_vpcs(profile)**: gets the VPCs for a profile
 - **aws_ec2_vpc_endpoints(profile)**: gets the VPC endpoints for a profile
+- **aws_ec2_describe_eni_security_groups(profile,private_ip)**: gets the security group for the given private ip address and profile if present
+- **aws_ec2_describe_security_group_inbound_rules(profile,group_id)**: describe the security group inbound rules for a security group and a profile
+- **aws_ec2_describe_security_group_outbound_rules(profile,group_id)**: describe the security group outbound rules for a security group and a profile
 
 #### S3
 - **aws_s3_buckets(profile)**: lists the S3 buckets for a profile
@@ -23,3 +26,4 @@ You have access to the AWS cli to fetch resources on AWS:
 - **aws_elbv2_target_group_attributes(arn,profile)**: gets the target group attributes for an ELBV2 (Elastic Load Balancer V2) target group ARN
 - **aws_elbv2_get_connection_logs(bucket, caller_identity, cutoff_date, region, profile)**: Gets the connection logs files in a bucket more recent than a cutoff date for a profile and saves them locally.  The default cutoff date is None.  
 - **aws_elbv2_list_connection_logs(bucket, caller_identity, cutoff_date, region, profile)**: Lists the connection logs files in a bucket more recent than a cutoff date for a profile and saves them locally.  The default cutoff date is None.  
+- **aws_elbv2_security_groups(arn,profile)**: gets the ELBV2 (Elastic Load Balancer V2) security groups 
