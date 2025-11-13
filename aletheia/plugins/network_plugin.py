@@ -107,6 +107,12 @@ class NetworkPlugin(BasePlugin):
         command = ["netstat", "-n", "-p", "TCP"]
         return self._run_net_command(command, save_key="netstat", log_prefix="NetworkPlugin::netstat::")
 
+    def whois(self,
+            target: Annotated[str, "The host to lookup"]):
+        """Perform a whois lookup for the given target."""
+        command = ["whois", target]
+        return self._run_net_command(command, save_key="whois", log_prefix="NetworkPlugin::whois::")
+
 
     def get_tools(self) -> List[ToolProtocol]:
         return [
@@ -116,7 +122,8 @@ class NetworkPlugin(BasePlugin):
             self.ping,
             self.traceroute,
             self.ifconfig,
-            self.netstat
+            self.netstat,
+            self.whois
         ]
 
     

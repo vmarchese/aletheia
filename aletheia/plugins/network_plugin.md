@@ -7,3 +7,4 @@ You have access to the network commands
 - **traceroute(target)**: performs a traceroute to the target
 - **ifconfig()**: get local network interfaces
 - **netstat()**: show active sockets/connections on the local machine
+- **whois(domain)**: looks up records in the databases maintained by several Network Information Centers (NICs)
