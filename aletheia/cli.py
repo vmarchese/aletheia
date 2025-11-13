@@ -21,6 +21,8 @@ from typing import Optional, List
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
+from rich.markdown import Markdown
+from rich.live import Live
 
 
 from agent_framework import (
@@ -53,22 +55,42 @@ from aletheia.agents.history import ConversationHistory
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
-thinking_messages = [
-    "Galavanting...",
-    "Confabulating...",
-    "Unhiding...",
-    "Byte-braiding...",
-    "Panic-taming...",
-    "Perambulating...",
-    "Divining...",
-    "Unconcealing...",
-    "Metric-massaging...",
-    "Log-leaping...",
-    "Packet-probing...",
-    "Metric-mining...",
-    "Log-lassoing...",
-    "Trace-traversing...",
-    "Data-dredging...",
+THINKING_MESSAGES = [
+    "🕺 Galavanting...",
+    "🧠 Confabulating...",
+    "🫣 Unhiding...",
+    "🧶 Byte-braiding...",
+    "😌 Panic-taming...",
+    "🚶‍♂️ Perambulating...",
+    "🔮 Divining...",
+    "🕵️‍♀️ Unconcealing...",
+    "📏 Metric-massaging...",
+    "🦘 Log-leaping...",
+    "📡 Packet-probing...",
+    "⛏️ Metric-mining...",
+    "🤠 Log-lassoing...",
+    "🧭 Trace-traversing...",
+    "⚓ Data-dredging...",
+
+    "🚀 Warming up the stream...",
+    "🤔 Thinking deep thoughts...",
+    "✨ Summoning Markdown magic...",
+    "🧠 Crunching ideas...",
+    "📡 Connecting to the source...",
+
+    "🧵 Weaving words together...",
+    "🔮 Consulting the language spirits...",
+    "⚙️ Calibrating cleverness...",
+    "📖 Turning pages of possibility...",
+    "💫 Spinning semantic silk...",
+    "🪄 Casting formatting spells...",
+    "🔍 Inspecting thought packets...",
+    "🧩 Reassembling syntax fragments...",
+    "🌩️ Charging the neural flux...",
+    "🎭 Rehearsing replies...",
+    "💡 Illuminating markdown mysteries...",
+    "📈 Optimizing verbosity coefficients...",
+    "🛰️ Aligning thought satellites...",
 ]
 
 def banner_callback(ctx: typer.Context):
@@ -179,26 +201,15 @@ def _build_plugins(config: Config,
 
     return plugins
 
-def thinking_animation(stop_event, session_id):
-    thinking_interval = 2.0  # seconds
-    last_msg = None
-    while not stop_event.is_set():
-        msg = random.choice(thinking_messages)
-        # Avoid repeating the same message twice in a row
-        while last_msg is not None and msg == last_msg and len(thinking_messages) > 1:
-            msg = random.choice(thinking_messages)
-        last_msg = msg
-        max_messages_len = max(len(m) for m in thinking_messages)
-        msg = msg.ljust(max_messages_len)        
-        console.print(f"[[bold yellow]{session_id}[/bold yellow]] [bold green]🤖 {msg}[/bold green]", end="\r", highlight=False, soft_wrap=True)
-        sys.stdout.flush()
-        # Wait for either the interval to pass or the stop event to be set
-        if stop_event.wait(thinking_interval):
-            break
 
-def clear_line():
-    max_messages_len = max(len(msg) for msg in thinking_messages)
-    console.print(" " * (max_messages_len + 20), end="\r", highlight=False)
+async def show_thinking_animation(live, stop_event, session_id):
+    while not stop_event.is_set():
+        msg = random.choice(THINKING_MESSAGES)
+        md = f"[[bold yellow]{session_id}[/bold yellow]] [bold green]🤖 {msg}[/bold green]"        
+        live.update(md)
+        await asyncio.sleep(1)
+
+
 
 async def _start_investigation(session: Session, console: Console) -> None:
 
@@ -262,40 +273,46 @@ async def _start_investigation(session: Session, console: Console) -> None:
 
 
             # Start thinking animation in a background thread
-            stop_event = threading.Event()
-            animation_thread = threading.Thread(target=thinking_animation, args=(stop_event, session.session_id))
-            animation_thread.start()
+            stop_event = asyncio.Event()
 
             full_response = ""
             first_message = 0
             try:
-                async for response in entry.agent.run_stream(
-                    messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
-                    thread=thread
-                ):
-                    # Stop animation and clear line before streaming response
-                    if (stop_event and not stop_event.is_set()) and (response is not None and response.text.strip() != ""):
-                        stop_event.set()
-                        animation_thread.join()
-                        # Overwrite the animation line with spaces to clear
-                        clear_line()
-                        console.print("")
+                
+                buf=""
+                with Live(Markdown(""), console=console, refresh_per_second=5) as live:
 
-                    if response and str(response.text) != "":
-                        full_response += str(response.text)
-                        if first_message == 0:
-                            first_message +=1
-                            console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n", end="")
-                        console.print(f"{response.text}", end="")
-                    if response and response.contents:
-                        for content in response.contents:
-                            if isinstance(content, UsageContent ):
-                               completion_usage += content.details
+                    waiter = asyncio.create_task(show_thinking_animation(live, stop_event,session.session_id))
+
+                    async for response in entry.agent.run_stream(
+                        messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
+                        thread=thread
+                    ):
+                        # Stop animation and clear line before streaming response
+                        """
+                        if (stop_event and not stop_event.is_set()) and (response is not None and response.text.strip() != ""):
+                            stop_event.set()
+                        """
+
+                        if response and str(response.text) != "":
+                            if not stop_event.is_set():
+                                stop_event.set()
+                                await asyncio.sleep(0.1)
+
+                            full_response += str(response.text)
+                            if first_message == 0:
+                                first_message +=1
+                                console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n", end="")
+                            buf+=response.text
+                            live.update(Markdown(safe_md(buf)))
+
+                        if response and response.contents:
+                            for content in response.contents:
+                                if isinstance(content, UsageContent ):
+                                    completion_usage += content.details
             finally:
                 if stop_event and not stop_event.is_set():
                     stop_event.set()
-                    animation_thread.join()
-                    clear_line()
 
             console.print("\n\n")
 
@@ -304,8 +321,13 @@ async def _start_investigation(session: Session, console: Console) -> None:
         output_token = completion_usage.output_token_count
         total_tokens = input_token + output_token
         total_cost = (input_token * config.cost_per_input_token) + (output_token * config.cost_per_output_token)
-        console.print(f"[bold cyan]Session completed.[/bold cyan] Total tokens used: [bold]{total_tokens}[/bold] (Input: [bold]{input_token}[/bold], Output: [bold]{output_token}[/bold]).")
-        console.print(f"[bold cyan]Estimated session cost:[/bold cyan] €[bold]{total_cost:.6f}[/bold] (Input: €[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: €[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
+        cost_table = "| Metric | Total | Input | Output |\n"
+        cost_table += "|--------|-------|-------|--------|\n"
+        cost_table += f"| Tokens | {total_tokens} | {input_token} | {output_token} |\n"
+        cost_table += f"| Cost (€) | €{total_cost:.6f} | €{input_token * config.cost_per_input_token:.6f} | €{output_token * config.cost_per_output_token:.6f} |\n"
+        console.print(Markdown(cost_table))
+#        console.print(f"[bold cyan]Session completed.[/bold cyan] Total tokens used: [bold]{total_tokens}[/bold] (Input: [bold]{input_token}[/bold], Output: [bold]{output_token}[/bold]).")
+#        console.print(f"[bold cyan]Estimated session cost:[/bold cyan] €[bold]{total_cost:.6f}[/bold] (Input: €[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: €[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
 
             
     except KeyboardInterrupt:
@@ -316,6 +338,11 @@ async def _start_investigation(session: Session, console: Console) -> None:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
+
+def safe_md(s: str) -> str:
+        fences = s.count("```")
+        return s + ("\n```" if fences % 2 else "")
+
 
 
 @app.command()
