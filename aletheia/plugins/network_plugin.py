@@ -77,6 +77,11 @@ class NetworkPlugin(BasePlugin):
         command = ["ping", "-c", "3", target]
         return self._run_net_command(command, save_key="ping", log_prefix="NetworkPlugin::ping::")
 
+    def traceroute(self, target: str) -> str:
+        """Perform a traceroute to the specified target."""
+        command = ["traceroute", "-w", "2", target]
+        return self._run_net_command(command, save_key="traceroute", log_prefix="NetworkPlugin::traceroute::")
+
 
        
 
@@ -85,7 +90,8 @@ class NetworkPlugin(BasePlugin):
         return [
             self.is_ip_in_cidr,
             self.nslookup,
-            self.ping
+            self.ping,
+            self.traceroute
         ]
 
     
