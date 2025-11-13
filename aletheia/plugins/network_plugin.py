@@ -70,6 +70,20 @@ class NetworkPlugin(BasePlugin):
         command = ["nslookup", domain]
         return self._run_net_command(command, save_key="nslookup", log_prefix="NetworkPlugin::nslookup::")
 
+    def dig(
+            self,
+            domain: Annotated[str, "The domain name to look up"],
+            type: Annotated[str, "The type of DNS record to query"] = "A",
+            dns_server: Annotated[str, "The DNS server to use"] = None) -> str:
+        """Perform an dig for the given domain name."""
+        command = ["dig"]
+        if dns_server:
+            command.extend(["@"+dns_server])
+        command.append(domain)
+        command.extend(["-t", type])
+
+        return self._run_net_command(command, save_key="dig", log_prefix="NetworkPlugin::dig::")        
+
     def ping(
             self,
             target: Annotated[str, "The host to ping"]):
@@ -82,16 +96,27 @@ class NetworkPlugin(BasePlugin):
         command = ["traceroute", "-w", "2", target]
         return self._run_net_command(command, save_key="traceroute", log_prefix="NetworkPlugin::traceroute::")
 
+    def ifconfig(self ) -> str:
+        """Perform a ifconfig to get network interfaces."""
+        command = ["ifconfig"]
+        return self._run_net_command(command, save_key="ifconfig", log_prefix="NetworkPlugin::ifconfig::")
 
        
+    def netstat(self) -> str:
+        """Check network statistics.""" 
+        command = ["netstat", "-n", "-p", "TCP"]
+        return self._run_net_command(command, save_key="netstat", log_prefix="NetworkPlugin::netstat::")
 
 
     def get_tools(self) -> List[ToolProtocol]:
         return [
             self.is_ip_in_cidr,
             self.nslookup,
+            self.dig,
             self.ping,
-            self.traceroute
+            self.traceroute,
+            self.ifconfig,
+            self.netstat
         ]
 
     
