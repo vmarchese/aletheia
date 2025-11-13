@@ -26,16 +26,16 @@ class AWSAgent(BaseAgent):
 
         log_debug("AWSAgent::__init__:: setup plugins")
         aws_plugin = AWSPlugin(config=config, session=session, scratchpad=scratchpad)
-
+        utils_plugin = UtilsPlugin(config=config, session=session)
+        log_file_plugin = LogFilePlugin(config=config, session=session)
+        plugins = [aws_plugin, scratchpad, utils_plugin, log_file_plugin]
 
         tools = []
-        tools.extend(aws_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
-        tools.extend(UtilsPlugin(config=config, session=session).get_tools())
-        tools.extend(LogFilePlugin(config=config, session=session).get_tools())
+        for plugin in plugins:
+            tools.extend(plugin.get_tools())
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=tools)
+        rendered_instructions = template.render(plugins=plugins)
 
         super().__init__(name=name,
                          description=description,

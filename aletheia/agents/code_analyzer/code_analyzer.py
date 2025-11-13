@@ -35,12 +35,13 @@ class CodeAnalyzer(BaseAgent):
 
         git_plugin = GitPlugin(session=session)
 
+
         tools = []
-        tools.extend(code_plugin.get_tools())
-        tools.extend(git_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
+        plugins = [code_plugin, git_plugin, scratchpad]
+        for plugin in plugins:
+            tools.extend(plugin.get_tools())
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=tools)        
+        rendered_instructions = template.render(plugins=plugins)        
 
         super().__init__(name=name,
                          description=description,

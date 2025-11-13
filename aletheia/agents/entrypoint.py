@@ -34,6 +34,7 @@ class Orchestrator(BaseAgent):
 
         template = Template(instructions)
         rendered_instructions = template.render(plugins=plugins)   
+        print(rendered_instructions)
 
 
         log_debug("Orchestrator::__init__:: called")

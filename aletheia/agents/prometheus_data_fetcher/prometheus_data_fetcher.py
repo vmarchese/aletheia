@@ -41,10 +41,11 @@ class PrometheusDataFetcher(BaseAgent):
 
 
         tools = []
-        tools.extend(prometheus_fetcher_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
+        plugins = [prometheus_fetcher_plugin, scratchpad]
+        for plugin in plugins:
+            tools.extend(plugin.get_tools())
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=tools)        
+        rendered_instructions = template.render(plugins=plugins)        
 
         super().__init__(name=name,
                          description=description,

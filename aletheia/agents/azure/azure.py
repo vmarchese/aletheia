@@ -24,13 +24,15 @@ class AzureAgent(BaseAgent):
 
         log_debug("AzureAgent::__init__:: setup plugins")
         azure_plugin = AzurePlugin(config=config, session=session)
+        plugins = [azure_plugin,scratchpad]
 
         tools = []
-        tools.extend(azure_plugin.get_tools())
-        tools.extend(scratchpad.get_tools())
+        for plugin in plugins:
+            tools.extend(plugin.get_tools())
+
 
         template = Template(instructions)
-        rendered_instructions = template.render(plugins=tools)
+        rendered_instructions = template.render(plugins=plugins)
 
         super().__init__(name=name,
                          description=description,
