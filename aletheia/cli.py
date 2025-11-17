@@ -4,20 +4,19 @@ Command-line interface for Aletheia.
 Main entry point for the Aletheia CLI application.
 """
 import os
-import sys
-import typer
 import asyncio
-import threading
-import time
 import random
-import sys
 import getpass
-import time
-import random
-import threading
 
 from pathlib import Path
 from typing import Optional, List
+from collections import defaultdict
+
+import zipfile
+import tempfile
+import shutil
+
+import typer
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -34,10 +33,11 @@ from agent_framework import (
     Role
 )
 
+from aletheia import __version__
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
-from aletheia.llm.service import LLMService
+from aletheia.encryption import decrypt_file
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
@@ -51,8 +51,6 @@ from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
-from aletheia.agents.history import ConversationHistory
-from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
 THINKING_MESSAGES = [
@@ -93,8 +91,11 @@ THINKING_MESSAGES = [
     "🛰️ Aligning thought satellites...",
 ]
 
-def banner_callback(ctx: typer.Context):
+
+def banner_callback():
+    """Show banner on app start."""
     show_banner()
+
 
 app = typer.Typer(
     name="aletheia",
@@ -112,12 +113,11 @@ app.add_typer(session_app, name="session")
 
 console = Console()
 
-thinking_interval = 2.0  # seconds
+THINKING_INTERVAL = 2.0  # seconds
 
 
 def _build_plugins(config: Config,
                    prompt_loader: Loader,
-                   llm_service: LLMService,
                    session: Session,
                    scratchpad: Scratchpad) -> List[BaseAgent]:
     """Build and return the list of available agent plugins."""
@@ -127,82 +127,75 @@ def _build_plugins(config: Config,
     plugins = []
 
     kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
-                                                   config=config,
-                                                   description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
-                                                   instructions=prompt_loader.load("kubernetes_data_fetcher", "instructions"),
-                                                   service=llm_service.client,
-                                                   session=session,
-                                                   scratchpad=scratchpad)     
+                                               config=config,
+                                               description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
+                                               instructions=prompt_loader.load("kubernetes_data_fetcher", "instructions"),
+                                               session=session,
+                                               scratchpad=scratchpad)
     plugins.append(kubernetes_fetcher.agent.as_tool())
 
     log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
-                                        config=config,
-                                        description="Log File Data Fetcher Agent for collecting logs from log files.",
-                                        instructions=prompt_loader.load("log_file_data_fetcher", "instructions"),
-                                        service=llm_service.client,
-                                        session=session,
-                                        scratchpad=scratchpad)
+                                          config=config,
+                                          description="Log File Data Fetcher Agent for collecting logs from log files.",
+                                          instructions=prompt_loader.load("log_file_data_fetcher", "instructions"),
+                                          session=session,
+                                          scratchpad=scratchpad)
     plugins.append(log_file_fetcher.agent.as_tool())
 
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
-                                        config=config,
-                                        description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
-                                        instructions=prompt_loader.load("pcap_file_data_fetcher", "instructions"),
-                                        service=llm_service.client,
-                                        session=session,
-                                        scratchpad=scratchpad)                                              
+                                            config=config,
+                                            description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
+                                            instructions=prompt_loader.load("pcap_file_data_fetcher", "instructions"),
+                                            session=session,
+                                            scratchpad=scratchpad)
     plugins.append(pcap_file_fetcher.agent.as_tool())
 
     prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
-                                            config=config,
-                                            description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
-                                            instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
-                                            service=llm_service.client,
-                                            session=session,
-                                            scratchpad=scratchpad)
+                                               config=config,
+                                               description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
+                                               instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
+                                               session=session,
+                                               scratchpad=scratchpad)
     plugins.append(prometheus_fetcher.agent.as_tool())
 
     aws_agent = AWSAgent(name="aws",
                          config=config,
                          description="AWS Agent for fetching AWS related data using AWS CLI.",
                          instructions=prompt_loader.load("aws", "instructions"),
-                         service=llm_service.client,
                          session=session,
                          scratchpad=scratchpad)
-    plugins.append(aws_agent.agent.as_tool())    
+    plugins.append(aws_agent.agent.as_tool())
 
     azure_agent = AzureAgent(name="azure",
-                              config=config,
-                              description="Azure Agent for fetching Azure related data using Azure CLI.",
-                              instructions=prompt_loader.load("azure", "instructions"),
-                              service=llm_service.client,
-                              session=session,
-                         scratchpad=scratchpad)
-    plugins.append(azure_agent.agent.as_tool())        
+                             config=config,
+                             description="Azure Agent for fetching Azure related data using Azure CLI.",
+                             instructions=prompt_loader.load("azure", "instructions"),
+                             session=session,
+                             scratchpad=scratchpad)
+    plugins.append(azure_agent.agent.as_tool())
 
-    network_agent = NetworkAgent(name="network",  
-                                config=config,
-                                description="Network Agent for fetching TCP Network related data.",
-                                instructions=prompt_loader.load("network", "instructions"),
-                                service=llm_service.client,
-                                session=session,
-                                scratchpad=scratchpad)
+    network_agent = NetworkAgent(name="network",
+                                 config=config,
+                                 description="Network Agent for fetching TCP Network related data.",
+                                 instructions=prompt_loader.load("network", "instructions"),
+                                 session=session,
+                                 scratchpad=scratchpad)
     plugins.append(network_agent.agent.as_tool())
-    
+
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
-                                    config=config,
-                                    description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
-                                    instructions=prompt_loader.load("code_analyzer", "instructions", prefix=config.code_analyzer.lower()),
-                                    service=llm_service.client,
-                                    session=session,
-                                    scratchpad=scratchpad)                                                   
+                                     config=config,
+                                     description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
+                                     instructions=prompt_loader.load("code_analyzer", "instructions", prefix=config.code_analyzer.lower()),
+                                     session=session,
+                                     scratchpad=scratchpad)
         plugins.append(code_analyzer.agent.as_tool())
 
     return plugins
 
 
 async def show_thinking_animation(live, stop_event):
+    """Show thinking animation until stop_event is set."""
     while not stop_event.is_set():
         msg = random.choice(THINKING_MESSAGES)
         live.update(f"[dim cyan]{msg}[/dim cyan]")
@@ -210,12 +203,11 @@ async def show_thinking_animation(live, stop_event):
         await asyncio.sleep(1)
 
 
-
-async def _start_investigation(session: Session, console: Console) -> None:
+async def _start_investigation(session: Session) -> None:
 
     """
     Start the investigation workflow for a session.
-    
+
     Args:
         session: Active session to investigate
         console: Rich console for output
@@ -223,55 +215,44 @@ async def _start_investigation(session: Session, console: Console) -> None:
 
     try:
         # Load configuration
-        config= load_config()
-        
+        config = load_config()
+
         # Prompt loader
         prompt_loader = Loader()
         # Initialize scratchpad with session directory and encryption key
-        scratchpad_file = session.scratchpad_file
-        
+
         # Load existing scratchpad if it exists, otherwise create new one
         scratchpad = Scratchpad(
                 session_dir=session.session_path,
-                encryption_key=session._get_key()
+                encryption_key=session.get_key()
         )
         session.scratchpad = scratchpad
-
-        # get LLM Service
-        llm_service = LLMService(config=config)
-        
 
         entry = Orchestrator(
             name="orchestrator",
             description="Orchestrator agent managing the investigation workflow",
             instructions=prompt_loader.load("orchestrator", "instructions"),
-            service = llm_service.client,
             session=session,
             sub_agents=_build_plugins(config=config,
                                       prompt_loader=prompt_loader,
-                                      llm_service=llm_service,
                                       session=session,
                                       scratchpad=scratchpad),
             scratchpad=scratchpad
         )
-        
 
         chatting = True
-        chat_history = ConversationHistory()
         completion_usage = UsageDetails()
 
         thread: AgentThread = entry.agent.get_new_thread()
-        
 
         while chatting:
             console.print("[cyan]" + "─" * console.width + "[/cyan]")
-            console.print(f"[i cyan]You can ask questions about the investigation or type 'exit' to end the session.[/i cyan]\n")
+            console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session.[/i cyan]\n")
             user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]")
             if user_input.lower() in ['exit', 'quit']:
                 chatting = False
                 console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
                 break
-
 
             # Start thinking animation in a background thread
             stop_event = asyncio.Event()
@@ -282,10 +263,8 @@ async def _start_investigation(session: Session, console: Console) -> None:
                 console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold cyan]🤖 Aletheia[/bold cyan]")
                 console.print("[cyan]" + "─" * console.width + "[/cyan]")
 
-                buf=""
+                buf = ""
                 with Live("", console=console, refresh_per_second=4, auto_refresh=False) as live:
-
-                    waiter = asyncio.create_task(show_thinking_animation(live, stop_event))
 
                     async for response in entry.agent.run_stream(
                         messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
@@ -300,18 +279,17 @@ async def _start_investigation(session: Session, console: Console) -> None:
                                 live.refresh()
 
                             full_response += str(response.text)
-                            buf+=response.text
+                            buf += response.text
                             live.update(Markdown(safe_md(buf)))
                             live.refresh()
 
                         if response and response.contents:
                             for content in response.contents:
-                                if isinstance(content, UsageContent ):
+                                if isinstance(content, UsageContent):
                                     completion_usage += content.details
             finally:
                 if stop_event and not stop_event.is_set():
                     stop_event.set()
-
 
         # evaluate total session cost
         input_token = completion_usage.input_token_count
@@ -323,10 +301,7 @@ async def _start_investigation(session: Session, console: Console) -> None:
         cost_table += f"| Tokens | {total_tokens} | {input_token} | {output_token} |\n"
         cost_table += f"| Cost (€) | €{total_cost:.6f} | €{input_token * config.cost_per_input_token:.6f} | €{output_token * config.cost_per_output_token:.6f} |\n"
         console.print(Markdown(cost_table))
-#        console.print(f"[bold cyan]Session completed.[/bold cyan] Total tokens used: [bold]{total_tokens}[/bold] (Input: [bold]{input_token}[/bold], Output: [bold]{output_token}[/bold]).")
-#        console.print(f"[bold cyan]Estimated session cost:[/bold cyan] €[bold]{total_cost:.6f}[/bold] (Input: €[bold]{input_token * config.cost_per_input_token:.6f}[/bold], Output: €[bold]{output_token * config.cost_per_output_token:.6f}[/bold])\n")
 
-            
     except KeyboardInterrupt:
         console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")
         # Save scratchpad before exiting
@@ -336,16 +311,16 @@ async def _start_investigation(session: Session, console: Console) -> None:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
 
-def safe_md(s: str) -> str:
-        fences = s.count("```")
-        return s + ("\n```" if fences % 2 else "")
 
+def safe_md(s: str) -> str:
+    """Ensure that Markdown code fences are properly closed."""
+    fences = s.count("```")
+    return s + ("\n```" if fences % 2 else "")
 
 
 @app.command()
 def version() -> None:
     """Display the version of Aletheia."""
-    from aletheia import __version__
     typer.echo(f"Aletheia version {__version__}")
 
 
@@ -360,20 +335,20 @@ def session_open(
     # Enable very-verbose mode (implies verbose)
     if very_verbose:
         verbose = True
-    
+
     # Enable verbose command output if requested
     if verbose:
         set_verbose_commands(True)
         console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
-    
+
     if very_verbose:
         console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
-    
+
     # Warn about unsafe mode
     if unsafe:
         console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - data will be stored in PLAINTEXT without encryption![/bold red]")
         console.print("[red]This mode should ONLY be used for testing purposes.[/red]\n")
-    
+
     # Get password (skip in unsafe mode)
     password = None
     if not unsafe:
@@ -381,13 +356,13 @@ def session_open(
         if not password:
             typer.echo("Error: Password cannot be empty", err=True)
             raise typer.Exit(1)
-        
+
         # Confirm password
         password_confirm = getpass.getpass("Confirm password: ")
         if password != password_confirm:
             typer.echo("Error: Passwords do not match", err=True)
             raise typer.Exit(1)
-    
+
     try:
         session = Session.create(
             name=name,
@@ -395,19 +370,18 @@ def session_open(
             verbose=very_verbose,
             unsafe=unsafe,
         )
-        
+
         # Enable trace logging if very-verbose mode
         if very_verbose:
             enable_trace_logging(session.session_path)
             console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
-        
-        metadata = session.get_metadata()
+
         console.print(f"[green]Session '{session.session_id}' created successfully![/green]")
         console.print(f"Session ID: {session.session_id}")
-        
+
         # Start investigation workflow
-        asyncio.run(_start_investigation(session, console))
-        
+        asyncio.run(_start_investigation(session))
+
     except FileExistsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -421,18 +395,18 @@ def session_list() -> None:
     """List all troubleshooting sessions."""
     try:
         sessions = Session.list_sessions()
-        
+
         if not sessions:
             console.print("[yellow]No sessions found[/yellow]")
             return
-        
+
         console.print()
         table = Table(title="Aletheia Sessions")
         table.add_column("Session ID", style="magenta")
         table.add_column("Created", style="yellow")
         table.add_column("Path", style="cyan")
         table.add_column("Unsafe", style="cyan")
-        
+
         for session_data in sessions:
             table.add_row(
                 session_data["id"],
@@ -440,7 +414,7 @@ def session_list() -> None:
                 session_data["path"],
                 session_data["unsafe"]
             )
-        
+
         console.print(table)
     except Exception as e:
         typer.echo(f"Error listing sessions: {e}", err=True)
@@ -458,18 +432,19 @@ def session_delete(
         if not confirm:
             console.print("[yellow]Deletion cancelled[/yellow]")
             return
-    
+
     try:
         # Directly construct Session and call delete
         session = Session(session_id=session_id)
         session.delete()
         console.print(f"[green]Session '{session_id}' deleted successfully![/green]")
-    except SessionNotFoundError:
+    except SessionNotFoundError as exc:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     except Exception as e:
         typer.echo(f"Error deleting session: {e}", err=True)
         raise typer.Exit(1)
+
 
 @session_app.command("timeline")
 def session_timeline(
@@ -480,7 +455,7 @@ def session_timeline(
     # Warn about unsafe mode
     if unsafe:
         console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
-    
+
     # Get password (skip in unsafe mode)
     password = None
     if not unsafe:
@@ -488,13 +463,11 @@ def session_timeline(
         if not password:
             typer.echo("Error: Password cannot be empty", err=True)
             raise typer.Exit(1)
-    
+
     try:
         # Load configuration
-        config= load_config()
         # Resume session to access metadata
         session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
-        metadata = session.get_metadata()
 
         # Load scratchpad
         scratchpad_file = session.scratchpad_file
@@ -504,22 +477,19 @@ def session_timeline(
 
         scratchpad = Scratchpad(
             session_dir=session.session_path,
-            encryption_key=session._get_key()
+            encryption_key=session.get_key()
         )
 
         # Display scratchpad contents (raw journal)
-        journal_content = scratchpad.read_scratchpad()        
+        journal_content = scratchpad.read_scratchpad()
 
-        prompt_loader = Loader()        
-        # get LLM Service
-        llm_service = LLMService(config=config)        
+        prompt_loader = Loader()
 
-        timeline_agent = TimelineAgent(name="timeline_agent", 
+        timeline_agent = TimelineAgent(name="timeline_agent",
                                        instructions=prompt_loader.load("timeline", "instructions"),
-                                       description="Timeline Agent for generating session timeline",
-                                       service=llm_service.client)
+                                       description="Timeline Agent for generating session timeline")
 
-        message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""   
+        message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        The timeline should summarize key actions, findings, and next steps in chronological order.
                                        The output should be in the following format:
@@ -530,11 +500,6 @@ def session_timeline(
         if response:
             console.print(f"\n{response}\n")
 
-
-
-
-
-
     except FileNotFoundError as fne:
         typer.echo(f"Error: Session '{session_id}' not found {fne}", err=True)
         raise typer.Exit(1)
@@ -543,8 +508,7 @@ def session_timeline(
         raise typer.Exit(1)
     except Exception as e:
         typer.echo(f"Error exporting session: {e}", err=True)
-        raise typer.Exit(1)        
-
+        raise typer.Exit(1)
 
 
 @session_app.command("export")
@@ -557,7 +521,7 @@ def session_export(
     # Warn about unsafe mode
     if unsafe:
         console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
-    
+
     # Get password (skip in unsafe mode)
     password = None
     if not unsafe:
@@ -565,10 +529,6 @@ def session_export(
         if not password:
             typer.echo("Error: Password cannot be empty", err=True)
             raise typer.Exit(1)
-    
-    import zipfile
-    import tempfile
-    import shutil
 
     try:
         session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
@@ -582,9 +542,8 @@ def session_export(
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             # Copy all files from session_dir to tmpdir, decrypting if needed
-            from aletheia.encryption import decrypt_file
-            key = session._get_key() if not unsafe else None
-            for root, dirs, files in os.walk(session_dir):
+            key = session.get_key() if not unsafe else None
+            for root, _, files in os.walk(session_dir):
                 rel_root = Path(root).relative_to(session_dir)
                 for file in files:
                     src_file = Path(root) / file
@@ -596,30 +555,30 @@ def session_export(
                         # Try to decrypt, if fails fallback to copy
                         try:
                             decrypt_file(src_file, key, dest_file)
-                        except Exception:
+                        except (OSError, IOError):
                             shutil.copy2(src_file, dest_file)
                     else:
                         shutil.copy2(src_file, dest_file)
 
             # Create zip file from tmpdir
             with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for foldername, subfolders, filenames in os.walk(tmpdir_path):
+                for foldername, _, filenames in os.walk(tmpdir_path):
                     for filename in filenames:
                         file_path = Path(foldername) / filename
                         arcname = file_path.relative_to(tmpdir_path)
                         zipf.write(file_path, arcname)
 
-        console.print(f"[green]Session exported successfully![/green]")
+        console.print("[green]Session exported successfully![/green]")
         console.print(f"Export file: {export_path}")
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         typer.echo(f"Error exporting session: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @session_app.command("view")
@@ -636,8 +595,8 @@ def session_view(
         password = getpass.getpass("Enter session password: ")
         if not password:
             typer.echo("Error: Password cannot be empty", err=True)
-            raise typer.Exit(1)         
-    
+            raise typer.Exit(1)
+
     try:
         # Resume session to access metadata
         session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
@@ -651,7 +610,7 @@ def session_view(
 
         scratchpad = Scratchpad(
             session_dir=session.session_path,
-            encryption_key=session._get_key()
+            encryption_key=session.get_key()
         )
 
         # Display metadata
@@ -661,28 +620,27 @@ def session_view(
         console.print(f"Updated: {metadata.updated}")
 
         # Display scratchpad contents (raw journal)
-        console.print(f"\n[bold cyan]Scratchpad Contents:[/bold cyan]\n")
+        console.print("\n[bold cyan]Scratchpad Contents:[/bold cyan]\n")
         journal_content = scratchpad.read_scratchpad()
         if not journal_content.strip():
             console.print("[dim](Scratchpad is empty)[/dim]")
         else:
-            from rich.markdown import Markdown
             console.print(Markdown(journal_content))
 
         # List files in the session's data directory (recursively)
         data_dir = session.session_path / "data"
-        console.print(f"\n[bold cyan]Data Directory Files:[/bold cyan]")
+        console.print("\n[bold cyan]Data Directory Files:[/bold cyan]")
         if data_dir.exists() and data_dir.is_dir():
             all_files = []
-            for root, dirs, files in os.walk(data_dir):
+            for root, _, files in os.walk(data_dir):
                 for file in files:
                     file_path = Path(root) / file
                     rel_path = file_path.relative_to(data_dir)
                     all_files.append(rel_path)
             if all_files:
                 # Build a tree structure for pretty printing
-                from collections import defaultdict
-                tree = lambda: defaultdict(tree)
+                def tree():
+                    return defaultdict(tree)
                 file_tree = tree()
                 for rel_path in all_files:
                     parts = rel_path.parts
@@ -706,29 +664,32 @@ def session_view(
         else:
             console.print("[dim](No data directory found)[/dim]")
 
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         typer.echo(f"Error viewing session: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
-def show_banner(verbose: bool = False) -> None:
+def show_banner() -> None:
+    """Display the Aletheia banner."""
     banner_path = os.path.join(os.path.dirname(__file__), "banner.txt")
     try:
         with open(banner_path, "r", encoding="utf-8") as f:
             console.print(f.read())
-
-    except Exception:
+    except (OSError, IOError):
+        # Ignore file read errors (banner is optional)
         pass
+
 
 def main() -> None:
     """Main entry point for the CLI."""
     app()
+
 
 if __name__ == "__main__":
     main()

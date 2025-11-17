@@ -35,6 +35,7 @@ dependencies = [
     "dateparser>=1.2.2",
     "agent-framework>=1.0.0b251108",
     "jinja2>=3.1.6",
+    "scapy>=2.7.0rc1",
 ]
 
 [project.optional-dependencies]

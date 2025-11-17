@@ -15,7 +15,7 @@ import subprocess
 import os
 from typing import Annotated, List
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.session import Session
 from aletheia.utils.logging import log_debug
@@ -25,21 +25,21 @@ from aletheia.plugins.base import BasePlugin
 
 class GitPlugin(BasePlugin):
     """plugin for Git operations.
-    
+
     This plugin provides kernel functions for common Git operations used
     in code inspection and analysis, allowing SK agents to automatically
     invoke Git operations via function calling.
-    
+
     All functions use Annotated type hints to provide SK with parameter
     descriptions for the LLM to understand how to call them.
-    
+
     Attributes:
         repositories: List of repository paths to search
     """
-    
+
     def __init__(self, session: Session):
         """Initialize the Git plugin.
-        
+
         Args:
             repositories: Optional list of repository paths to search.
                          Can be set later via set_repositories().
@@ -49,9 +49,6 @@ class GitPlugin(BasePlugin):
         loader = PluginInfoLoader()
         self.instructions = loader.load("git_plugin")
 
-    
-
-    #@ai_function( name="git_clone_repo", description="Clones a git repository by URL into the current session folder (/data/src/<repo_name>). Optionally specify a tag or branch to clone.")
     def git_clone_repo(
         self,
         repo_url: Annotated[str, "The URL of the git repository to clone (https or ssh)"],
@@ -79,11 +76,11 @@ class GitPlugin(BasePlugin):
         try:
             if os.path.exists(dest_dir):
                 return f"Repository already exists at {dest_dir}"
-            result = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=120, check=False)
             if result.returncode != 0:
                 return f"Error cloning repo: {result.stderr.strip()}"
             return dest_dir
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             return f"Exception during git clone: {e}"
 
     def get_tools(self) -> List[ToolProtocol]:

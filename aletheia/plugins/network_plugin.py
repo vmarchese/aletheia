@@ -1,7 +1,12 @@
+"""NetworkPlugin: A plugin to perform various network-related operations such as
+nslookup, dig, ping, traceroute, ifconfig, netstat, and whois.
+"""
 import json
+import subprocess
+import ipaddress
 from typing import Annotated, List
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
@@ -12,7 +17,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class NetworkPlugin(BasePlugin):
-
+    """plugin for network operations."""
     def __init__(self, config: Config, session: Session, scratchpad: Scratchpad):
         """Initialize the NetworkPlugin.
         Args:
@@ -29,9 +34,8 @@ class NetworkPlugin(BasePlugin):
     def _run_net_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run  network commands and handle output, errors, and saving."""
         try:
-            import subprocess
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=command, capture_output=True)
+            process = subprocess.run(args=command, capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({
@@ -42,7 +46,7 @@ class NetworkPlugin(BasePlugin):
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
                 log_debug(f"{log_prefix} Saved output to {saved}")
             return output
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             log_error(f"{log_prefix} Error launching command : {str(e)}")
             return f"Error launching command: {e}"
 
@@ -50,7 +54,6 @@ class NetworkPlugin(BasePlugin):
             self,
             ip_address: Annotated[str, "The IP address to check"]) -> bool:
         """Check if the given IP address is within the specified CIDR block."""
-        import ipaddress
         cidr_block = self.session.get_data(SessionDataType.INFO, "cidr_block")
         if not cidr_block:
             log_error("NetworkPlugin::is_ip_in_cidr:: No CIDR block found in session data")
@@ -73,16 +76,16 @@ class NetworkPlugin(BasePlugin):
     def dig(
             self,
             domain: Annotated[str, "The domain name to look up"],
-            type: Annotated[str, "The type of DNS record to query"] = "A",
+            query_type: Annotated[str, "The type of DNS record to query"] = "A",
             dns_server: Annotated[str, "The DNS server to use"] = None) -> str:
         """Perform an dig for the given domain name."""
         command = ["dig"]
         if dns_server:
             command.extend(["@"+dns_server])
         command.append(domain)
-        command.extend(["-t", type])
+        command.extend(["-t", query_type])
 
-        return self._run_net_command(command, save_key="dig", log_prefix="NetworkPlugin::dig::")        
+        return self._run_net_command(command, save_key="dig", log_prefix="NetworkPlugin::dig::")
 
     def ping(
             self,
@@ -96,25 +99,24 @@ class NetworkPlugin(BasePlugin):
         command = ["traceroute", "-w", "2", target]
         return self._run_net_command(command, save_key="traceroute", log_prefix="NetworkPlugin::traceroute::")
 
-    def ifconfig(self ) -> str:
+    def ifconfig(self) -> str:
         """Perform a ifconfig to get network interfaces."""
         command = ["ifconfig"]
         return self._run_net_command(command, save_key="ifconfig", log_prefix="NetworkPlugin::ifconfig::")
 
-       
     def netstat(self) -> str:
-        """Check network statistics.""" 
+        """Check network statistics."""
         command = ["netstat", "-n", "-p", "TCP"]
         return self._run_net_command(command, save_key="netstat", log_prefix="NetworkPlugin::netstat::")
 
     def whois(self,
-            target: Annotated[str, "The host to lookup"]):
+              target: Annotated[str, "The host to lookup"]):
         """Perform a whois lookup for the given target."""
         command = ["whois", target]
         return self._run_net_command(command, save_key="whois", log_prefix="NetworkPlugin::whois::")
 
-
     def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by this plugin."""
         return [
             self.is_ip_in_cidr,
             self.nslookup,
@@ -125,5 +127,3 @@ class NetworkPlugin(BasePlugin):
             self.netstat,
             self.whois
         ]
-
-    

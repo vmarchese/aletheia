@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 def sanitize_filename(name: str, max_length: int = 50) -> str:
     """Sanitize a string for use in a filename.
-    
+
     Args:
         name: The string to sanitize
         max_length: Maximum length of the sanitized string
-    
+
     Returns:
         Sanitized filename-safe string
     """
@@ -39,7 +39,7 @@ def sanitize_filename(name: str, max_length: int = 50) -> str:
 
 def generate_timestamp() -> str:
     """Generate a timestamp string for filenames.
-    
+
     Returns:
         ISO 8601 timestamp with colons replaced by hyphens (e.g., "2025-10-21T14-30-45")
     """
@@ -54,23 +54,23 @@ def save_logs_to_session(
     identifier: Optional[str] = None,
 ) -> Path:
     """Save logs to the session's data/logs directory.
-    
+
     Args:
         session_data_dir: Path to session's data directory (session.data_dir)
         logs: List of log entries to save
         metadata: Metadata about the logs (pod, namespace, time_range, etc.)
         source: Source of the logs (e.g., "kubernetes")
         identifier: Optional identifier for the log file (e.g., pod name)
-    
+
     Returns:
         Path to the saved log file
-    
+
     Raises:
         OSError: If file cannot be written
     """
     logs_dir = session_data_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate filename
     timestamp = generate_timestamp()
     if identifier:
@@ -78,9 +78,9 @@ def save_logs_to_session(
         filename = f"{source}_{sanitized_id}_{timestamp}.json"
     else:
         filename = f"{source}_{timestamp}.json"
-    
+
     file_path = logs_dir / filename
-    
+
     # Prepare data structure
     data = {
         "source": source,
@@ -91,7 +91,7 @@ def save_logs_to_session(
         },
         "data": logs,
     }
-    
+
     # Write to file
     try:
         with open(file_path, "w", encoding="utf-8") as f:
@@ -111,23 +111,23 @@ def save_metrics_to_session(
     query: Optional[str] = None,
 ) -> Path:
     """Save metrics to the session's data/metrics directory.
-    
+
     Args:
         session_data_dir: Path to session's data directory (session.data_dir)
         metrics: List of metric data points to save
         metadata: Metadata about the metrics (query, time_range, etc.)
         source: Source of the metrics (e.g., "prometheus")
         query: Optional PromQL query string for filename generation
-    
+
     Returns:
         Path to the saved metrics file
-    
+
     Raises:
         OSError: If file cannot be written
     """
     metrics_dir = session_data_dir / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate filename
     timestamp = generate_timestamp()
     if query:
@@ -136,9 +136,9 @@ def save_metrics_to_session(
         filename = f"{source}_{sanitized_query}_{timestamp}.json"
     else:
         filename = f"{source}_{timestamp}.json"
-    
+
     file_path = metrics_dir / filename
-    
+
     # Prepare data structure
     data = {
         "source": source,
@@ -149,7 +149,7 @@ def save_metrics_to_session(
         },
         "data": metrics,
     }
-    
+
     # Write to file
     try:
         with open(file_path, "w", encoding="utf-8") as f:
@@ -169,23 +169,23 @@ def save_traces_to_session(
     identifier: Optional[str] = None,
 ) -> Path:
     """Save traces to the session's data/traces directory.
-    
+
     Args:
         session_data_dir: Path to session's data directory (session.data_dir)
         traces: List of trace data to save
         metadata: Metadata about the traces
         source: Source of the traces (e.g., "jaeger")
         identifier: Optional identifier for the trace file
-    
+
     Returns:
         Path to the saved traces file
-    
+
     Raises:
         OSError: If file cannot be written
     """
     traces_dir = session_data_dir / "traces"
     traces_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate filename
     timestamp = generate_timestamp()
     if identifier:
@@ -193,9 +193,9 @@ def save_traces_to_session(
         filename = f"{source}_{sanitized_id}_{timestamp}.json"
     else:
         filename = f"{source}_{timestamp}.json"
-    
+
     file_path = traces_dir / filename
-    
+
     # Prepare data structure
     data = {
         "source": source,
@@ -206,7 +206,7 @@ def save_traces_to_session(
         },
         "data": traces,
     }
-    
+
     # Write to file
     try:
         with open(file_path, "w", encoding="utf-8") as f:

@@ -28,14 +28,14 @@ wheels = [
 
 [[package]]
 name = "ag-ui-protocol"
-version = "0.2.0a0"
+version = "0.1.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/35/dd487e5d4930236c6fd2a9530863e1899eb003d9f96bc3b7800ac73530bb/ag_ui_protocol-0.2.0a0.tar.gz", hash = "sha256:422bc284f9ab7019d2796641bac96faddd20eba815e1bad6122d72be1f989b80", size = 5582 }
+sdist = { url = "https://files.pythonhosted.org/packages/67/bb/5a5ec893eea5805fb9a3db76a9888c3429710dfb6f24bbb37568f2cf7320/ag_ui_protocol-0.1.10.tar.gz", hash = "sha256:3213991c6b2eb24bb1a8c362ee270c16705a07a4c5962267a083d0959ed894f4", size = 6945 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/85/b2b1eacf49c09c9d40ca2be61213e8e3fdbc88e77eebb0d7668570cf4da3/ag_ui_protocol-0.2.0a0-py3-none-any.whl", hash = "sha256:3f1fbf7ea1f0333ce8034cdc67df192b3c1a85a6c39dc866c35f9329df85b9cf", size = 7674 },
+    { url = "https://files.pythonhosted.org/packages/8f/78/eb55fabaab41abc53f52c0918a9a8c0f747807e5306273f51120fd695957/ag_ui_protocol-0.1.10-py3-none-any.whl", hash = "sha256:c81e6981f30aabdf97a7ee312bfd4df0cd38e718d9fc10019c7d438128b93ab5", size = 7889 },
 ]
 
 [[package]]
@@ -393,6 +393,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
     { name = "rich" },
+    { name = "scapy" },
     { name = "typer" },
 ]
 
@@ -430,6 +431,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31" },
     { name = "rich", specifier = ">=13.7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.0.286" },
+    { name = "scapy", specifier = ">=2.7.0rc1" },
     { name = "tree-sitter", marker = "extra == 'ast'", specifier = ">=0.20" },
     { name = "typer", specifier = ">=0.9.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
@@ -3435,6 +3437,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/54/1a/a49f071f04c42345c793d22f6cf5e0920095e286119ee53a64a3a3004825/ruff-0.14.4-py3-none-win32.whl", hash = "sha256:643b69cb63cd996f1fc7229da726d07ac307eae442dd8974dbc7cf22c1e18fff", size = 12493429 },
     { url = "https://files.pythonhosted.org/packages/bc/22/e58c43e641145a2b670328fb98bc384e20679b5774258b1e540207580266/ruff-0.14.4-py3-none-win_amd64.whl", hash = "sha256:26673da283b96fe35fa0c939bf8411abec47111644aa9f7cfbd3c573fb125d2c", size = 13635380 },
     { url = "https://files.pythonhosted.org/packages/30/bd/4168a751ddbbf43e86544b4de8b5c3b7be8d7167a2a5cb977d274e04f0a1/ruff-0.14.4-py3-none-win_arm64.whl", hash = "sha256:dd09c292479596b0e6fec8cd95c65c3a6dc68e9ad17b8f2382130f87ff6a75bb", size = 12663065 },
+]
+
+[[package]]
+name = "scapy"
+version = "2.7.0rc1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/88/9f43eb9cdf704621ad69f069e886abb4dd6eb892f17675fdf7656d310626/scapy-2.7.0rc1.tar.gz", hash = "sha256:826ee58fe17beaba3a39e600cec6289db328ef005456c62c153242cd39d08203", size = 2394336 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/2c/72442f41e604f57ff9c56eb62743c13047bd146ab6435dfa7ee92c9e9494/scapy-2.7.0rc1-py3-none-any.whl", hash = "sha256:7f73adae9b05c760fc451a8edbe2795b5bcdf84db3d52d6725b80c1d1554093d", size = 2571513 },
 ]
 
 [[package]]

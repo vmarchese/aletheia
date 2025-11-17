@@ -1,5 +1,5 @@
-from agent_framework import  BaseChatClient
-
+"""
+AWS Agent implementation for managing AWS resources via chat interface."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
@@ -11,12 +11,12 @@ from aletheia.config import Config
 
 
 class AWSAgent(BaseAgent):
-    def __init__(self, 
-                 name: str, 
+    """AWS Agent for managing AWS resources."""
+    def __init__(self,
+                 name: str,
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -28,11 +28,8 @@ class AWSAgent(BaseAgent):
         log_file_plugin = LogFilePlugin(config=config, session=session)
         plugins = [aws_plugin, scratchpad, utils_plugin, log_file_plugin]
 
-
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
-                         service=service,
                          session=session,
                          plugins=plugins)
-    

@@ -1,15 +1,12 @@
 """Validation utilities for user inputs and system state."""
 
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Tuple
 
 
 class ValidationError(Exception):
     """Raised when validation fails."""
-
-    pass
 
 
 def validate_git_repository(path: str) -> Path:

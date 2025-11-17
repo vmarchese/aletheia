@@ -16,23 +16,6 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource, PydanticBaseSettingsSource
 
 
-"""Configuration management for Aletheia.
-
-Implements simplified configuration loading with precedence using Pydantic Settings:
-1. Environment variables (highest priority)
-2. Project config (./.aletheia/config.yaml)
-3. User config (~/.aletheia/config.yaml)
-4. System config (/etc/aletheia/config.yaml)
-5. .env files
-6. Default values
-"""
-
-from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
-
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource, PydanticBaseSettingsSource
-
 class CodeAnalyzerType(Enum):
     """Code analyzer options."""
     CLAUDE = "claude"
@@ -70,24 +53,24 @@ class Config(BaseSettings):
     # =================================================================
     # LLM Configuration (flat)
     # =================================================================
-    
+
     # Default LLM settings
     llm_default_model: str = Field(default="gpt-4o", description="Default model for all agents")
     llm_base_url: Optional[str] = Field(default=None, description="Base URL for OpenAI-compatible API")
-    
+
     # Azure OpenAI configuration (default for all agents unless overridden)
     llm_use_azure: bool = Field(default=False, description="Use Azure OpenAI by default")
     llm_azure_deployment: Optional[str] = Field(default=None, description="Azure deployment name")
     llm_azure_endpoint: Optional[str] = Field(default=None, description="Azure OpenAI endpoint URL")
     llm_azure_api_version: Optional[str] = Field(default=None, description="Azure API version")
     llm_azure_api_key: str = Field(default=None, description="Environment variable for Azure OpenAI API key")
-    
+
     # Prompt templates configuration
     llm_prompt_templates_dir: Optional[str] = Field(default=None, description="Directory containing prompt templates")
-    
+
     # Agent-specific LLM overrides (using Dict for dynamic agent names)
     llm_agents: Dict[str, Dict[str, Any]] = Field(
-        default_factory=dict, 
+        default_factory=dict,
         description="Per-agent LLM configuration overrides"
     )
 
@@ -105,11 +88,11 @@ class Config(BaseSettings):
     # =================================================================
     # Data Sources Configuration (flat)
     # =================================================================
-    
+
     # Kubernetes
     kubernetes_context: Optional[str] = Field(default=None, description="Kubernetes context to use")
     kubernetes_namespace: str = Field(default="default", description="Default Kubernetes namespace")
-    
+
     # Prometheus
     prometheus_endpoint: Optional[str] = Field(default=None, description="Prometheus endpoint URL")
     prometheus_credentials_type: Literal["env", "keychain", "encrypted_file"] = Field(
@@ -118,10 +101,9 @@ class Config(BaseSettings):
     prometheus_username_env: Optional[str] = Field(default=None, description="Environment variable for Prometheus username")
     prometheus_password_env: Optional[str] = Field(default=None, description="Environment variable for Prometheus password")
     prometheus_credentials_file: Optional[str] = Field(default=None, description="Path to Prometheus credentials file")
-    prometheus_timeout_seconds: int = Field( default=10, ge=1, description="Timeout for Prometheus requests in seconds")
+    prometheus_timeout_seconds: int = Field(default=10, ge=1, description="Timeout for Prometheus requests in seconds")
     prometheus_credentials_bearer: Optional[str] = Field(default=None, description="Environment variable for Prometheus bearer token")
 
-    
     # Elasticsearch
     elasticsearch_endpoint: Optional[str] = Field(default=None, description="Elasticsearch endpoint URL")
     elasticsearch_credentials_type: Literal["env", "keychain", "encrypted_file"] = Field(
@@ -134,7 +116,7 @@ class Config(BaseSettings):
     # =================================================================
     # UI Configuration (flat)
     # =================================================================
-    
+
     ui_confirmation_level: Literal["verbose", "normal", "minimal"] = Field(
         default="normal", description="Level of confirmation prompts"
     )
@@ -143,7 +125,7 @@ class Config(BaseSettings):
     # =================================================================
     # Session Configuration (flat)
     # =================================================================
-    
+
     session_auto_save_interval: int = Field(
         default=300, ge=0, description="Auto-save interval in seconds (0 to disable)"
     )
@@ -154,7 +136,7 @@ class Config(BaseSettings):
     # =================================================================
     # Encryption Configuration (flat)
     # =================================================================
-    
+
     encryption_algorithm: Literal["Fernet"] = Field(
         default="Fernet", description="Encryption algorithm to use"
     )
@@ -168,7 +150,7 @@ class Config(BaseSettings):
     # =================================================================
     # Sampling Configuration (flat)
     # =================================================================
-    
+
     # Log sampling
     sampling_logs_default_sample_size: int = Field(
         default=200, ge=1, description="Default log sample size"
@@ -177,7 +159,7 @@ class Config(BaseSettings):
         default_factory=lambda: ["ERROR", "FATAL", "CRITICAL"],
         description="Log levels to always include in samples"
     )
-    
+
     # Metric sampling
     sampling_metrics_default_resolution: str = Field(
         default="1m", description="Default metric resolution"
@@ -204,14 +186,14 @@ class Config(BaseSettings):
             yaml_settings,
             file_secret_settings,
         )
-    
+
     # =================================================================
     # Helper Methods for Backward Compatibility
     # =================================================================
-    
+
     def get_agent_llm_config(self, agent_name: str) -> Dict[str, Any]:
         """Get LLM configuration for a specific agent.
-        
+
         Returns a dictionary with agent-specific overrides merged with defaults.
         """
         # Start with defaults
@@ -224,20 +206,20 @@ class Config(BaseSettings):
             "azure_endpoint": self.llm_azure_endpoint,
             "azure_api_version": self.llm_azure_api_version,
         }
-        
+
         # Override with agent-specific config if present
         if agent_name in self.llm_agents:
             config.update(self.llm_agents[agent_name])
-        
+
         return config
-    
+
     def get_kubernetes_config(self) -> Dict[str, Any]:
         """Get Kubernetes configuration."""
         return {
             "context": self.kubernetes_context,
             "namespace": self.kubernetes_namespace,
         }
-    
+
     def get_prometheus_config(self) -> Dict[str, Any]:
         """Get Prometheus configuration."""
         return {
@@ -249,7 +231,7 @@ class Config(BaseSettings):
                 "file_path": self.prometheus_credentials_file,
             }
         }
-    
+
     def get_elasticsearch_config(self) -> Dict[str, Any]:
         """Get Elasticsearch configuration."""
         return {
@@ -261,21 +243,21 @@ class Config(BaseSettings):
                 "file_path": self.elasticsearch_credentials_file,
             }
         }
-    
+
     def get_ui_config(self) -> Dict[str, Any]:
         """Get UI configuration."""
         return {
             "confirmation_level": self.ui_confirmation_level,
             "agent_visibility": self.ui_agent_visibility,
         }
-    
+
     def get_session_config(self) -> Dict[str, Any]:
         """Get session configuration."""
         return {
             "auto_save_interval": self.session_auto_save_interval,
             "default_time_window": self.session_default_time_window,
         }
-    
+
     def get_encryption_config(self) -> Dict[str, Any]:
         """Get encryption configuration."""
         return {
@@ -283,7 +265,7 @@ class Config(BaseSettings):
             "pbkdf2_iterations": self.encryption_pbkdf2_iterations,
             "salt_size": self.encryption_salt_size,
         }
-    
+
     def get_sampling_config(self) -> Dict[str, Any]:
         """Get sampling configuration."""
         return {
