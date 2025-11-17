@@ -202,11 +202,11 @@ def _build_plugins(config: Config,
     return plugins
 
 
-async def show_thinking_animation(live, stop_event, session_id):
+async def show_thinking_animation(live, stop_event):
     while not stop_event.is_set():
         msg = random.choice(THINKING_MESSAGES)
-        md = f"[[bold yellow]{session_id}[/bold yellow]] [bold green]🤖 {msg}[/bold green]"        
-        live.update(md)
+        live.update(f"[dim cyan]{msg}[/dim cyan]")
+        live.refresh()
         await asyncio.sleep(1)
 
 
@@ -264,8 +264,9 @@ async def _start_investigation(session: Session, console: Console) -> None:
         
 
         while chatting:
-            console.print(f"\n[cyan]You can ask questions about the investigation or type 'exit' to end the session.[/cyan]\n")
-            user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold yellow]👤 Your input[/bold yellow]")
+            console.print("[cyan]" + "─" * console.width + "[/cyan]")
+            console.print(f"[i cyan]You can ask questions about the investigation or type 'exit' to end the session.[/i cyan]\n")
+            user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]")
             if user_input.lower() in ['exit', 'quit']:
                 chatting = False
                 console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
@@ -276,35 +277,32 @@ async def _start_investigation(session: Session, console: Console) -> None:
             stop_event = asyncio.Event()
 
             full_response = ""
-            first_message = 0
             try:
-                
-                buf=""
-                with Live(Markdown(""), console=console, refresh_per_second=5) as live:
+                # Print header with horizontal line ONCE at the start
+                console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold cyan]🤖 Aletheia[/bold cyan]")
+                console.print("[cyan]" + "─" * console.width + "[/cyan]")
 
-                    waiter = asyncio.create_task(show_thinking_animation(live, stop_event,session.session_id))
+                buf=""
+                with Live("", console=console, refresh_per_second=4, auto_refresh=False) as live:
+
+                    waiter = asyncio.create_task(show_thinking_animation(live, stop_event))
 
                     async for response in entry.agent.run_stream(
                         messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
                         thread=thread
                     ):
-                        # Stop animation and clear line before streaming response
-                        """
-                        if (stop_event and not stop_event.is_set()) and (response is not None and response.text.strip() != ""):
-                            stop_event.set()
-                        """
-
                         if response and str(response.text) != "":
                             if not stop_event.is_set():
                                 stop_event.set()
-                                await asyncio.sleep(0.1)
+                                await asyncio.sleep(0.2)  # Give animation time to stop
+                                # Clear the live display
+                                live.update("")
+                                live.refresh()
 
                             full_response += str(response.text)
-                            if first_message == 0:
-                                first_message +=1
-                                console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]🤖 Response:[/bold green]\n", end="")
                             buf+=response.text
                             live.update(Markdown(safe_md(buf)))
+                            live.refresh()
 
                         if response and response.contents:
                             for content in response.contents:
@@ -314,7 +312,6 @@ async def _start_investigation(session: Session, console: Console) -> None:
                 if stop_event and not stop_event.is_set():
                     stop_event.set()
 
-            console.print("\n\n")
 
         # evaluate total session cost
         input_token = completion_usage.input_token_count
