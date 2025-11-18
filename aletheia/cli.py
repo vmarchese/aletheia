@@ -198,8 +198,8 @@ async def show_thinking_animation(live, stop_event):
     """Show thinking animation until stop_event is set."""
     while not stop_event.is_set():
         msg = random.choice(THINKING_MESSAGES)
-        live.update(f"[dim cyan]{msg}[/dim cyan]")
-        live.refresh()
+        md = f"[grey82 i]{msg}[/grey82 i]"
+        live.update(md)
         await asyncio.sleep(1)
 
 
@@ -261,10 +261,11 @@ async def _start_investigation(session: Session) -> None:
             try:
                 # Print header with horizontal line ONCE at the start
                 console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold cyan]🤖 Aletheia[/bold cyan]")
-                console.print("[cyan]" + "─" * console.width + "[/cyan]")
+                console.print("[cyan]" + "─" * 80 + "[/cyan]")
 
                 buf = ""
-                with Live("", console=console, refresh_per_second=4, auto_refresh=False) as live:
+                with Live("", console=console, refresh_per_second=5) as live:
+                    _ = asyncio.create_task(show_thinking_animation(live, stop_event))
 
                     async for response in entry.agent.run_stream(
                         messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
@@ -273,15 +274,15 @@ async def _start_investigation(session: Session) -> None:
                         if response and str(response.text) != "":
                             if not stop_event.is_set():
                                 stop_event.set()
-                                await asyncio.sleep(0.2)  # Give animation time to stop
+                                await asyncio.sleep(0.1)  # Give animation time to stop
                                 # Clear the live display
-                                live.update("")
-                                live.refresh()
+#                                live.update("")
+#                                live.refresh()
 
                             full_response += str(response.text)
                             buf += response.text
                             live.update(Markdown(safe_md(buf)))
-                            live.refresh()
+#                            live.refresh()
 
                         if response and response.contents:
                             for content in response.contents:
