@@ -9,6 +9,7 @@ from aletheia.config import Config
 from aletheia.session import Session
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
+from aletheia.utils.command import sanitize_command
 
 
 class ClaudeCodePlugin(BasePlugin):
@@ -44,7 +45,7 @@ class ClaudeCodePlugin(BasePlugin):
                 "-p", prompt]
 
             # Run the command and capture output
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = subprocess.run(sanitize_command(command), capture_output=True, text=True, check=False)
 
             if result.returncode != 0:
                 log_error(f"Claude code analysis failed: {result.stderr}")

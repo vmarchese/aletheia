@@ -6,6 +6,7 @@ with optional verbose output for debugging.
 
 import subprocess
 import time
+import shlex
 from typing import List, Optional, Dict
 from rich.console import Console
 
@@ -152,3 +153,19 @@ def run_command(
         )
 
     return result
+
+
+def sanitize_command(command: list) -> list:
+    """Sanitize command by redacting sensitive information.
+
+    Args:
+        command: Command list to sanitize
+
+    Returns:
+        Sanitized command list
+    """
+    sanitized = []
+    for part in command:
+        sanitized.append(shlex.quote(part))
+
+    return sanitized

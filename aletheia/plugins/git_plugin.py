@@ -21,6 +21,7 @@ from aletheia.session import Session
 from aletheia.utils.logging import log_debug
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
+from aletheia.utils.command import sanitize_command
 
 
 class GitPlugin(BasePlugin):
@@ -76,7 +77,7 @@ class GitPlugin(BasePlugin):
         try:
             if os.path.exists(dest_dir):
                 return f"Repository already exists at {dest_dir}"
-            result = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=120, check=False)
+            result = subprocess.run(sanitize_command(clone_cmd), capture_output=True, text=True, timeout=120, check=False)
             if result.returncode != 0:
                 return f"Error cloning repo: {result.stderr.strip()}"
             return dest_dir
