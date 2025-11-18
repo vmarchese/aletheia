@@ -59,11 +59,7 @@ class Config(BaseSettings):
     llm_base_url: Optional[str] = Field(default=None, description="Base URL for OpenAI-compatible API")
 
     # Azure OpenAI configuration (default for all agents unless overridden)
-    llm_use_azure: bool = Field(default=False, description="Use Azure OpenAI by default")
-    llm_azure_deployment: Optional[str] = Field(default=None, description="Azure deployment name")
-    llm_azure_endpoint: Optional[str] = Field(default=None, description="Azure OpenAI endpoint URL")
-    llm_azure_api_version: Optional[str] = Field(default=None, description="Azure API version")
-    llm_azure_api_key: str = Field(default=None, description="Environment variable for Azure OpenAI API key")
+    llm_use_azure: bool = Field(default=True, description="Use Azure OpenAI by default")
 
     # Prompt templates configuration
     llm_prompt_templates_dir: Optional[str] = Field(default=None, description="Directory containing prompt templates")
