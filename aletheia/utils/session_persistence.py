@@ -96,10 +96,10 @@ def save_logs_to_session(
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(logs)} log entries to {file_path}")
+        logger.info("Saved %d log entries to %s", len(logs), file_path)
         return file_path
     except OSError as e:
-        logger.error(f"Failed to save logs to {file_path}: {e}")
+        logger.error("Failed to save logs to %s: %s", file_path, e)
         raise
 
 
@@ -154,10 +154,10 @@ def save_metrics_to_session(
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(metrics)} metric data points to {file_path}")
+        logger.info("Saved %d metric data points to %s", len(metrics), file_path)
         return file_path
     except OSError as e:
-        logger.error(f"Failed to save metrics to {file_path}: {e}")
+        logger.error("Failed to save metrics to %s: %s", file_path, e)
         raise
 
 
@@ -211,8 +211,8 @@ def save_traces_to_session(
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(traces)} traces to {file_path}")
+        logger.info("Saved %d traces to %s", len(traces), file_path)
         return file_path
     except OSError as e:
-        logger.error(f"Failed to save traces to {file_path}: {e}")
+        logger.error("Failed to save traces to %s: %s", file_path, e)
         raise

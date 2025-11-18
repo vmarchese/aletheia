@@ -1,21 +1,21 @@
-"""Trace logging for verbose mode (-vv) and DEBUG logging.
+"""
+Trace logging for verbose mode  and logging.
 
 This module provides comprehensive trace and debug logging for Aletheia.
 
-Verbose mode (-vv):
+Verbose mode:
 - All LLM prompts with metadata
 - All external command executions with output
 - Agent state transitions
 - Function entry/exit points
 
-DEBUG mode (additional):
+debug mode (additional):
 - Agent operation start/end with duration
 - Scratchpad read/write operations
 - Plugin function invocations
 - LLM invocation summaries
 - State changes
 
-Logs are written to: ~/.aletheia/sessions/{session_id}/aletheia_trace.log
 """
 
 import logging
@@ -71,7 +71,7 @@ def enable_trace_logging(session_dir: Path) -> None:
     # Log initialization
     _TRACE_LOGGER.info("=" * 80)
     _TRACE_LOGGER.info("Trace logging initialized")
-    _TRACE_LOGGER.info(f"Session directory: {session_dir}")
+    _TRACE_LOGGER.info("Session directory: %s", session_dir)
     _TRACE_LOGGER.info("=" * 80)
 
 
@@ -131,10 +131,10 @@ def log_prompt(
 
     # Log to file with full details
     _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(f"LLM PROMPT | Agent: {agent_name} | Model: {model}")
-    _TRACE_LOGGER.info(f"Timestamp: {timestamp}")
+    _TRACE_LOGGER.info("LLM PROMPT | Agent: %s | Model: %s", agent_name, model)
+    _TRACE_LOGGER.info("Timestamp: %s", timestamp)
     if prompt_tokens:
-        _TRACE_LOGGER.info(f"Estimated tokens: {prompt_tokens}")
+        _TRACE_LOGGER.info("Estimated tokens: %d", prompt_tokens)
     _TRACE_LOGGER.info("-" * 80)
     _TRACE_LOGGER.info(prompt)
     _TRACE_LOGGER.info("-" * 80)
@@ -176,12 +176,12 @@ def log_prompt_response(
 
     # Log to file
     _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(f"LLM RESPONSE | Agent: {agent_name}")
-    _TRACE_LOGGER.info(f"Timestamp: {timestamp}")
+    _TRACE_LOGGER.info("LLM RESPONSE | Agent: %s", agent_name)
+    _TRACE_LOGGER.info("Timestamp: %s", timestamp)
     if completion_tokens:
-        _TRACE_LOGGER.info(f"Completion tokens: {completion_tokens}")
+        _TRACE_LOGGER.info("Completion tokens: %d", completion_tokens)
     if total_tokens:
-        _TRACE_LOGGER.info(f"Total tokens: {total_tokens}")
+        _TRACE_LOGGER.info("Total tokens: %d", total_tokens)
     _TRACE_LOGGER.info("-" * 80)
     _TRACE_LOGGER.info(response_str)
     _TRACE_LOGGER.info("-" * 80)
@@ -224,12 +224,12 @@ def log_command(
     timestamp = datetime.now().isoformat()
 
     _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(f"COMMAND START | Timestamp: {timestamp}")
-    _TRACE_LOGGER.info(f"Command: {command}")
+    _TRACE_LOGGER.info("COMMAND START | Timestamp: %s", timestamp)
+    _TRACE_LOGGER.info("Command: %s", command)
     if cwd:
-        _TRACE_LOGGER.info(f"Working directory: {cwd}")
+        _TRACE_LOGGER.info("Working directory: %s", cwd)
     if env_summary:
-        _TRACE_LOGGER.info(f"Environment: {env_summary}")
+        _TRACE_LOGGER.info("Environment: %s", env_summary)
     _TRACE_LOGGER.info("-" * 80)
 
 
@@ -255,11 +255,11 @@ def log_command_result(
     timestamp = datetime.now().isoformat()
 
     _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(f"COMMAND END | Timestamp: {timestamp}")
-    _TRACE_LOGGER.info(f"Command: {command}")
-    _TRACE_LOGGER.info(f"Exit code: {exit_code}")
+    _TRACE_LOGGER.info("COMMAND END | Timestamp: %s", timestamp)
+    _TRACE_LOGGER.info("Command: %s", command)
+    _TRACE_LOGGER.info("Exit code: %d", exit_code)
     if duration_seconds is not None:
-        _TRACE_LOGGER.info(f"Duration: {duration_seconds:.3f}s")
+        _TRACE_LOGGER.info("Duration: %.3fs", duration_seconds)
     _TRACE_LOGGER.info("-" * 80)
 
     if stdout:
@@ -292,12 +292,12 @@ def log_agent_transition(
 
     _TRACE_LOGGER.info("=" * 80)
     if from_agent:
-        _TRACE_LOGGER.info(f"AGENT TRANSITION | {from_agent} → {to_agent}")
+        _TRACE_LOGGER.info("AGENT TRANSITION | %s → %s", from_agent, to_agent)
     else:
-        _TRACE_LOGGER.info(f"AGENT START | {to_agent}")
-    _TRACE_LOGGER.info(f"Timestamp: {timestamp}")
+        _TRACE_LOGGER.info("AGENT START | %s", to_agent)
+    _TRACE_LOGGER.info("Timestamp: %s", timestamp)
     if reason:
-        _TRACE_LOGGER.info(f"Reason: {reason}")
+        _TRACE_LOGGER.info("Reason: %s", reason)
     _TRACE_LOGGER.info("=" * 80)
 
     # Console output
@@ -323,9 +323,9 @@ def log_function_entry(
     if not _TRACE_ENABLED or not _TRACE_LOGGER:
         return
 
-    _TRACE_LOGGER.debug(f"→ ENTER {function_name}")
+    _TRACE_LOGGER.debug("→ ENTER %s", function_name)
     if args:
-        _TRACE_LOGGER.debug(f"  Args: {args}")
+        _TRACE_LOGGER.debug("  Args: %s", args)
 
 
 def log_function_exit(
@@ -341,9 +341,9 @@ def log_function_exit(
     if not _TRACE_ENABLED or not _TRACE_LOGGER:
         return
 
-    _TRACE_LOGGER.debug(f"← EXIT {function_name}")
+    _TRACE_LOGGER.debug("← EXIT %s", function_name)
     if result is not None:
-        _TRACE_LOGGER.debug(f"  Result: {result}")
+        _TRACE_LOGGER.debug("  Result: %s", result)
 
 
 def log_info(message: str) -> None:
@@ -418,11 +418,11 @@ def log_operation_start(
         return start_time
 
     prefix = f"{agent_name} | " if agent_name else ""
-    _TRACE_LOGGER.debug(f"⚙️  {prefix}{operation_name} - STARTING")
+    _TRACE_LOGGER.debug("⚙️  %s%s - STARTING", prefix, operation_name)
 
     if details:
         for key, value in details.items():
-            _TRACE_LOGGER.debug(f"   {key}: {value}")
+            _TRACE_LOGGER.debug("   %s: %s", key, value)
 
     return start_time
 
@@ -447,10 +447,10 @@ def log_operation_complete(
     duration = (datetime.now() - start_time).total_seconds() * 1000  # Convert to milliseconds
     prefix = f"{agent_name} | " if agent_name else ""
 
-    _TRACE_LOGGER.debug(f"✅ {prefix}{operation_name} - COMPLETED (duration: {duration:.2f}ms)")
+    _TRACE_LOGGER.debug("✅ %s%s - COMPLETED (duration: %.2fms)", prefix, operation_name, duration)
 
     if result_summary:
-        _TRACE_LOGGER.debug(f"   Result: {result_summary}")
+        _TRACE_LOGGER.debug("   Result: %s", result_summary)
 
 
 def log_scratchpad_operation(
@@ -471,13 +471,13 @@ def log_scratchpad_operation(
         return
 
     prefix = f"{agent_name} | " if agent_name else ""
-    _TRACE_LOGGER.debug(f"📋 {prefix}SCRATCHPAD {operation} | Section: {section}")
+    _TRACE_LOGGER.debug("📋 %sSCRATCHPAD %s | Section: %s", prefix, operation, section)
 
     if data_summary:
         # Truncate if too long
         if len(data_summary) > 100:
             data_summary = data_summary[:100] + "..."
-        _TRACE_LOGGER.debug(f"   Data: {data_summary}")
+        _TRACE_LOGGER.debug("   Data: %s", data_summary)
 
 
 def log_state_change(
@@ -497,10 +497,10 @@ def log_state_change(
     if not _TRACE_ENABLED or not _TRACE_LOGGER:
         return
 
-    _TRACE_LOGGER.debug(f"🔄 STATE CHANGE | {entity}: {old_state} → {new_state}")
+    _TRACE_LOGGER.debug("🔄 STATE CHANGE | %s: %s → %s", entity, old_state, new_state)
 
     if reason:
-        _TRACE_LOGGER.debug(f"   Reason: {reason}")
+        _TRACE_LOGGER.debug("   Reason: %s", reason)
 
 
 def log_plugin_invocation(
@@ -518,14 +518,14 @@ def log_plugin_invocation(
     if not _TRACE_ENABLED or not _TRACE_LOGGER:
         return
 
-    _TRACE_LOGGER.debug(f"🔌 PLUGIN CALL | {plugin_name}.{function_name}")
+    _TRACE_LOGGER.debug("🔌 PLUGIN CALL | %s.%s", plugin_name, function_name)
 
     for key, value in parameters.items():
         # Truncate long values
         value_str = str(value)
         if len(value_str) > 200:
             value_str = value_str[:200] + "..."
-        _TRACE_LOGGER.debug(f"   {key}: {value_str}")
+        _TRACE_LOGGER.debug("   %s: %s", key, value_str)
 
 
 def log_llm_invocation(
@@ -546,5 +546,5 @@ def log_llm_invocation(
         return
 
     token_info = f" (~{estimated_tokens} tokens)" if estimated_tokens else ""
-    _TRACE_LOGGER.debug(f"🤖 LLM INVOKE | {agent_name} | Model: {model}{token_info}")
-    _TRACE_LOGGER.debug(f"   Prompt summary: {prompt_summary}")
+    _TRACE_LOGGER.debug("🤖 LLM INVOKE | %s | Model: %s%s", agent_name, model, token_info)
+    _TRACE_LOGGER.debug("   Prompt summary: %s", prompt_summary)
