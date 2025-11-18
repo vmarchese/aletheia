@@ -289,7 +289,11 @@ class Session:
         session_id = cls._generate_session_id(session_dir)
 
         # Create session instance
-        session = cls(session_id, session_dir, password, unsafe=unsafe)
+        session = cls(
+                      session_id=session_id,
+                      session_dir=session_dir,
+                      password=password,
+                      unsafe=unsafe)
 
         # Check if session already exists
         if session.session_path.exists():
@@ -354,7 +358,10 @@ class Session:
             SessionError: If password is incorrect
         """
 
-        session = cls(session_id, session_dir, password, unsafe=unsafe)
+        session = cls(session_id=session_id,
+                      session_dir=session_dir,
+                      password=password,
+                      unsafe=unsafe)
 
         if not session.session_path.exists():
             raise SessionNotFoundError(f"Session {session_id} not found")
@@ -552,7 +559,7 @@ class Session:
                 (temp_extract_path / session_id).rename(session_path)
 
             # Create session instance
-            session = cls(session_id, session_dir, password)
+            session = cls(session_id=session_id, session_dir=session_dir, password=password)
             session._key = key
 
             # Load metadata to validate

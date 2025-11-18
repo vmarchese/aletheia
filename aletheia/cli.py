@@ -37,7 +37,7 @@ from aletheia import __version__
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
-from aletheia.encryption import decrypt_file
+from aletheia.encryption import decrypt_file, DecryptionError
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
@@ -556,7 +556,7 @@ def session_export(
                         # Try to decrypt, if fails fallback to copy
                         try:
                             decrypt_file(src_file, key, dest_file)
-                        except (OSError, IOError):
+                        except (OSError, IOError, DecryptionError):
                             shutil.copy2(src_file, dest_file)
                     else:
                         shutil.copy2(src_file, dest_file)
