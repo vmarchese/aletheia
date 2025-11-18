@@ -7,6 +7,7 @@ from typing import Annotated, List
 from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
+from aletheia.utils.command import sanitize_command
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
@@ -33,7 +34,8 @@ class AWSPlugin(BasePlugin):
         """Helper to run AWS CLI commands and handle output, errors, and saving."""
         try:
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=command, capture_output=True, check=False)
+
+            process = subprocess.run(args=sanitize_command(command), capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({

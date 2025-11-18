@@ -8,6 +8,7 @@ from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session
 from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.utils.command import sanitize_command
 
 
 class CopilotPlugin:
@@ -42,7 +43,7 @@ class CopilotPlugin:
                 "-p", prompt]
 
             # Run the command and capture output
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = subprocess.run(sanitize_command(command), capture_output=True, text=True, check=False)
 
             if result.returncode != 0:
                 log_error(f"Copilot analysis failed: {result.stderr}")

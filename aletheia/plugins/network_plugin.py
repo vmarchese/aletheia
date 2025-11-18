@@ -14,6 +14,7 @@ from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.plugins.base import BasePlugin
+from aletheia.utils.command import sanitize_command
 
 
 class NetworkPlugin(BasePlugin):
@@ -35,7 +36,7 @@ class NetworkPlugin(BasePlugin):
         """Helper to run  network commands and handle output, errors, and saving."""
         try:
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=command, capture_output=True, check=False)
+            process = subprocess.run(args=sanitize_command(command), capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({
