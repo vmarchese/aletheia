@@ -5,11 +5,9 @@ with optional verbose output for debugging.
 """
 
 import subprocess
-import os
 import time
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from rich.console import Console
-from rich.syntax import Syntax
 
 from aletheia.utils.logging import (
     is_trace_enabled,
@@ -25,7 +23,7 @@ _console = Console(stderr=True)
 
 def set_verbose_commands(enabled: bool) -> None:
     """Enable or disable verbose command output.
-    
+
     Args:
         enabled: True to enable verbose output for all external commands
     """
@@ -35,7 +33,7 @@ def set_verbose_commands(enabled: bool) -> None:
 
 def is_verbose_commands() -> bool:
     """Check if verbose command output is enabled.
-    
+
     Returns:
         True if verbose output is enabled
     """
@@ -53,10 +51,10 @@ def run_command(
     **kwargs
 ) -> subprocess.CompletedProcess:
     """Run an external command with optional verbose output.
-    
+
     This is a wrapper around subprocess.run that logs command execution
     when verbose mode is enabled.
-    
+
     Args:
         cmd: Command and arguments as list
         capture_output: Whether to capture stdout/stderr
@@ -66,10 +64,10 @@ def run_command(
         cwd: Working directory for command
         env: Environment variables
         **kwargs: Additional arguments passed to subprocess.run
-    
+
     Returns:
         CompletedProcess instance with command results
-    
+
     Raises:
         subprocess.CalledProcessError: If command fails and check=True
         subprocess.TimeoutExpired: If command times out
@@ -78,15 +76,15 @@ def run_command(
     cmd_str = " ".join(cmd)
     if is_trace_enabled():
         log_command(cmd_str, cwd=cwd)
-    
+
     if _VERBOSE_COMMANDS:
         # Print command being executed
-        _console.print(f"\n[bold cyan]→ Executing command:[/bold cyan]")
+        _console.print("\n[bold cyan]→ Executing command:[/bold cyan]")
         _console.print(f"  [dim]{cmd_str}[/dim]")
-        
+
         if cwd:
             _console.print(f"  [dim]Working directory: {cwd}[/dim]")
-    
+
     # Execute command with timing
     start_time = time.time()
     result = subprocess.run(
@@ -100,11 +98,11 @@ def run_command(
         **kwargs
     )
     duration = time.time() - start_time
-    
+
     if _VERBOSE_COMMANDS:
         # Print results
         _console.print(f"  [dim]Exit code: {result.returncode}[/dim]")
-        
+
         if result.stdout:
             _console.print("[bold green]  stdout:[/bold green]")
             # Truncate very long output
@@ -118,7 +116,7 @@ def run_command(
             else:
                 for line in stdout_lines:
                     _console.print(f"    {line}")
-        
+
         if result.stderr:
             _console.print("[bold red]  stderr:[/bold red]")
             stderr_lines = result.stderr.split('\n')
@@ -131,9 +129,9 @@ def run_command(
             else:
                 for line in stderr_lines:
                     _console.print(f"    {line}")
-        
+
         _console.print()  # Blank line after command output
-    
+
     # Log result to trace file
     if is_trace_enabled():
         log_command_result(
@@ -143,7 +141,7 @@ def run_command(
             stderr=result.stderr,
             duration_seconds=duration
         )
-    
+
     # Now check for errors if requested
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(
@@ -152,5 +150,5 @@ def run_command(
             output=result.stdout,
             stderr=result.stderr
         )
-    
+
     return result

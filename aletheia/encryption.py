@@ -23,12 +23,10 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 class EncryptionError(Exception):
     """Base exception for encryption-related errors."""
-    pass
 
 
 class DecryptionError(EncryptionError):
     """Exception raised when decryption fails."""
-    pass
 
 
 def derive_session_key(password: str, salt: bytes, iterations: int = 100000) -> bytes:
@@ -188,8 +186,8 @@ def encrypt_file(filepath: Path, key: bytes, output_path: Optional[Path] = None)
 
 
 def decrypt_file(encrypted_filepath: Path,
-                key: bytes,
-                output_path: Optional[Path] = None) -> Path:
+                 key: bytes,
+                 output_path: Optional[Path] = None) -> Path:
     """Decrypt file with Fernet.
 
     Args:

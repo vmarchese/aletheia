@@ -4,7 +4,6 @@ This module provides Rich-based formatting functions for chat messages
 to create clear visual distinction between user and bot messages.
 """
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich import box
@@ -23,7 +22,7 @@ def format_user_message(message: str, session_id: str) -> str:
     return f"[[bold yellow]{session_id}[/bold yellow]] [bold green]👤 YOU:[/bold green] {message}"
 
 
-def format_bot_response_panel(content: str, streaming: bool = False) -> Panel:
+def format_bot_response_panel(content: str) -> Panel:
     """Format bot response in a Rich Panel with Markdown rendering.
 
     Args:

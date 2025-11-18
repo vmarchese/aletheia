@@ -1,7 +1,10 @@
+"""AWS Plugin for Aletheia."""
 import json
+import subprocess
+from datetime import datetime, timedelta
 from typing import Annotated, List
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
@@ -12,7 +15,7 @@ from aletheia.plugins.base import BasePlugin
 
 
 class AWSPlugin(BasePlugin):
-
+    """AWS Plugin for Aletheia."""
     def __init__(self, config: Config, session: Session, scratchpad: Scratchpad):
         """Initialize the AWSPlugin.
         Args:
@@ -29,9 +32,8 @@ class AWSPlugin(BasePlugin):
     def _run_aws_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run AWS CLI commands and handle output, errors, and saving."""
         try:
-            import subprocess
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=command, capture_output=True)
+            process = subprocess.run(args=command, capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({
@@ -42,9 +44,15 @@ class AWSPlugin(BasePlugin):
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
                 log_debug(f"{log_prefix} Saved output to {saved}")
             return output
-        except Exception as e:
-            log_error(f"{log_prefix} Error launching aws cli: {str(e)}")
-            return f"Error launching aws cli: {e}"
+        except FileNotFoundError as e:
+            log_error(f"{log_prefix} AWS CLI not found: {str(e)}")
+            return f"Error: AWS CLI not found: {e}"
+        except subprocess.CalledProcessError as e:
+            log_error(f"{log_prefix} AWS CLI command failed: {str(e)}")
+            return f"Error: AWS CLI command failed: {e}"
+        except OSError as e:
+            log_error(f"{log_prefix} OS error when launching aws cli: {str(e)}")
+            return f"Error: OS error when launching aws cli: {e}"
 
 #    @ai_function(description="Gets AWS profiles available in the system.")
     def aws_profiles(self) -> str:
@@ -96,7 +104,7 @@ class AWSPlugin(BasePlugin):
     ) -> str:
         """Launches aws elbv2 describe-load-balancer-attributes for the given profile and load balancer ARN."""
         command = ["aws", "elbv2", "describe-load-balancers", "--load-balancer-arn", arn, "--profile", profile, "--query", "LoadBalancers[0].SecurityGroups", "--output", "json"]
-        return self._run_aws_command(command, save_key="elbv2_security_groups", log_prefix="AWSPlugin::aws_elbv2_security_groups::")        
+        return self._run_aws_command(command, save_key="elbv2_security_groups", log_prefix="AWSPlugin::aws_elbv2_security_groups::")
 
 #    @ai_function(description="Gets Listeners for the requested ELBV2 Load Balancer ARN and profile")
     def aws_elbv2_listeners(
@@ -189,10 +197,8 @@ class AWSPlugin(BasePlugin):
         # Set default cutoff_date to now - 2 days if not provided
         if cutoff_date is None or cutoff_date.strip() == "":
             log_debug("AWSPlugin::aws_elbv2_connection_logs:: No cutoff_date provided, defaulting to 24 hours ago")
-            from datetime import datetime, timedelta
             cutoff_dt = datetime.utcnow() - timedelta(days=1)
             cutoff_date = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%S")
-
 
         # Calculating path prefix from cutoff date
         date_segment = ""
@@ -201,7 +207,6 @@ class AWSPlugin(BasePlugin):
             if len(date_parts) != 2:
                 return "Error: cutoff_date must be in YYYY-MM-DDTHH:mm:ss format"
             date_segment = date_parts[0].replace("-", "/")
-            time_segment = date_parts[1].split(":")[0]
 
         log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Using cutoff_date: {cutoff_date}")
         log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Using date_segment: {date_segment}")
@@ -218,7 +223,7 @@ class AWSPlugin(BasePlugin):
         s3_keys_json = self._run_aws_command(command, save_key="s3_lsv2", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
         try:
             keys = json.loads(s3_keys_json)
-        except Exception as e:
+        except json.JSONDecodeError as e:
             log_error(f"AWSPlugin::aws_elbv2_connection_logs:: Failed to parse S3 keys: {e}")
             return s3_keys_json
 
@@ -244,7 +249,7 @@ class AWSPlugin(BasePlugin):
             log_debug(f"AWSPlugin::aws_elbv2_connection_logs:: Saved {str(downloaded)} to {saved}")
 
         if self.scratchpad:
-            self.scratchpad.write_journal_entry(self.name, 
+            self.scratchpad.write_journal_entry(self.name,
                                                 f"Downloaded {len(downloaded)} connection log files from bucket {bucket} for profile {profile}.",
                                                 str(downloaded))
 
@@ -271,7 +276,7 @@ class AWSPlugin(BasePlugin):
             self.session.save_data(SessionDataType.INFO, "s3_cp", f"Saved s3://{bucket}/{key} to {destination}")
 
         if self.scratchpad:
-            self.scratchpad.write_journal_entry(self.name, 
+            self.scratchpad.write_journal_entry(self.name,
                                                 f"Copied S3 object s3://{bucket}/{key}",
                                                 f"Copied S3 object s3://{bucket}/{key} to {destination}.")
         return destination
@@ -291,10 +296,8 @@ class AWSPlugin(BasePlugin):
         # Set default cutoff_date to now - 2 days if not provided
         if cutoff_date is None or cutoff_date.strip() == "":
             log_debug("AWSPlugin::aws_elbv2_list_connection_logs:: No cutoff_date provided, defaulting to 24 hours ago")
-            from datetime import datetime, timedelta
             cutoff_dt = datetime.utcnow() - timedelta(days=1)
             cutoff_date = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%S")
-
 
         # Calculating path prefix from cutoff date
         date_segment = ""
@@ -303,7 +306,6 @@ class AWSPlugin(BasePlugin):
             if len(date_parts) != 2:
                 return "Error: cutoff_date must be in YYYY-MM-DDTHH:mm:ss format"
             date_segment = date_parts[0].replace("-", "/")
-            time_segment = date_parts[1].split(":")[0]
 
         log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Using cutoff_date: {cutoff_date}")
         log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: Using date_segment: {date_segment}")
@@ -320,7 +322,7 @@ class AWSPlugin(BasePlugin):
         s3_keys_json = self._run_aws_command(command, save_key="s3_lsv2", log_prefix="AWSPlugin::aws_elbv2_connection_logs::")
         try:
             keys = json.loads(s3_keys_json)
-        except Exception as e:
+        except json.JSONDecodeError as e:
             log_error(f"AWSPlugin::aws_elbv2_connection_logs:: Failed to parse S3 keys: {e}")
             return s3_keys_json
 
@@ -332,10 +334,8 @@ class AWSPlugin(BasePlugin):
             saved = self.session.save_data(SessionDataType.INFO, "s3_ls", str(keys))
             log_debug(f"AWSPlugin::aws_elbv2_list_connection_logs:: List: {str(keys)} to {saved}")
 
-
         return keys
 
-    
     def aws_ec2_describe_eni_security_groups(
         self,
         profile: Annotated[str, "The default profile"] = "default",
@@ -345,7 +345,7 @@ class AWSPlugin(BasePlugin):
         command = ["aws", "ec2", "describe-network-interfaces", "--profile", profile]
         if private_ip and private_ip.strip() != "":
             command += ["--filters", f"Name=private-ip-address,Values={private_ip}"]
-        command.extend(["--query", "NetworkInterfaces[0].Groups[*].[GroupId,GroupName]", "--output", "json" ])
+        command.extend(["--query", "NetworkInterfaces[0].Groups[*].[GroupId,GroupName]", "--output", "json"])
         return self._run_aws_command(command, save_key="ec2_describe_eni_security_groups", log_prefix="AWSPlugin::aws_ec2_describe_eni_security_groups::")
 
     def aws_ec2_describe_security_group_inbound_rules(
@@ -357,9 +357,8 @@ class AWSPlugin(BasePlugin):
         command = ["aws", "ec2", "describe-security-groups", "--profile", profile]
         if group_id and group_id.strip() != "":
             command += ["--group-ids", group_id]
-        command.extend(["--query","SecurityGroups[0].IpPermissions[*].[IpProtocol,FromPort,ToPort,IpRanges[].CidrIp,UserIdGroupPairs[].GroupId]", "--output", "json"])
+        command.extend(["--query", "SecurityGroups[0].IpPermissions[*].[IpProtocol,FromPort,ToPort,IpRanges[].CidrIp,UserIdGroupPairs[].GroupId]", "--output", "json"])
         return self._run_aws_command(command, save_key="ec2_describe_security_group_inbound_rules", log_prefix="AWSPlugin::aws_ec2_describe_security_group_inbound_rules::")
-
 
     def aws_ec2_describe_security_group_outbound_rules(
         self,
@@ -370,33 +369,28 @@ class AWSPlugin(BasePlugin):
         command = ["aws", "ec2", "describe-security-groups", "--profile", profile]
         if group_id and group_id.strip() != "":
             command += ["--group-ids", group_id]
-        command.extend(["--query","SecurityGroups[0].IpPermissionsEgress[*].[IpProtocol,FromPort,ToPort,IpRanges[].CidrIp,UserIdGroupPairs[].GroupId]", "--output", "json"])
-        return self._run_aws_command(command, save_key="ec2_describe_security_group_outbound_rules", log_prefix="AWSPlugin::aws_ec2_describe_security_group_outbound_rules::"
-    )
-
+        command.extend(["--query", "SecurityGroups[0].IpPermissionsEgress[*].[IpProtocol,FromPort,ToPort,IpRanges[].CidrIp,UserIdGroupPairs[].GroupId]", "--output", "json"])
+        return self._run_aws_command(command, save_key="ec2_describe_security_group_outbound_rules", log_prefix="AWSPlugin::aws_ec2_describe_security_group_outbound_rules::")
 
     def get_tools(self) -> List[ToolProtocol]:
-        return [
-            self.aws_profiles,
-            self.aws_ec2_instances,
-            self.aws_ec2_route_tables,
-            self.aws_ec2_describe_eni_security_groups,
-            self.aws_ec2_describe_security_group_inbound_rules,
-            self.aws_ec2_describe_security_group_outbound_rules,
-            self.aws_elbv2_load_balancers,
-            self.aws_elbv2_load_balancer_attributes,
-            self.aws_elbv2_listeners,
-            self.aws_elbv2_listener_attributes,
-            self.aws_elbv2_target_groups,
-            self.aws_elbv2_target_group_attributes,
-            self.aws_elbv2_security_groups,
-            self.aws_ec2_vpcs,
-            self.aws_ec2_vpc_endpoints,
-            self.aws_sts_caller_identity,
-            self.aws_s3_buckets,
-            self.aws_elbv2_get_connection_logs,
-            self.aws_s3_cp,
-            self.aws_elbv2_list_connection_logs,
-        ]
-
-    
+        """Returns the list of tools provided by the AWSPlugin."""
+        return [self.aws_profiles,
+                self.aws_ec2_instances,
+                self.aws_ec2_route_tables,
+                self.aws_ec2_describe_eni_security_groups,
+                self.aws_ec2_describe_security_group_inbound_rules,
+                self.aws_ec2_describe_security_group_outbound_rules,
+                self.aws_elbv2_load_balancers,
+                self.aws_elbv2_load_balancer_attributes,
+                self.aws_elbv2_listeners,
+                self.aws_elbv2_listener_attributes,
+                self.aws_elbv2_target_groups,
+                self.aws_elbv2_target_group_attributes,
+                self.aws_elbv2_security_groups,
+                self.aws_ec2_vpcs,
+                self.aws_ec2_vpc_endpoints,
+                self.aws_sts_caller_identity,
+                self.aws_s3_buckets,
+                self.aws_elbv2_get_connection_logs,
+                self.aws_s3_cp,
+                self.aws_elbv2_list_connection_logs]

@@ -1,9 +1,11 @@
+"""Middleware implementations for logging agent activities."""
 from typing import Awaitable, Callable
 from agent_framework import FunctionMiddleware, FunctionInvocationContext
 from agent_framework import AgentMiddleware, AgentRunContext
 from agent_framework import ChatMiddleware, ChatContext
 
 from aletheia.utils.logging import log_debug
+
 
 class LoggingFunctionMiddleware(FunctionMiddleware):
     """Function middleware that logs function execution."""
@@ -41,7 +43,6 @@ class LoggingAgentMiddleware(AgentMiddleware):
         log_debug(f"[Agent::{context.agent.name}] Execution completed: {context.result}")
 
 
-
 class LoggingChatMiddleware(ChatMiddleware):
     """Chat middleware that logs AI interactions."""
 
@@ -59,4 +60,4 @@ class LoggingChatMiddleware(ChatMiddleware):
         await next(context)
 
         # Post-processing: Log after AI response
-        print(f"[Chat] AI response received")
+        print("[Chat] AI response received")

@@ -9,15 +9,17 @@ The plugin provides simplified async functions for:
 - Getting pod status information
 """
 
+import datetime
+import os
 from typing import Annotated, List
+from scapy.all import rdpcap, IP, TCP, UDP, ICMP, Ether
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
-from aletheia.plugins.base import BasePlugin
 
 
 class PCAPFilePlugin:
@@ -36,7 +38,6 @@ class PCAPFilePlugin:
         loader = PluginInfoLoader()
         self.instructions = loader.load("pcap_file_plugin")
 
-    #@ai_function(description="Read a pcap file and return packet details as CSV (verbose mode).")
     def read_pcap_from_file(
         self,
         file_path: Annotated[str, "Path to the pcap file"]
@@ -44,9 +45,6 @@ class PCAPFilePlugin:
         """Read a pcap file and return packet details as CSV (verbose mode)."""
         try:
             log_debug(f"PCAPFilePlugin::read_pcap_from_file:: Reading PCAP file: {file_path}")
-            from scapy.all import rdpcap, IP, TCP, UDP, ICMP, Ether
-            import datetime
-            import os
             if not os.path.exists(file_path):
                 return f"Error: File '{file_path}' does not exist."
             packets = rdpcap(file_path)
@@ -64,7 +62,7 @@ class PCAPFilePlugin:
                     try:
                         ts_float = float(timestamp)
                         ts_str = datetime.datetime.fromtimestamp(ts_float).strftime('%Y-%m-%d %H:%M:%S.%f')
-                    except Exception:
+                    except (ValueError, OSError):
                         ts_str = str(timestamp)
                 else:
                     ts_str = ''
@@ -128,7 +126,7 @@ class PCAPFilePlugin:
                 log_debug(f"PCAPFilePlugin::read_pcap_from_file:: Saved dump to {saved}")
 
             return '\n'.join(csv_lines)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             log_error(f"Error reading pcap file {file_path}: {e}")
             return f"Error reading pcap file: {e}"
 

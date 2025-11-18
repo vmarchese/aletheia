@@ -1,10 +1,12 @@
+"""Plugin for Claude code operations."""
 from typing import Annotated, List
+import subprocess
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
-from aletheia.session import Session, SessionDataType
+from aletheia.session import Session
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
 
@@ -25,7 +27,6 @@ class ClaudeCodePlugin(BasePlugin):
         loader = PluginInfoLoader()
         self.instructions = loader.load("claude_code_plugin")
 
-    #@ai_function(description="Launches claude code with -p in non interactive mode on a folder containing the repository to analyze.")
     def code_analyze(
         self,
         prompt: str,
@@ -34,17 +35,16 @@ class ClaudeCodePlugin(BasePlugin):
         """Launches claude code with -p in non interactive mode on a folder containing the repository to analyze."""
         try:
             log_debug(f"ClaudeCodePlugin::claude_code_analyze:: Launching claude code on repo: {repo_path}")
-            import subprocess
 
             # Construct the command to run claude code
             command = [
-                "claude", 
+                "claude",
                 "--output-format", "text",
                 "--add-dir", repo_path,
                 "-p", prompt]
 
             # Run the command and capture output
-            result = subprocess.run(command, capture_output=True, text=True)
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
 
             if result.returncode != 0:
                 log_error(f"Claude code analysis failed: {result.stderr}")
@@ -52,9 +52,12 @@ class ClaudeCodePlugin(BasePlugin):
 
             log_debug("Claude code analysis completed successfully.")
             return result.stdout
-        except Exception as e:
+        except (subprocess.CalledProcessError, OSError) as e:
             log_error(f"Error launching claude code: {str(e)}")
             return f"Error launching claude code: {e}"
+        except Exception as e:
+            log_error(f"Unexpected error launching claude code: {str(e)}")
+            raise
 
     def get_tools(self) -> List[ToolProtocol]:
         """Get the list of tools provided by this plugin."""

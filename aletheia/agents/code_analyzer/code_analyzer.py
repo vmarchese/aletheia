@@ -1,6 +1,4 @@
-
-from agent_framework import BaseChatClient
-
+"""Code Analyzer Agent implementation."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
@@ -12,12 +10,12 @@ from aletheia.config import Config, CodeAnalyzerType
 
 
 class CodeAnalyzer(BaseAgent):
-    def __init__(self, 
-                 name: str, 
+    """Code Analyzer Agent for analyzing and reviewing code repositories."""
+    def __init__(self,
+                 name: str,
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -34,12 +32,10 @@ class CodeAnalyzer(BaseAgent):
 
         git_plugin = GitPlugin(session=session)
 
-
         plugins = [code_plugin, git_plugin, scratchpad]
 
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
-                         service=service,
                          session=session,
                          plugins=plugins)

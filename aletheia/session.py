@@ -8,8 +8,8 @@ Handles session lifecycle operations including:
 - Deleting sessions and their data
 - Exporting/importing sessions for sharing
 """
-
 import json
+import base64
 import secrets
 import shutil
 import tarfile
@@ -20,8 +20,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from aletheia.encryption import encrypt_file, decrypt_file
 from aletheia.plugins.scratchpad import ScratchpadFileName
 from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.utils.logging import log_debug
 
 from aletheia.encryption import (
     create_session_encryption,
@@ -44,19 +46,13 @@ class SessionDataType(Enum):
 class SessionError(Exception):
     """Base exception for session-related errors."""
 
-    pass
-
 
 class SessionNotFoundError(SessionError):
     """Raised when a session cannot be found."""
 
-    pass
-
 
 class SessionExistsError(SessionError):
     """Raised when attempting to create a session that already exists."""
-
-    pass
 
 
 @dataclass
@@ -154,10 +150,9 @@ class Session:
     @scratchpad.setter
     def scratchpad(self, value: Scratchpad) -> None:
         """Set the scratchpad associated with this session."""
-        self._scratchpad = value 
+        self._scratchpad = value
 
-
-    def save_data(self, type: SessionDataType, name: str, data: str) -> Path:
+    def save_data(self, _type: SessionDataType, name: str, data: str) -> Path:
         """Save collected data to session data directory.
 
         Args:
@@ -168,7 +163,7 @@ class Session:
         Returns:
             Path to saved data file
         """
-        data_type_dir = self.data_dir / str(type.value)
+        data_type_dir = self.data_dir / str(_type.value)
         data_type_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -176,19 +171,18 @@ class Session:
         file_path = data_type_dir / name
 
         if self.unsafe:
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(data)
         else:
-            ciphertext = encrypt_data(data.encode('utf-8'), self._get_key())
+            ciphertext = encrypt_data(data.encode('utf-8'), self.get_key())
             with open(file_path, 'wb') as f:
                 f.write(ciphertext)
 
         if self._scratchpad:
             self._scratchpad.write_journal_entry("Session",
-                                                  f"Saved {type.value} data",
-                                                  f"Saved {type.value} data to {file_path}\n")
+                                                 f"Saved {_type.value} data",
+                                                 f"Saved {_type.value} data to {file_path}\n")
         return file_path
-
 
     def _ensure_password(self) -> None:
         """Ensure password is set (unless in unsafe mode)."""
@@ -214,7 +208,7 @@ class Session:
 
         if self.unsafe:
             # Load plaintext metadata
-            with open(self.metadata_file, 'r') as f:
+            with open(self.metadata_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         else:
             # Load encrypted metadata
@@ -230,17 +224,17 @@ class Session:
 
         if self.unsafe:
             # Save plaintext metadata
-            with open(self.metadata_file, 'w') as f:
+            with open(self.metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(metadata.to_dict(), f, indent=2)
         else:
             # Encrypt and save
-            encrypt_json_file(metadata.to_dict(), self.metadata_file, self._get_key())
+            encrypt_json_file(metadata.to_dict(), self.metadata_file, self.get_key())
 
-    def _get_key(self) -> Optional[bytes]:
+    def get_key(self) -> Optional[bytes]:
         """Get or derive encryption key (None in unsafe mode)."""
         if self.unsafe:
             return None
-            
+
         if self._key is None:
             # Need to load metadata first to get the salt
             if self._metadata is None:
@@ -249,7 +243,6 @@ class Session:
                     "This is an internal error - metadata should be loaded during session creation/resume."
                 )
 
-            import base64
             salt = base64.b64decode(self._metadata.salt)
             self._key = self._derive_key(salt)
 
@@ -305,8 +298,6 @@ class Session:
         # Create directory structure
         session._create_directory_structure()
 
-        import base64
-        
         if unsafe:
             # In unsafe mode, use a dummy salt (no actual encryption)
             salt = b'unsafe_mode_no_encryption'
@@ -362,7 +353,6 @@ class Session:
             SessionNotFoundError: If session doesn't exist
             SessionError: If password is incorrect
         """
-        import base64
 
         session = cls(session_id, session_dir, password, unsafe=unsafe)
 
@@ -468,7 +458,6 @@ class Session:
 
             # Encrypt the archive using a key derived from the password
             # Use a fixed salt for archive encryption (deterministic)
-            from aletheia.encryption import encrypt_file
 
             archive_salt = b"aletheia-archive"  # Fixed salt for archives
             archive_key = derive_session_key(self.password, archive_salt)
@@ -506,6 +495,8 @@ class Session:
             SessionExistsError: If session already exists
             SessionError: If import fails
         """
+
+        log_debug(f"Importing session from archive: {archive_path} unsafe: {unsafe}")
         if not archive_path.exists():
             raise SessionError(f"Archive not found: {archive_path}")
 
@@ -518,7 +509,6 @@ class Session:
 
         try:
             # Decrypt archive
-            from aletheia.encryption import decrypt_file
 
             # First, extract to temporary location to get session ID and salt
             with tempfile.TemporaryDirectory() as temp_extract_dir:
@@ -553,7 +543,6 @@ class Session:
                 if not salt_file.exists():
                     raise SessionError("Archive missing salt file")
 
-                import base64
                 salt = base64.b64decode(salt_file.read_text())
 
                 # Derive correct key from password and salt

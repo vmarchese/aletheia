@@ -1,5 +1,4 @@
-from agent_framework import  BaseChatClient, ChatMessageStore
-
+"""PCAP File Data Fetcher Agent implementation."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
@@ -9,13 +8,12 @@ from aletheia.config import Config
 
 
 class PCAPFileDataFetcher(BaseAgent):
-
-    def __init__(self, 
-                 name: str, 
+    """PCAP File Data Fetcher Agent for collecting and processing PCAP files."""
+    def __init__(self,
+                 name: str,
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -29,7 +27,5 @@ class PCAPFileDataFetcher(BaseAgent):
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
-                         service=service,
                          session=session,
                          plugins=plugins)
-    

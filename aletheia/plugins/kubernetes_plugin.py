@@ -1,17 +1,17 @@
-
+"""plugin for Kubernetes operations."""
 import json
 import subprocess
+from datetime import datetime
 
 from typing import Annotated, Optional, List
 from pydantic import Field
-from agent_framework import  ToolProtocol, ai_function
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
-from aletheia.plugins.base import BasePlugin    
-from datetime import datetime
+from aletheia.plugins.base import BasePlugin
 
 
 class KubernetesPlugin(BasePlugin):
@@ -26,12 +26,11 @@ class KubernetesPlugin(BasePlugin):
         self.context = getattr(config, "kubernetes_context", None)
         self.namespace = getattr(config, "kubernetes_namespace", "default") or "default"
 
-    def _run_kubectl(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
-        """Helper to run kubectl commands and handle output, errors, and saving."""
+    def _run_kubernetes_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
+        """Helper to run kubectl commands and handle output, errors, and saving (AWSPlugin style)."""
         try:
-            import subprocess
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=command, capture_output=True)
+            process = subprocess.run(args=command, capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({
@@ -42,12 +41,16 @@ class KubernetesPlugin(BasePlugin):
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
                 log_debug(f"{log_prefix} Saved output to {saved}")
             return output
-        except Exception as e:
-            log_error(f"{log_prefix} Error launching kubectl: {str(e)}")
-            return f"Error launching kubectl: {e}"
+        except FileNotFoundError as e:
+            log_error(f"{log_prefix} kubectl not found: {str(e)}")
+            return f"Error: kubectl not found: {e}"
+        except subprocess.CalledProcessError as e:
+            log_error(f"{log_prefix} kubectl command failed: {str(e)}")
+            return f"Error: kubectl command failed: {e}"
+        except OSError as e:
+            log_error(f"{log_prefix} OS error when launching kubectl: {str(e)}")
+            return f"Error: OS error when launching kubectl: {e}"
 
-    
-#    @ai_function(description="Fetch logs from a Kubernetes pod with optional filtering and limiting")
     def fetch_kubernetes_logs(
         self,
         pod: Annotated[str, "The name of the pod to fetch logs from"],
@@ -57,6 +60,7 @@ class KubernetesPlugin(BasePlugin):
         since_minutes: Annotated[str, "Fetch logs from the last N minutes (default: 30m)"] = "30",
         context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
     ) -> str:
+        """Fetch logs from a Kubernetes pod."""
         cmd = ["kubectl"]
         _context = context or self.context
         if _context:
@@ -66,7 +70,7 @@ class KubernetesPlugin(BasePlugin):
             cmd.extend(["--container", container])
         if since_minutes:
             cmd.extend(["--since", f"{since_minutes}m"])
-        output = self._run_kubectl(cmd, save_key=f"{pod}_logs", log_prefix="KubernetesPlugin::fetch_kubernetes_logs::")
+        output = self._run_kubernetes_command(cmd, save_key=f"{pod}_logs", log_prefix="KubernetesPlugin::fetch_kubernetes_logs::")
         try:
             log_lines = [line for line in output.split('\n') if line.strip()]
             return json.dumps({
@@ -77,16 +81,16 @@ class KubernetesPlugin(BasePlugin):
                 "count": len(log_lines),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return output
-    
-#    @ai_function(name="list_kubernetes_pods", description="List all pods in a Kubernetes namespace, optionally filtered by label selector")
+
     def list_kubernetes_pods(
         self,
         namespace: Annotated[str, Field(description="The Kubernetes namespace to list pods from")] = "default",
         selector: Annotated[Optional[str], Field(description="Optional label selector (e.g., 'app=payments-svc')")] = None,
         context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None,
     ) -> str:
+        """List pods in a Kubernetes namespace, optionally filtered by label selector."""
         cmd = ["kubectl"]
         _context = context or self.context
         if _context:
@@ -95,7 +99,7 @@ class KubernetesPlugin(BasePlugin):
         if selector:
             cmd.extend(["-l", selector])
         try:
-            output = self._run_kubectl(cmd, save_key="pods", log_prefix="KubernetesPlugin::list_kubernetes_pods::")
+            output = self._run_kubernetes_command(cmd, save_key="pods", log_prefix="KubernetesPlugin::list_kubernetes_pods::")
             kubectl_output = json.loads(output)
             pods = []
             for item in kubectl_output.get("items", []):
@@ -114,10 +118,9 @@ class KubernetesPlugin(BasePlugin):
                 "count": len(pods),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return output
 
-#    @ai_function( name="get_nodes", description="Get the Kubernetes nodes list with status and resource information")
     def get_nodes(
         self,
         context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
@@ -135,7 +138,7 @@ class KubernetesPlugin(BasePlugin):
 
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -145,52 +148,23 @@ class KubernetesPlugin(BasePlugin):
         ])
 
         try:
-            # Run kubectl command
-            log_debug(f"KubernetesPlugin::get_nodes:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                log_error(f"KubernetesPlugin::get_nodes:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl get nodes failed: {error_msg}"
-                })
-
-            # Parse kubectl JSON output
-            log_debug("KubernetesPlugin::get_nodes:: Parsing kubectl output")
-            kubectl_output = json.loads(process.stdout.decode())
+            output = self._run_kubernetes_command(cmd, save_key="nodes", log_prefix="KubernetesPlugin::get_nodes::")
+            kubectl_output = json.loads(output)
             nodes = []
-
             for item in kubectl_output.get("items", []):
                 metadata = item.get("metadata", {})
                 status = item.get("status", {})
-
-                # Extract node roles from labels
                 labels = metadata.get("labels", {})
-                roles = []
-                for label_key in labels.keys():
-                    if label_key.startswith("node-role.kubernetes.io/"):
-                        role = label_key.replace("node-role.kubernetes.io/", "")
-                        roles.append(role)
-
-                # Get node conditions
+                roles = [label_key.replace("node-role.kubernetes.io/", "") for label_key in labels.keys() if label_key.startswith("node-role.kubernetes.io/")]
                 conditions = status.get("conditions", [])
-                ready_condition = next(
-                    (c for c in conditions if c.get("type") == "Ready"),
-                    {}
-                )
-
+                ready_condition = next((c for c in conditions if c.get("type") == "Ready"), {})
                 nodes.append({
                     "name": metadata.get("name"),
                     "roles": roles if roles else ["<none>"],
                     "status": ready_condition.get("status", "Unknown"),
                     "age": metadata.get("creationTimestamp"),
                     "version": status.get("nodeInfo", {}).get("kubeletVersion"),
-                    "internal_ip": next(
-                        (addr.get("address") for addr in status.get("addresses", [])
-                         if addr.get("type") == "InternalIP"),
-                        None
-                    ),
+                    "internal_ip": next((addr.get("address") for addr in status.get("addresses", []) if addr.get("type") == "InternalIP"), None),
                     "os_image": status.get("nodeInfo", {}).get("osImage"),
                     "kernel_version": status.get("nodeInfo", {}).get("kernelVersion"),
                     "container_runtime": status.get("nodeInfo", {}).get("containerRuntimeVersion"),
@@ -198,20 +172,17 @@ class KubernetesPlugin(BasePlugin):
                     "allocatable": status.get("allocatable", {}),
                     "conditions": conditions
                 })
-
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, "nodes", json.dumps(nodes, indent=2))
                 log_debug(f"KubernetesPlugin::get_nodes:: Saved nodes information to {saved}")
-
             return json.dumps({
                 "nodes": nodes,
                 "count": len(nodes),
                 "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             log_error(f"KubernetesPlugin::get_nodes:: Failed to get nodes: {str(e)}")
             return json.dumps({
                 "error": f"Failed to get nodes: {str(e)}"
@@ -241,7 +212,7 @@ class KubernetesPlugin(BasePlugin):
 
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -250,35 +221,19 @@ class KubernetesPlugin(BasePlugin):
         ])
 
         try:
-            # Run kubectl describe command
-            log_debug(f"KubernetesPlugin::describe_node:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True, text=True)
-
-            if process.returncode != 0:
-                error_msg = process.stderr.strip()
-                log_error(f"KubernetesPlugin::describe_node:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl describe node failed: {error_msg}",
-                    "node": node
-                })
-
-            # Get the describe output
-            description = process.stdout
-
-            # Save to session if available
+            output = self._run_kubernetes_command(cmd, save_key=f"node_describe_{node}", log_prefix="KubernetesPlugin::describe_node::")
+            description = output
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, f"node_describe_{node}", description)
                 log_debug(f"KubernetesPlugin::describe_node:: Saved node description to {saved}")
-
             return json.dumps({
                 "node": node,
                 "description": description,
                 "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             log_error(f"KubernetesPlugin::describe_node:: Failed to describe node: {str(e)}")
             return json.dumps({
                 "error": f"Failed to describe node: {str(e)}",
@@ -302,7 +257,7 @@ class KubernetesPlugin(BasePlugin):
         cmd = ["kubectl"]
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -312,26 +267,12 @@ class KubernetesPlugin(BasePlugin):
         ])
 
         try:
-            # Run kubectl command
-            log_debug(f"KubernetesPlugin::get_namespaces:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                log_error(f"KubernetesPlugin::get_namespaces:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl get namespaces failed: {error_msg}"
-                })
-
-            # Parse kubectl JSON output
-            log_debug("KubernetesPlugin::get_namespaces:: Parsing kubectl output")
-            kubectl_output = json.loads(process.stdout.decode())
+            output = self._run_kubernetes_command(cmd, save_key="namespaces", log_prefix="KubernetesPlugin::get_namespaces::")
+            kubectl_output = json.loads(output)
             namespaces = []
-
             for item in kubectl_output.get("items", []):
                 metadata = item.get("metadata", {})
                 status = item.get("status", {})
-
                 namespaces.append({
                     "name": metadata.get("name"),
                     "status": status.get("phase", "Unknown"),
@@ -339,20 +280,17 @@ class KubernetesPlugin(BasePlugin):
                     "labels": metadata.get("labels", {}),
                     "annotations": metadata.get("annotations", {})
                 })
-
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, "namespaces", json.dumps(namespaces, indent=2))
                 log_debug(f"KubernetesPlugin::get_namespaces:: Saved namespaces information to {saved}")
-
             return json.dumps({
                 "namespaces": namespaces,
                 "count": len(namespaces),
                 "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             log_error(f"KubernetesPlugin::get_namespaces:: Failed to get namespaces: {str(e)}")
             return json.dumps({
                 "error": f"Failed to get namespaces: {str(e)}"
@@ -381,7 +319,7 @@ class KubernetesPlugin(BasePlugin):
         cmd = ["kubectl"]
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -390,42 +328,25 @@ class KubernetesPlugin(BasePlugin):
         ])
 
         try:
-            # Run kubectl describe command
-            log_debug(f"KubernetesPlugin::describe_namespace:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True, text=True)
-
-            if process.returncode != 0:
-                error_msg = process.stderr.strip()
-                log_error(f"KubernetesPlugin::describe_namespace:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl describe namespace failed: {error_msg}",
-                    "namespace": namespace
-                })
-
-            # Get the describe output
-            description = process.stdout
-
-            # Save to session if available
+            output = self._run_kubernetes_command(cmd, save_key=f"namespace_describe_{namespace}", log_prefix="KubernetesPlugin::describe_namespace::")
+            description = output
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, f"namespace_describe_{namespace}", description)
                 log_debug(f"KubernetesPlugin::describe_namespace:: Saved namespace description to {saved}")
-
             return json.dumps({
                 "namespace": namespace,
                 "description": description,
                 "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             log_error(f"KubernetesPlugin::describe_namespace:: Failed to describe namespace: {str(e)}")
             return json.dumps({
                 "error": f"Failed to describe namespace: {str(e)}",
                 "namespace": namespace
             })
 
-#    @ai_function( name="get_services", description="Get the list of Kubernetes services in a namespace or across all namespaces")
     def get_services(
         self,
         context: Annotated[str, "Kubernetes context to use (overrides default)"],
@@ -447,7 +368,7 @@ class KubernetesPlugin(BasePlugin):
         cmd = ["kubectl"]
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -457,28 +378,13 @@ class KubernetesPlugin(BasePlugin):
             cmd.extend(["--namespace", namespace, "get", "services", "-o", "json"])
 
         try:
-            # Run kubectl command
-            log_debug(f"KubernetesPlugin::get_services:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                log_error(f"KubernetesPlugin::get_services:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl get services failed: {error_msg}",
-                    "namespace": namespace
-                })
-
-            # Parse kubectl JSON output
-            log_debug("KubernetesPlugin::get_services:: Parsing kubectl output")
-            kubectl_output = json.loads(process.stdout.decode())
+            output = self._run_kubernetes_command(cmd, save_key=f"services_{namespace}" if namespace != "all" else "services_all", log_prefix="KubernetesPlugin::get_services::")
+            kubectl_output = json.loads(output)
             services = []
-
             for item in kubectl_output.get("items", []):
                 metadata = item.get("metadata", {})
                 spec = item.get("spec", {})
                 status = item.get("status", {})
-
                 services.append({
                     "name": metadata.get("name"),
                     "namespace": metadata.get("namespace"),
@@ -490,13 +396,11 @@ class KubernetesPlugin(BasePlugin):
                     "age": metadata.get("creationTimestamp"),
                     "load_balancer": status.get("loadBalancer", {})
                 })
-
             saved = ""
             if self.session:
                 filename = f"services_{namespace}" if namespace != "all" else "services_all"
                 saved = self.session.save_data(SessionDataType.INFO, filename, json.dumps(services, indent=2))
                 log_debug(f"KubernetesPlugin::get_services:: Saved services information to {saved}")
-
             return json.dumps({
                 "services": services,
                 "count": len(services),
@@ -504,8 +408,7 @@ class KubernetesPlugin(BasePlugin):
                 "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             log_error(f"KubernetesPlugin::get_services:: Failed to get services: {str(e)}")
             return json.dumps({
                 "error": f"Failed to get services: {str(e)}",
@@ -536,7 +439,7 @@ class KubernetesPlugin(BasePlugin):
         cmd = ["kubectl"]
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -546,28 +449,12 @@ class KubernetesPlugin(BasePlugin):
         ])
 
         try:
-            # Run kubectl describe command
-            log_debug(f"KubernetesPlugin::describe_service:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True, text=True)
-
-            if process.returncode != 0:
-                error_msg = process.stderr.strip()
-                log_error(f"KubernetesPlugin::describe_service:: Command failed with return code {process.returncode}, error: {error_msg}")
-                return json.dumps({
-                    "error": f"kubectl describe service failed: {error_msg}",
-                    "service": svc,
-                    "namespace": namespace
-                })
-
-            # Get the describe output
-            description = process.stdout
-
-            # Save to session if available
+            output = self._run_kubernetes_command(cmd, save_key=f"service_describe_{namespace}_{svc}", log_prefix="KubernetesPlugin::describe_service::")
+            description = output
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, f"service_describe_{namespace}_{svc}", description)
                 log_debug(f"KubernetesPlugin::describe_service:: Saved service description to {saved}")
-
             return json.dumps({
                 "service": svc,
                 "namespace": namespace,
@@ -575,8 +462,7 @@ class KubernetesPlugin(BasePlugin):
                 "saved": str(saved),
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             log_error(f"KubernetesPlugin::describe_service:: Failed to describe service: {str(e)}")
             return json.dumps({
                 "error": f"Failed to describe service: {str(e)}",
@@ -584,19 +470,19 @@ class KubernetesPlugin(BasePlugin):
                 "namespace": namespace
             })
 
-#    @ai_function(description="Get detailed status information for a specific Kubernetes pod")
     def get_pod_status(
         self,
         pod: Annotated[str, "The name of the pod to get status for"],
         context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
     ) -> str:
+        """Get detailed status information for a specific Kubernetes pod."""
         cmd = ["kubectl"]
         _context = context or self.context
         if _context:
             cmd.extend(["--context", _context])
         cmd.extend(["--namespace", namespace, "get", "pod", pod, "-o", "json"])
-        output = self._run_kubectl(cmd, save_key=f"{pod}_status", log_prefix="KubernetesPlugin::get_pod_status::")
+        output = self._run_kubernetes_command(cmd, save_key=f"{pod}_status", log_prefix="KubernetesPlugin::get_pod_status::")
         try:
             pod_info = json.loads(output)
             metadata = pod_info.get("metadata", {})
@@ -615,11 +501,9 @@ class KubernetesPlugin(BasePlugin):
                 "timestamp": datetime.now().isoformat()
             }
             return json.dumps(result, indent=2)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return output
-    
-    
-#    @ai_function( name="describe_pod", description="Get detailed description of a Kubernetes pod including events, conditions, and configuration")
+
     def describe_pod(
         self,
         pod: Annotated[str, "The name of the pod to describe"],
@@ -627,14 +511,14 @@ class KubernetesPlugin(BasePlugin):
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
     ) -> Annotated[str, "Detailed pod description including events and configuration"]:
         """Describe a Kubernetes pod with full details.
-        
+
         This function runs 'kubectl describe pod' to get comprehensive information
         about a pod including events, conditions, volumes, and configuration.
-        
+
         Args:
             pod: Pod name to describe
             namespace: Kubernetes namespace (default: "default")
-        
+
         Returns:
             String containing the full kubectl describe output
         """
@@ -643,7 +527,7 @@ class KubernetesPlugin(BasePlugin):
 
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -651,36 +535,22 @@ class KubernetesPlugin(BasePlugin):
             "--namespace", namespace,
             "describe", "pod", pod
         ])
-        
-        try:
-            # Run kubectl command
-            log_debug(f"KubernetesPlugin::describe_pod:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-            
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": f"kubectl describe pod failed: {error_msg}",
-                    "pod": pod,
-                    "namespace": namespace
-                })
-            
-            # Return the describe output as-is (it's already human-readable)
-            description = process.stdout.decode()
 
+        try:
+            output = self._run_kubernetes_command(cmd, save_key=f"{pod}_describe", log_prefix="KubernetesPlugin::describe_pod::")
+            description = output
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, f"{pod}_describe", description)
                 log_debug(f"KubernetesPlugin::describe_pod:: Saved pod description to {saved}")
-            
             return json.dumps({
                 "description": description,
                 "pod": pod,
                 "namespace": namespace,
                 "timestamp": datetime.now().isoformat()
             }, indent=2)
-            
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
+            log_error(f"KubernetesPlugin::describe_pod:: Failed to describe pod: {str(e)}")
             return json.dumps({
                 "error": f"Failed to describe pod: {str(e)}",
                 "pod": pod,
@@ -706,7 +576,7 @@ class KubernetesPlugin(BasePlugin):
             container: Container name (if multiple containers in pod)
             namespace: Kubernetes namespace (default: "default")
             pid: The PID of the Java process to dump
-        
+
         Returns:
             n/A
         """
@@ -715,7 +585,7 @@ class KubernetesPlugin(BasePlugin):
 
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -726,33 +596,16 @@ class KubernetesPlugin(BasePlugin):
         if container != "":
             cmd.extend(["-c", container])
         cmd.extend(["--", "kill", "-QUIT", pid])
-        
-        try:
-            # Run kubectl command
-            log_debug(f"KubernetesPlugin::thread_dump:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-            
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": f"kubectl thread dump failed: {error_msg}",
-                    "pod": pod,
-                    "container": container,
-                    "pid": pid,
-                    "namespace": namespace
-                })
-            
-            # Return the describe output as-is (it's already human-readable)
-            description = process.stdout.decode()
 
+        try:
+            _ = self._run_kubernetes_command(cmd, save_key=None, log_prefix="KubernetesPlugin::thread_dump::")
             return json.dumps({
                 "pod": pod,
                 "pid": pid,
                 "container": container,
                 "namespace": namespace,
             }, indent=2)
-            
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             return json.dumps({
                 "error": f"Failed to get pod processes: {str(e)}",
                 "pod": pod,
@@ -778,7 +631,7 @@ class KubernetesPlugin(BasePlugin):
             pod: Pod name to describe
             container: Container name (if multiple containers in pod)
             namespace: Kubernetes namespace (default: "default")
-        
+
         Returns:
             n/A
         """
@@ -786,7 +639,7 @@ class KubernetesPlugin(BasePlugin):
         cmd = ["kubectl"]
         _context = self.context
         if context is not None and context.strip() != "":
-            _context = context 
+            _context = context
         if _context:
             cmd.extend(["--context", _context])
 
@@ -797,37 +650,21 @@ class KubernetesPlugin(BasePlugin):
         if container != "":
             cmd.extend(["-c", container])
         cmd.extend(["--", "ps", "aux"])
-        
+
         try:
-            # Run kubectl command
-            log_debug(f"KubernetesPlugin::ps:: Running command: [{' '.join(cmd)}]")
-            process = subprocess.run(args=cmd, capture_output=True)
-            
-            if process.returncode != 0:
-                error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": f"kubectl thread dump failed: {error_msg}",
-                    "pod": pod,
-                    "container": container,
-                    "namespace": namespace
-                })
-            
-            # Return the describe output as-is (it's already human-readable)
-            description = process.stdout.decode()
+            output = self._run_kubernetes_command(cmd, save_key=f"{pod}_ps", log_prefix="KubernetesPlugin::ps::")
+            description = output
             saved = ""
             if self.session:
                 saved = self.session.save_data(SessionDataType.INFO, f"{pod}_ps", description)
                 log_debug(f"KubernetesPlugin::ps:: Saved pod process list to {saved}")
-
-
             return json.dumps({
                 "process_list": description,
                 "pod": pod,
                 "container": container,
                 "namespace": namespace,
             }, indent=2)
-            
-        except Exception as e:
+        except (json.JSONDecodeError, TypeError) as e:
             return json.dumps({
                 "error": f"Failed to get pod processes: {str(e)}",
                 "pod": pod,
@@ -850,4 +687,3 @@ class KubernetesPlugin(BasePlugin):
             self.thread_dump,
             self.ps,
         ]
-

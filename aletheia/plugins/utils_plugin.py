@@ -1,15 +1,17 @@
+""""Utility plugin for various helper functions."""
 import json
+import subprocess
+import ipaddress
 from typing import Annotated, List
-import dateparser
 from datetime import datetime
+import dateparser
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
-from aletheia.plugins.base import BasePlugin
 
 
 class UtilsPlugin:
@@ -30,9 +32,8 @@ class UtilsPlugin:
     def _run_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run commands and handle output, errors, and saving."""
         try:
-            import subprocess
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=command, capture_output=True)
+            process = subprocess.run(args=command, capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({
@@ -43,11 +44,13 @@ class UtilsPlugin:
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
                 log_debug(f"{log_prefix} Saved output to {saved}")
             return output
-        except Exception as e:
+        except (OSError, ValueError, ImportError, AttributeError, RuntimeError) as e:
             log_error(f"{log_prefix} Error launching command: {str(e)}")
-            return f"Error launching command: {e}"        
+            return f"Error launching command: {e}"
+        except subprocess.SubprocessError as e:
+            log_error(f"{log_prefix} Subprocess error: {str(e)}")
+            return f"Subprocess error: {e}"
 
-    #@ai_function(description="Gunzips a file at the given path")
     def utils_gunzip_file(
         self,
         file_path: Annotated[str, "The path to the gzipped file"],
@@ -57,10 +60,9 @@ class UtilsPlugin:
         self._run_command(command, save_key="gunzip", log_prefix="UtilsPlugin::gunzip_file::")
         gunzipped_path = file_path.rstrip('.gz')
         if self.session:
-                saved = self.session.save_data(SessionDataType.INFO, "gunzip", f"file gunzipped to {gunzipped_path}")
+            self.session.save_data(SessionDataType.INFO, "gunzip", f"file gunzipped to {gunzipped_path}")
         return f"File {gunzipped_path} gunzipped successfully."
 
-    #@ai_function(description="Gets a date offset in natural language (e.g., '5 days ago', '3 hours ago')")
     def utils_get_date_offset(
         self,
         time_delta: Annotated[str, "The time delta (e.g., '5 days', '3 hours', '5d', '3h')"],
@@ -80,7 +82,6 @@ class UtilsPlugin:
         cidr_block: Annotated[str, "The CIDR block to check against"],
     ) -> bool:
         """Checks if the given IP address is in the specified CIDR block."""
-        import ipaddress
         try:
             ip = ipaddress.ip_address(ip_address)
             network = ipaddress.ip_network(cidr_block, strict=False)
@@ -89,10 +90,10 @@ class UtilsPlugin:
             log_error(f"UtilsPlugin::ip_in_cidr:: Invalid IP address or CIDR block: {str(e)}")
             return False
 
-    def get_tools(self) -> List[ToolProtocol]: 
+    def get_tools(self) -> List[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
         return [
             self.utils_gunzip_file,
             self.utils_get_date_offset,
             self.ip_in_cidr
-        ]   
+        ]

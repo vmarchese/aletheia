@@ -9,7 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated, List
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.encryption import encrypt_data, decrypt_data, EncryptionError, DecryptionError
 from aletheia.plugins.loader import PluginInfoLoader
@@ -19,7 +19,7 @@ from aletheia.plugins.base import BasePlugin
 
 class ScratchpadFileName(Enum):
     """Scratchpad file naming conventions."""
-    
+
     PLAINTEXT = "scratchpad.md"
     ENCRYPTED = "scratchpad.encrypted"
 
@@ -49,19 +49,19 @@ class Scratchpad(BasePlugin):
             session_dir: Path to session directory
             encryption_key: Encryption key for saving/loading (None for plaintext mode)
         """
-        self.name = "Scratchpad"        
+        self.name = "Scratchpad"
         self.session_dir = Path(session_dir)
         self.encryption_key = encryption_key
         self.unsafe = encryption_key is None
         if self.unsafe:
-           self._scratchpad_file = self.session_dir / ScratchpadFileName.PLAINTEXT.value
+            self._scratchpad_file = self.session_dir / ScratchpadFileName.PLAINTEXT.value
         else:
-           self._scratchpad_file = self.session_dir / ScratchpadFileName.ENCRYPTED.value
-        
+            self._scratchpad_file = self.session_dir / ScratchpadFileName.ENCRYPTED.value
+
         # Load existing scratchpad if it exists
         self._load_from_disk()
         loader = PluginInfoLoader()
-        self.instructions = loader.load("scratchpad")        
+        self.instructions = loader.load("scratchpad")
 
     def _load_from_disk(self) -> None:
         """Load scratchpad from file (encrypted or plaintext)."""
@@ -69,7 +69,7 @@ class Scratchpad(BasePlugin):
             try:
                 with open(self._scratchpad_file, 'rb') as f:
                     file_data = f.read()
-                
+
                 if file_data:  # Only process if file has content
                     if self.unsafe:
                         # Plaintext mode - just decode
@@ -80,7 +80,7 @@ class Scratchpad(BasePlugin):
                         self._journal = decrypted_data.decode('utf-8')
                 else:
                     self._journal = ""
-            except (DecryptionError, Exception):
+            except (DecryptionError, OSError):
                 # If decryption fails or file is corrupted, start fresh
                 self._journal = ""
         else:
@@ -90,7 +90,7 @@ class Scratchpad(BasePlugin):
         """Save scratchpad to file (encrypted or plaintext)."""
         try:
             journal_bytes = self._journal.encode('utf-8')
-            
+
             if self.unsafe:
                 # Plaintext mode - save directly
                 with open(self._scratchpad_file, 'wb') as f:
@@ -113,10 +113,10 @@ class Scratchpad(BasePlugin):
         return self._journal
 
 #    #@ai_function
-    def write_journal_entry(self, 
-                            agent: Annotated[str,"The name of the agent writing the entry"],
-                            description: Annotated[str,"Description of the entry"],
-                            text: Annotated[str,"Text content of the entry"]) -> str:
+    def write_journal_entry(self,
+                            agent: Annotated[str, "The name of the agent writing the entry"],
+                            description: Annotated[str, "Description of the entry"],
+                            text: Annotated[str, "Text content of the entry"]) -> str:
         """Append an entry to the scratchpad and save to disk.
 
         Args:
@@ -142,9 +142,8 @@ class Scratchpad(BasePlugin):
         return "Entry added to scratchpad."
 
     def get_tools(self) -> List[ToolProtocol]:
+        """Get the list of tools provided by the Scratchpad plugin."""
         return [
             self.write_journal_entry,
             self.read_scratchpad
         ]
-
-

@@ -10,8 +10,6 @@ This specialized agent is responsible for:
 This agent focuses exclusively on Kubernetes data sources, providing better
 separation of concerns and easier maintenance compared to the generic DataFetcherAgent.
 """
-from agent_framework import  BaseChatClient, ChatMessageStore
-
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
 from aletheia.plugins.scratchpad import Scratchpad
@@ -22,12 +20,12 @@ from aletheia.config import Config
 
 
 class LogFileDataFetcher(BaseAgent):
-    def __init__(self, 
-                 name: str, 
+    """Log File Data Fetcher Agent for collecting and processing log files."""
+    def __init__(self,
+                 name: str,
                  config: Config,
                  description: str,
                  instructions: str,
-                 service: BaseChatClient,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -38,11 +36,8 @@ class LogFileDataFetcher(BaseAgent):
 
         plugins = [log_file_plugin, scratchpad, UtilsPlugin(config=config, session=session)]
 
-
         super().__init__(name=name,
                          description=description,
                          instructions=instructions,
-                         service=service,
                          session=session,
                          plugins=plugins)
-    

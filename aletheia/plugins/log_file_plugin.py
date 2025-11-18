@@ -9,15 +9,15 @@ The plugin provides simplified async functions for:
 - Getting pod status information
 """
 
+import os
 from typing import Annotated, List
 
-from agent_framework import ai_function, ToolProtocol
+from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.session import Session
-from aletheia.plugins.base import BasePlugin
 
 
 class LogFilePlugin:
@@ -33,9 +33,8 @@ class LogFilePlugin:
         self.config = config
         self.session = session
         loader = PluginInfoLoader()
-        self.instructions = loader.load("log_file_plugin")        
+        self.instructions = loader.load("log_file_plugin")
 
-    #@ai_function(description="Fetch logs from a file.")
     def fetch_logs_from_file(
         self,
         file_path: Annotated[str, "Path to the log file"]
@@ -48,14 +47,12 @@ class LogFilePlugin:
         Returns:
             Logs from the specified file
         """
-        import os
-
         def try_read(path: str) -> str:
             try:
                 log_debug(f"Fetching logs from file: {path}")
-                with open(path, 'r') as f:
+                with open(path, 'r', encoding='utf-8') as f:
                     return f.read()
-            except Exception as e:
+            except (OSError, IOError) as e:
                 log_error(f"Error fetching logs from file {path}: {e}")
                 return f"Error fetching logs: {e}"
 
