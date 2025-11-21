@@ -1,4 +1,5 @@
 """Base agent class for all specialist agents."""
+import os
 from abc import ABC
 from typing import Sequence
 from jinja2 import Template
@@ -9,9 +10,10 @@ from azure.identity import AzureCliCredential
 
 from aletheia.plugins.scratchpad import Scratchpad
 from aletheia.session import Session
-from aletheia.agents.middleware import LoggingAgentMiddleware
+from aletheia.agents.middleware import LoggingAgentMiddleware, LoggingFunctionMiddleware
 from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
 from aletheia.plugins.base import BasePlugin
+from aletheia.agents.skills import SkillLoader
 
 
 class BaseAgent(ABC):
@@ -36,6 +38,7 @@ class BaseAgent(ABC):
         plugins: Sequence[BasePlugin] = None,
         tools: Sequence[ToolProtocol] = None,
         render_instructions: bool = True,
+        config=None,
     ):
         """Initialize the base agent.
 
@@ -60,12 +63,20 @@ class BaseAgent(ABC):
 
         _tools.extend(tools or [])
 
+        # Loading skills
+        skills = []
+        if config and config.skills_directory:
+            skillloader = SkillLoader(os.path.join(config.skills_directory, self.name.lower()))
+            skills = skillloader.skills
+            _tools.append(skillloader.load_skill)
+
         rendered_instructions = instructions
         if render_instructions:
             template = Template(instructions)
-            rendered_instructions = template.render(plugins=plugins)
+            rendered_instructions = template.render(plugins=plugins, skills=skills)
 
         logging_agent_middleware = LoggingAgentMiddleware()
+        logging_function_middleware = LoggingFunctionMiddleware()
 
         self.agent = ChatAgent(
             name=self.name,
@@ -74,5 +85,5 @@ class BaseAgent(ABC):
             chat_client=AzureOpenAIChatClient(credential=AzureCliCredential()),
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
-            middleware=[logging_agent_middleware]
+            middleware=[logging_agent_middleware, logging_function_middleware],
         )

@@ -25,6 +25,7 @@ class UtilsPlugin:
             config: Configuration object for the plugin
             session: Session object for managing state
         """
+        self.name = "utilities"
         self.session = session
         self.config = config
         loader = PluginInfoLoader()

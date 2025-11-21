@@ -16,13 +16,13 @@ class LoggingFunctionMiddleware(FunctionMiddleware):
         next: Callable[[FunctionInvocationContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before function execution
-        print(f"[Function::{context.function.name}] Calling function: {context.arguments}")
+        log_debug(f"[Function::{context.function.name}] Calling function: {context.arguments}")
 
         # Continue to next middleware or function execution
         await next(context)
 
         # Post-processing: Log after function execution
-        print(f"[Function::{context.function.name}] Function completed: {context.to_json()}")
+        log_debug(f"[Function::{context.function.name}] Function completed")
 
 
 class LoggingAgentMiddleware(AgentMiddleware):

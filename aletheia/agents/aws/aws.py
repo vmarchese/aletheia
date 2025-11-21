@@ -29,6 +29,7 @@ class AWSAgent(BaseAgent):
         plugins = [aws_plugin, scratchpad, utils_plugin, log_file_plugin]
 
         super().__init__(name=name,
+                         config=config,
                          description=description,
                          instructions=instructions,
                          session=session,

@@ -30,8 +30,9 @@ from agent_framework import (
     TextContent,
     UsageContent,
     UsageDetails,
-    Role
+    Role,
 )
+from agent_framework.observability import setup_observability
 
 from aletheia import __version__
 from aletheia.agents.base import BaseAgent
@@ -114,6 +115,8 @@ app.add_typer(session_app, name="session")
 console = Console()
 
 THINKING_INTERVAL = 2.0  # seconds
+
+#setup_observability()
 
 
 def _build_plugins(config: Config,

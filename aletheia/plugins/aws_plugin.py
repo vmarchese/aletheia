@@ -35,7 +35,7 @@ class AWSPlugin(BasePlugin):
         try:
             log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
 
-            process = subprocess.run(args=sanitize_command(command), capture_output=True, check=False)
+            process = subprocess.run(args=command, capture_output=True, check=False)
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
                 return json.dumps({

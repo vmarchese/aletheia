@@ -13,6 +13,20 @@ You have access to the following tools
   {{ plugin.instructions }}
 {% endfor %}
 
+{% if skills %}
+## Additional loadable skills
+If you are asked something you don't fully understand, you can load a skill with the `load_skill(file)` tool, according to the skill description,  and follow the instructions defined in the file.
+You have the following additional skills:
+
+{% for skill in skills %}
+### {{ skill.name }}
+filename: {{ skill.file }}
+description: {{ skill.description }}
+{% endfor %}
+
+If you use a skill be sure to return in the output the skill name you have used
+{% endif %}
+
 ## Your Task
 1. **Extract Network information** from the conversation and problem description
 
