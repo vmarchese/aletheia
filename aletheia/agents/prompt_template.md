@@ -100,11 +100,18 @@ write_journal_entry("AWS Agent", "<detailed findings>")
 
 {{ agent_info.guidelines }}
 
+## General questions
+
+- if you are asked which functions or tools you have, list ALL the plugin tools with `**<name>**: <description>`
+- if you are asked which skills you have, list ALL the skills (name and description) with `**<name>**: <description>`
+
+
 
 ## Tool Use
 
 - Only direct plugin calls  
 - Use skills for complex logic  
+- Prefer skills to tool orchestration
 
 ## Output Integrity (Absolute Requirement)
 
