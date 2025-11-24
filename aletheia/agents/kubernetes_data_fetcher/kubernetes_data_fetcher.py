@@ -12,8 +12,8 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 """
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.plugins.scratchpad import Scratchpad
-from aletheia.plugins.kubernetes_plugin import KubernetesPlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.plugins.kubernetes.kubernetes_plugin import KubernetesPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 

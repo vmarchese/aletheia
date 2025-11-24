@@ -3,7 +3,7 @@ from typing import List
 
 from agent_framework import ToolProtocol
 
-from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.utils.logging import log_debug
 from aletheia.session import Session
 from aletheia.agents.base import BaseAgent

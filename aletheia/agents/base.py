@@ -11,7 +11,7 @@ from agent_framework import ChatAgent, ToolProtocol
 from agent_framework.azure import AzureOpenAIChatClient
 from azure.identity import AzureCliCredential
 
-from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session
 from aletheia.agents.middleware import LoggingAgentMiddleware, LoggingFunctionMiddleware
 from aletheia.agents.chat_message_store import ChatMessageStoreSingleton

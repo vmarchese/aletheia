@@ -1,10 +1,10 @@
 """Code Analyzer Agent implementation."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.plugins.scratchpad import Scratchpad
-from aletheia.plugins.claude_code_plugin import ClaudeCodePlugin
-from aletheia.plugins.copilot_plugin import CopilotPlugin
-from aletheia.plugins.git_plugin import GitPlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.plugins.claude_code.claude_code_plugin import ClaudeCodePlugin
+from aletheia.plugins.copilot.copilot_plugin import CopilotPlugin
+from aletheia.plugins.git.git_plugin import GitPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config, CodeAnalyzerType
 

@@ -1,8 +1,8 @@
 """Azure Agent implementation."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.plugins.scratchpad import Scratchpad
-from aletheia.plugins.azure_plugin import AzurePlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.plugins.azure.azure_plugin import AzurePlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 

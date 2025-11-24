@@ -15,7 +15,7 @@ Routing strategies:
 1. Custom routing (legacy): Direct agent-to-agent routing
 """
 from aletheia.agents.base import BaseAgent
-from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session
 from aletheia.utils.logging import log_debug
 
