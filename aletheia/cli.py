@@ -443,6 +443,63 @@ def session_delete(
         raise typer.Exit(1)
 
 
+@session_app.command("resume")
+def session_resume(
+    session_id: str = typer.Argument(..., help="Session ID to resume"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all external commands and their output"),
+    very_verbose: bool = typer.Option(False, "--very-verbose", "-vv", help="Enable trace logging with prompts, commands, and full details"),
+    unsafe: bool = typer.Option(False, "--unsafe", help="Session uses plaintext storage (skips encryption)"),
+) -> None:
+    """Resume an existing troubleshooting session."""
+    # Enable very-verbose mode (implies verbose)
+    if very_verbose:
+        verbose = True
+
+    # Enable verbose command output if requested
+    if verbose:
+        set_verbose_commands(True)
+        console.print("[dim]Verbose mode enabled - all external commands will be shown[/dim]\n")
+
+    if very_verbose:
+        console.print("[dim]Very-verbose mode (-vv) enabled - full trace logging with prompts and details[/dim]\n")
+
+    # Warn about unsafe mode
+    if unsafe:
+        console.print("[bold red]⚠️  WARNING: --unsafe mode enabled - session uses PLAINTEXT storage![/bold red]\n")
+
+    # Get password (skip in unsafe mode)
+    password = None
+    if not unsafe:
+        password = getpass.getpass("Enter session password: ")
+        if not password:
+            typer.echo("Error: Password cannot be empty", err=True)
+            raise typer.Exit(1)
+
+    try:
+        session = Session.resume(session_id=session_id, password=password, unsafe=unsafe)
+
+        # Enable trace logging if very-verbose mode
+        if very_verbose:
+            enable_trace_logging(session.session_path)
+            console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
+
+        console.print(f"[green]Session '{session.session_id}' resumed successfully![/green]")
+        console.print(f"Session ID: {session.session_id}")
+
+        # Start investigation workflow
+        asyncio.run(_start_investigation(session))
+
+    except SessionNotFoundError as exc:
+        typer.echo(f"Error: Session '{session_id}' not found", err=True)
+        raise typer.Exit(1) from exc
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Error resuming session: {e}", err=True)
+        raise typer.Exit(1)
+
+
 @session_app.command("timeline")
 def session_timeline(
     session_id: str = typer.Argument(..., help="Session ID to export"),
