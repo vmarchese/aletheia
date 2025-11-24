@@ -16,7 +16,6 @@ class AWSAgent(BaseAgent):
                  name: str,
                  config: Config,
                  description: str,
-                 instructions: str,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -31,6 +30,5 @@ class AWSAgent(BaseAgent):
         super().__init__(name=name,
                          config=config,
                          description=description,
-                         instructions=instructions,
                          session=session,
                          plugins=plugins)

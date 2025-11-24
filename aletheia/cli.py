@@ -116,7 +116,7 @@ console = Console()
 
 THINKING_INTERVAL = 2.0  # seconds
 
-#setup_observability()
+# setup_observability()
 
 
 def _build_plugins(config: Config,
@@ -132,7 +132,6 @@ def _build_plugins(config: Config,
     kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
                                                config=config,
                                                description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
-                                               instructions=prompt_loader.load("kubernetes_data_fetcher", "instructions"),
                                                session=session,
                                                scratchpad=scratchpad)
     plugins.append(kubernetes_fetcher.agent.as_tool())
@@ -140,7 +139,6 @@ def _build_plugins(config: Config,
     log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
                                           config=config,
                                           description="Log File Data Fetcher Agent for collecting logs from log files.",
-                                          instructions=prompt_loader.load("log_file_data_fetcher", "instructions"),
                                           session=session,
                                           scratchpad=scratchpad)
     plugins.append(log_file_fetcher.agent.as_tool())
@@ -148,7 +146,6 @@ def _build_plugins(config: Config,
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
                                             config=config,
                                             description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
-                                            instructions=prompt_loader.load("pcap_file_data_fetcher", "instructions"),
                                             session=session,
                                             scratchpad=scratchpad)
     plugins.append(pcap_file_fetcher.agent.as_tool())
@@ -156,7 +153,6 @@ def _build_plugins(config: Config,
     prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                                config=config,
                                                description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
-                                               instructions=prompt_loader.load("prometheus_data_fetcher", "instructions"),
                                                session=session,
                                                scratchpad=scratchpad)
     plugins.append(prometheus_fetcher.agent.as_tool())
@@ -164,7 +160,6 @@ def _build_plugins(config: Config,
     aws_agent = AWSAgent(name="aws",
                          config=config,
                          description="AWS Agent for fetching AWS related data using AWS CLI.",
-                         instructions=prompt_loader.load("aws", "instructions"),
                          session=session,
                          scratchpad=scratchpad)
     plugins.append(aws_agent.agent.as_tool())
@@ -172,7 +167,6 @@ def _build_plugins(config: Config,
     azure_agent = AzureAgent(name="azure",
                              config=config,
                              description="Azure Agent for fetching Azure related data using Azure CLI.",
-                             instructions=prompt_loader.load("azure", "instructions"),
                              session=session,
                              scratchpad=scratchpad)
     plugins.append(azure_agent.agent.as_tool())
@@ -180,7 +174,6 @@ def _build_plugins(config: Config,
     network_agent = NetworkAgent(name="network",
                                  config=config,
                                  description="Network Agent for fetching TCP Network related data.",
-                                 instructions=prompt_loader.load("network", "instructions"),
                                  session=session,
                                  scratchpad=scratchpad)
     plugins.append(network_agent.agent.as_tool())

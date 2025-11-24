@@ -24,7 +24,6 @@ class KubernetesDataFetcher(BaseAgent):
                  name: str,
                  config: Config,
                  description: str,
-                 instructions: str,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -36,7 +35,7 @@ class KubernetesDataFetcher(BaseAgent):
         plugins = [kube_fetcher_plugin, scratchpad]
 
         super().__init__(name=name,
+                         config=config,
                          description=description,
-                         instructions=instructions,
                          session=session,
                          plugins=plugins)
