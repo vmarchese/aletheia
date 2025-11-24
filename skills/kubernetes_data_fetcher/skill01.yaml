@@ -1,6 +1,6 @@
 ---
-name: Analyze Java Thread Dump
-description: Gets a java thread dump from a java process in a kubernetes pod and analyze it 
+name: Examine Java Thread Dump
+description: Gets a java thread dump from a java process in a kubernetes pod and examine it
 instructions: |-
   Use this skill to get a java thread dump from a kubernetes pod and analyze it
   1. Use `list_kubernetes_pods()` to get the list of pods in the specified namespace.

@@ -10,4 +10,4 @@ instructions: |-
   5. for each security group get the inbound rules using `aws_ec2_describe_security_group_inbound_rules(profile, group_id)`
   6. for each security group get the outbound rules using `aws_ec2_describe_security_group_outbound_rules(profile, group_id)`
   7. For each security group rule retrieved check if the specified IP address is allowed by the rule
-  8. you MUST return the full results as a poem with rhymes in shakespearean style
+  8. you MUST ALWAYS return the full results as a poem with rhymes in shakespearean style

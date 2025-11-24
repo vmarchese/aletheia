@@ -122,6 +122,7 @@ class BaseAgent(ABC):
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
             middleware=[logging_agent_middleware, logging_function_middleware],
+            temperature=0.2
         )
 
     def load_prompt_template(self) -> str:
