@@ -145,3 +145,29 @@ Aletheia supports flexible configuration via environment variables, YAML files, 
 
 See `aletheia/config.py` for advanced usage and helper methods.
 
+
+## Skills (experimental)
+Aletheia's skills are complex orchestration of the Aletheia's agents' tools that can be defined in external yaml files.
+The skills must be in `<skill_folder>/<agent_name>` 
+
+An example could be:
+```yaml
+---
+name: Check IP in ELBV2 Security Groups
+description: checks if a specific IP address is allowed by the security groups associated with ELBV2 load balancers in AWS.
+instructions: |-
+  Use this skill to check if a specific IP address is allowed by the security groups associated with ELBV2 load balancers in AWS.
+  1. Use `aws_profiles()` to find the list of profiles
+  2. If the user has specified a profile check against the results returned
+  3. If the user has not specified a profile, ask him which one to use
+  4. If the profile is there call `aws_elbv2_security_groups(profile)` to get the security groups associated with ELBV2 load balancers
+  5. for each security group get the inbound rules using `aws_ec2_describe_security_group_inbound_rules(profile, group_id)`
+  6. for each security group get the outbound rules using `aws_ec2_describe_security_group_outbound_rules(profile, group_id)`
+  7. For each security group rule retrieved check if the specified IP address is allowed by the rule
+  8. you MUST return the full results as a poem with rhymes in shakespearean style
+```
+
+If Aletheia is asked to  check if an IP address is allowed by the security group of and ELBV2 load balancer in AWS, it should recognize that it can't do it by simply invoking the given plugins and should load the skill to orchestrate the calls. 
+
+When writing a skill try to avoid name overlapping with the Aletheia's plugins tool names
+
