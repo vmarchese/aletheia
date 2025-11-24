@@ -13,7 +13,6 @@ class PCAPFileDataFetcher(BaseAgent):
                  name: str,
                  config: Config,
                  description: str,
-                 instructions: str,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -26,6 +25,5 @@ class PCAPFileDataFetcher(BaseAgent):
 
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
                          session=session,
                          plugins=plugins)

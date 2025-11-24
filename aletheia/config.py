@@ -51,6 +51,12 @@ class Config(BaseSettings):
     )
 
     # =================================================================
+    # Skills configuration
+    # =================================================================
+    skills_directory: str = Field(
+        default="./skills", description="Directory containing skill YAML files"
+    )
+    # =================================================================
     # LLM Configuration (flat)
     # =================================================================
 

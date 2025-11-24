@@ -559,15 +559,15 @@ class KubernetesPlugin(BasePlugin):
             })
 
 #    @ai_function( name="thread_dump", description="Sends a SIGQUIT to all Java processes in a Kubernetes pod to generate thread dumps")
-    def thread_dump(
+    def sigquit(
         self,
         pod: Annotated[str, "The name of the pod"],
         context: Annotated[str, "Kubernetes context to use (overrides default)"],
         container: Annotated[str, "The name of the container"] = "",
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-        pid: Annotated[str, "The PID of the Java process to dump"] = ""
+        pid: Annotated[str, "The PID of the process"] = ""
     ) -> Annotated[str, "Detailed pod description including events and configuration"]:
-        """Gets the thread dumps from all Java processes inside a container of a Kubernetes pod.
+        """Sends a SIGQUIT to a process in a Kubernetes pod.
 
         This function runs 'kubectl exec <pod> -n <namespace> -- kill -QUIT <pid>' to get comprehensive information
         about the thread dumps from the specified container.
@@ -576,12 +576,12 @@ class KubernetesPlugin(BasePlugin):
             pod: Pod name to describe
             container: Container name (if multiple containers in pod)
             namespace: Kubernetes namespace (default: "default")
-            pid: The PID of the Java process to dump
+            pid: The PID of the process 
 
         Returns:
             n/A
         """
-        log_debug(f"KubernetesPlugin::thread_dump:: Getting thread dumps for pod '{pod}'.'{container}'in namespace '{namespace}'")
+        log_debug(f"KubernetesPlugin::sigquit:: Sending SIGQUIT to process {pid} in pod '{pod}'.'{container}'in namespace '{namespace}'")
         cmd = ["kubectl"]
 
         _context = self.context
@@ -685,6 +685,6 @@ class KubernetesPlugin(BasePlugin):
             self.describe_service,
             self.get_pod_status,
             self.describe_pod,
-            self.thread_dump,
+            self.sigquit,
             self.ps,
         ]

@@ -13,7 +13,6 @@ class AzureAgent(BaseAgent):
                  name: str,
                  config: Config,
                  description: str,
-                 instructions: str,
                  session: Session,
                  scratchpad: Scratchpad):
 
@@ -25,6 +24,5 @@ class AzureAgent(BaseAgent):
 
         super().__init__(name=name,
                          description=description,
-                         instructions=instructions,
                          session=session,
                          plugins=plugins)

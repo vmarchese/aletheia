@@ -8,8 +8,8 @@ class TimelineAgent(BaseAgent):
     """Timeline Agent for managing and visualizing event timelines."""
     def __init__(self,
                  name: str,
-                 description: str,
-                 instructions: str):
+                 instructions: str,
+                 description: str):
 
         log_debug("TimelineAgent::__init__:: called")
 

@@ -14,8 +14,8 @@ class CodeAnalyzer(BaseAgent):
     def __init__(self,
                  name: str,
                  config: Config,
-                 description: str,
                  instructions: str,
+                 description: str,
                  session: Session,
                  scratchpad: Scratchpad):
 
