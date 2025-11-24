@@ -12,9 +12,9 @@ separation of concerns and easier maintenance compared to the generic DataFetche
 """
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.plugins.scratchpad import Scratchpad
-from aletheia.plugins.log_file_plugin import LogFilePlugin
-from aletheia.plugins.utils_plugin import UtilsPlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.plugins.log_file.log_file_plugin import LogFilePlugin
+from aletheia.plugins.utils.utils_plugin import UtilsPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 

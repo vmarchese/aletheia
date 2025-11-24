@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from aletheia.encryption import encrypt_file, decrypt_file
-from aletheia.plugins.scratchpad import ScratchpadFileName
-from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad.scratchpad import ScratchpadFileName
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.utils.logging import log_debug
 
 from aletheia.encryption import (

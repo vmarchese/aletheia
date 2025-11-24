@@ -12,7 +12,7 @@ from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.session import Session, SessionDataType
 from aletheia.plugins.loader import PluginInfoLoader
-from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.plugins.base import BasePlugin
 from aletheia.utils.command import sanitize_command
 

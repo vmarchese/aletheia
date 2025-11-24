@@ -1,8 +1,8 @@
 """Prometheus Data Fetcher Agent implementation."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.plugins.scratchpad import Scratchpad
-from aletheia.plugins.prometheus_plugin import PrometheusPlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.plugins.prometheus.prometheus_plugin import PrometheusPlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 

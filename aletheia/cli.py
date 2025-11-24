@@ -48,7 +48,7 @@ from aletheia.agents.aws.aws import AWSAgent
 from aletheia.agents.azure.azure import AzureAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer.code_analyzer import CodeAnalyzer
-from aletheia.plugins.scratchpad import Scratchpad
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator

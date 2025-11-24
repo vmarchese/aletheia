@@ -2,10 +2,10 @@
 AWS Agent implementation for managing AWS resources via chat interface."""
 from aletheia.agents.base import BaseAgent
 from aletheia.session import Session
-from aletheia.plugins.scratchpad import Scratchpad
-from aletheia.plugins.aws_plugin import AWSPlugin
-from aletheia.plugins.utils_plugin import UtilsPlugin
-from aletheia.plugins.log_file_plugin import LogFilePlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.plugins.aws.aws_plugin import AWSPlugin
+from aletheia.plugins.utils.utils_plugin import UtilsPlugin
+from aletheia.plugins.log_file.log_file_plugin import LogFilePlugin
 from aletheia.utils.logging import log_debug
 from aletheia.config import Config
 
