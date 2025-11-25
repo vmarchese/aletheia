@@ -150,6 +150,8 @@ See `aletheia/config.py` for advanced usage and helper methods.
 Aletheia's skills are complex orchestration of the Aletheia's agents' tools that can be defined in external yaml files.
 The skills must be in `<skill_folder>/<agent_name>` 
 
+Where `<skill_folder>` can be set with the environment variable `ALETHEIA_USER_SKILLS_DIRS`
+
 An example could be:
 ```yaml
 ---
@@ -170,4 +172,5 @@ instructions: |-
 If Aletheia is asked to  check if an IP address is allowed by the security group of and ELBV2 load balancer in AWS, it should recognize that it can't do it by simply invoking the given plugins and should load the skill to orchestrate the calls. 
 
 When writing a skill try to avoid name overlapping with the Aletheia's plugins tool names
+
 

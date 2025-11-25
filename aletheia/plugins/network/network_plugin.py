@@ -121,9 +121,7 @@ class NetworkPlugin(BasePlugin):
                         port: Annotated[int, "The port to connect to"] = 443) -> str:
         """Perform an openssl s_client connection to the given target and port."""
         command = ["openssl", "s_client", "-connect", f"{target}:{port}"]
-        return self._run_net_command(command, save_key="openssl_sclient", log_prefix="NetworkPlugin::openssl_sclient::" 
-
-    )
+        return self._run_net_command(command, save_key="openssl_sclient", log_prefix="NetworkPlugin::openssl_sclient::")
 
     def get_tools(self) -> List[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
