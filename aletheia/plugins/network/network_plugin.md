@@ -8,3 +8,4 @@ You have access to the network commands
 - **ifconfig()**: get local network interfaces
 - **netstat()**: show active sockets/connections on the local machine
 - **whois(domain)**: looks up records in the databases maintained by several Network Information Centers (NICs)
+- **openssl_sclient(target)**: connects via openssl to a target to check whether the certificate is valid, trusted, and complete.

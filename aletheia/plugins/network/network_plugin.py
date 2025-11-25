@@ -116,6 +116,15 @@ class NetworkPlugin(BasePlugin):
         command = ["whois", target]
         return self._run_net_command(command, save_key="whois", log_prefix="NetworkPlugin::whois::")
 
+    def openssl_sclient(self,
+                        target: Annotated[str, "The host to connect to"],
+                        port: Annotated[int, "The port to connect to"] = 443) -> str:
+        """Perform an openssl s_client connection to the given target and port."""
+        command = ["openssl", "s_client", "-connect", f"{target}:{port}"]
+        return self._run_net_command(command, save_key="openssl_sclient", log_prefix="NetworkPlugin::openssl_sclient::" 
+
+    )
+
     def get_tools(self) -> List[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
         return [
@@ -126,5 +135,6 @@ class NetworkPlugin(BasePlugin):
             self.traceroute,
             self.ifconfig,
             self.netstat,
-            self.whois
+            self.whois,
+            self.openssl_sclient
         ]
