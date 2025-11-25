@@ -20,13 +20,14 @@ from aletheia.agents.skills import SkillLoader
 
 
 class AgentInfo(ABC):
+    """Holds information about an agent loaded from YAML instructions."""
     def __init__(self,
                  name: str):
         self.name = name
         self.identity = ""
         self.guidelines = ""
         package_dir = Path(__file__).parent.parent
-        self.prompts_dir = package_dir / "agents"        
+        self.prompts_dir = package_dir / "agents"
         self.load()
 
     def load(self):
@@ -34,7 +35,7 @@ class AgentInfo(ABC):
         instructions_file_name = "instructions.yaml"
         prompt_file = self.prompts_dir / f"{self.name}/{instructions_file_name}"
         with open(prompt_file, 'r', encoding="utf-8") as file:
-            content = file.read()        
+            content = file.read()
             instructions = yaml.safe_load(content)
             self.name = str(instructions.get("agent").get("name"))
             self.identity = str(instructions.get("agent").get("identity"))
@@ -78,6 +79,7 @@ class BaseAgent(ABC):
         self.name = name
         self.description = description
         self.session = session
+        self.config = config
         _tools = []
         if plugins:
             for plugin in plugins:
@@ -90,9 +92,19 @@ class BaseAgent(ABC):
 
         # Loading skills
         skills = []
-        if config and config.skills_directory:
-            skillloader = SkillLoader(os.path.join(config.skills_directory, self.name.lower()))
-            skills = skillloader.skills
+        if config is not None:
+            skills_directory = self.config.skills_directory
+            skill_directories = [skills_directory] if skills_directory else []
+
+            user_skills_dirs = os.getenv("ALETHEIA_USER_SKILLS_DIRS")
+            if user_skills_dirs:
+                for dir_path in user_skills_dirs.split(os.pathsep):
+                    skill_directories.append(dir_path)
+
+            for skill_dir in skill_directories:
+                skillloader = SkillLoader(os.path.join(skill_dir, self.name.lower()))
+                skills.extend(skillloader.skills)
+
             _tools.append(skillloader.load_skill)
 
         # prompt template
@@ -102,7 +114,7 @@ class BaseAgent(ABC):
             if render_instructions:
                 template = Template(instructions)
                 rendered_instructions = template.render(plugins=plugins, skills=skills)
-        else: 
+        else:
             prompt_template = self.load_prompt_template()
 
             agent_info = AgentInfo(self.name)
