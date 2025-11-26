@@ -40,11 +40,11 @@ from aletheia.session import Session, SessionNotFoundError
 from aletheia.config import load_config
 from aletheia.encryption import decrypt_file, DecryptionError
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import KubernetesDataFetcher
-from aletheia.agents.prometheus_data_fetcher.prometheus_data_fetcher import PrometheusDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
 from aletheia.agents.network.network import NetworkAgent
 from aletheia.agents.aws.aws import AWSAgent
+from aletheia.agents.aws_amp.amp_prometheus import AWSAMPAgent
 from aletheia.agents.azure.azure import AzureAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer.code_analyzer import CodeAnalyzer
@@ -150,12 +150,20 @@ def _build_plugins(config: Config,
                                             scratchpad=scratchpad)
     plugins.append(pcap_file_fetcher.agent.as_tool())
 
+    """
     prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
                                                config=config,
                                                description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
                                                session=session,
                                                scratchpad=scratchpad)
     plugins.append(prometheus_fetcher.agent.as_tool())
+    """
+    aws_amp_agent = AWSAMPAgent(name="aws_amp",
+                                config=config,
+                                description="AWS Managed Prometheus Agent for fetching AWS Managed Prometheus related data.",
+                                session=session,
+                                scratchpad=scratchpad)
+    plugins.append(aws_amp_agent.agent.as_tool())
 
     aws_agent = AWSAgent(name="aws",
                          config=config,

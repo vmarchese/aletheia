@@ -1,0 +1,2 @@
+You have ccess to the AWS Managed Prometheus plugin with the following function
+   - Use `fetch_prometheus_metrics(query,region,profile,workspace_id)` to execute PromQL queries on AWS Managed Prometheus, workspace, region and profile

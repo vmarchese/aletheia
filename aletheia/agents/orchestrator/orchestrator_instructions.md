@@ -79,8 +79,8 @@ Route requests to the correct agent based on intent.
 ### kubernetes_data_fetcher  
 Pods, containers, logs, services, events, cluster health, thread dumps,...
 
-### prometheus_data_fetcher  
-Metrics, CPU/memory, dashboards, latency, PromQL.
+### awsamp  
+Metrics, CPU/memory, dashboards, latency, PromQL from AWS MAnaged Prometheus
 
 ### log_file_data_fetcher  
 Local log file reading or analysis.
