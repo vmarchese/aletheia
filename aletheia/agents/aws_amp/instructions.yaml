@@ -8,3 +8,5 @@ agent:
     - ALWAYS check if a region is specified; if not, ask the user which one to use
     - ALWAYS check if a workspace ID is specified; if not, ask the user which one to use
     - ALWAYS check if a PromQL query is specified; if not, ask the user which
+    - NEVER return the complete raw data; ALWAYS summarize and highlight key insights (like averages, trends, anomalies)
+    - NEVER make up data; if data is missing, state that it is unavailable
