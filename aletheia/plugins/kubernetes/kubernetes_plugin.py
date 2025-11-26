@@ -576,7 +576,7 @@ class KubernetesPlugin(BasePlugin):
             pod: Pod name to describe
             container: Container name (if multiple containers in pod)
             namespace: Kubernetes namespace (default: "default")
-            pid: The PID of the process 
+            pid: The PID of the process
 
         Returns:
             n/A
@@ -673,6 +673,93 @@ class KubernetesPlugin(BasePlugin):
                 "namespace": namespace
             })
 
+    def pod_from_ip(
+        self,
+        ip_address: Annotated[str, "The IP address to look up tjhe pod for"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
+    ) -> Annotated[str, "Details of the pod associated with the given IP address"]:
+        """Find the pod associated with a given IP address.
+
+        This function searches for a pod matching the provided IP address
+        across all namespaces.
+
+        Args:
+            ip_address: The IP address to look up
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            JSON string with details of the pod if found
+        """
+        try:
+            cmd = ["kubectl"]
+            _context = self.context
+            if context is not None and context.strip() != "":
+                _context = context
+            if _context:
+                cmd.extend(["--context", _context])
+
+            # Build JSONPath query - no quotes around the jsonpath argument
+
+            cmd.extend([
+                "get", "pods",
+                "-A",
+                "--field-selector", f"status.podIP={ip_address}",
+            ])
+
+            output = self._run_kubernetes_command(cmd, save_key=None, log_prefix="KubernetesPlugin::pod_from_ip::")
+            return output
+
+
+        except (json.JSONDecodeError, TypeError) as e:
+            return json.dumps({
+                "error": f"Failed to get pod from ip: {str(e)}",
+                "ip": ip_address
+            })
+
+    def service_from_ip(
+        self,
+        ip_address: Annotated[str, "The IP address to look up the service for"],
+        context: Annotated[str, "Kubernetes context to use (overrides default)"],
+    ) -> Annotated[str, "Details of the service associated with the given IP address"]:
+        """Find the service associated with a given IP address.
+
+        This function searches for a service matching the provided cluster IP address
+        across all namespaces.
+
+        Args:
+            ip_address: The IP address to look up
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            JSON string with details of the service if found
+        """
+        try:
+            cmd = ["kubectl"]
+            _context = self.context
+            if context is not None and context.strip() != "":
+                _context = context
+            if _context:
+                cmd.extend(["--context", _context])
+
+            # Build JSONPath query - no quotes around the jsonpath argument
+
+            cmd.extend([
+                "get", "services",
+                "-A",
+                "--field-selector", f"spec.clusterIP={ip_address}"
+            ])
+
+            log_debug(f"KubernetesPlugin::service_from_ip:: Running command: {' '.join(cmd)}")
+            output = self._run_kubernetes_command(cmd, save_key=None, log_prefix="KubernetesPlugin::service_from_ip::")
+
+            return output
+
+        except (json.JSONDecodeError, TypeError) as e:
+            return json.dumps({
+                "error": f"Failed to get svc from ip: {str(e)}",
+                "ip": ip_address
+            })            
+
     def get_tools(self) -> List[ToolProtocol]:
         return [
             self.fetch_kubernetes_logs,
@@ -687,4 +774,6 @@ class KubernetesPlugin(BasePlugin):
             self.describe_pod,
             self.sigquit,
             self.ps,
+            self.pod_from_ip,
+            self.service_from_ip
         ]
