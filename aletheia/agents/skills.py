@@ -139,6 +139,8 @@ class SkillLoader:
         Returns:
             String content of the instructions
         """
+        if location.endswith("instructions.yaml"):
+            location = str(Path(location).parent)
         print(f"Loading skill from: {location}")
         with open(f"{location}/instructions.yaml", 'r', encoding='utf-8') as file:
             skill_info = yaml.safe_load(file)
