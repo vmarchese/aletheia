@@ -31,7 +31,7 @@ class AWSPlugin(BasePlugin):
         self.config = config
         self.name = "AWSPlugin"
         loader = PluginInfoLoader()
-        self.instructions = loader.load("aws_plugin")
+        self.instructions = loader.load("aws")
         self.scratchpad = scratchpad
 
         # Cache for boto3 sessions per profile

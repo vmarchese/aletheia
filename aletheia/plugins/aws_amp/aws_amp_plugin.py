@@ -80,7 +80,7 @@ class AWSAMPPlugin(BasePlugin):
 
         # Store auth config if provided
         loader = PluginInfoLoader()
-        self.instructions = loader.load("aws_amp_plugin")
+        self.instructions = loader.load("aws_amp")
 
     def _save_response(
         self, data: Any, save_key: str, log_prefix: str = ""

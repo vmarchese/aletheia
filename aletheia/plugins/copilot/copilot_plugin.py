@@ -25,7 +25,7 @@ class CopilotPlugin:
         self.config = config
         self.name = "CopilotPlugin"
         loader = PluginInfoLoader()
-        self.instructions = loader.load("copilot_plugin")
+        self.instructions = loader.load("copilot")
 
     def code_analyze(
         self,

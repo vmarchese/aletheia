@@ -36,7 +36,7 @@ class PCAPFilePlugin:
         self.session = session
         self.config = config
         loader = PluginInfoLoader()
-        self.instructions = loader.load("pcap_file_plugin")
+        self.instructions = loader.load("pcap_file")
 
     def read_pcap_from_file(
         self,

@@ -38,6 +38,7 @@ dependencies = [
     "scapy>=2.7.0rc1",
     "pylint>=4.0.3",
     "boto3>=1.26.0",
+    "docker>=7.1.0",
 ]
 
 [project.optional-dependencies]

@@ -29,7 +29,7 @@ class UtilsPlugin:
         self.session = session
         self.config = config
         loader = PluginInfoLoader()
-        self.instructions = loader.load("utils_plugin")
+        self.instructions = loader.load("utils")
 
     def _run_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run commands and handle output, errors, and saving."""
