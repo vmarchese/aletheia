@@ -1,0 +1,6 @@
+server:
+  port: 8080
+
+downstream:
+  url: "http://localhost:8081/api/v1/called"
+  timeout: 30s
