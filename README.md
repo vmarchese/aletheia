@@ -119,6 +119,24 @@ AZURE_OPENAI_ENDPOINT=<azure openai endpoint >
 AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=<azure deployment name>
 ```
 
+### OpenaI (or Ollama)
+To use Aletheia with ollama the following environment variables must be set:
+
+```bash
+ALETHEIA_OPENAI_API_KEY=<openai api key>
+ALETHEIA_OPENAI_ENDPOINT=<openai endpoint>
+ALETHEIA_OPENAI_MODEL=<openai model>
+```
+
+For instance, to use ollama on the local machine:
+
+```bash
+ALETHEIA_OPENAI_API_KEY=none 
+ALETHEIA_OPENAI_ENDPOINT=http://127.0.0.1:11434/v1
+ALETHEIA_OPENAI_MODEL=gpt-oss:20b
+```
+
+
 ### Additional configuration 
 
 Aletheia supports flexible configuration via environment variables, YAML files, and .env files. The following table summarizes the main configuration parameters available in `aletheia/config.py`:
