@@ -27,7 +27,7 @@ class AzurePlugin(BasePlugin):
         self.config = config
         self.name = "AzurePlugin"
         loader = PluginInfoLoader()
-        self.instructions = loader.load("azure_plugin")
+        self.instructions = loader.load("azure")
 
     def _run_azure_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
         """Helper to run Azure CLI commands and handle output, errors, and saving."""

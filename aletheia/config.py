@@ -170,6 +170,15 @@ class Config(BaseSettings):
         default=True, description="Auto-adjust metric resolution based on time range"
     )
 
+
+    # =================================================================
+    # Temp folder
+    # =================================================================
+    temp_folder: str = Field(
+        default="/tmp/aletheia",
+        description="Temporary folder for storing intermediate files"
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,

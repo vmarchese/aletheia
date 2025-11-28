@@ -29,7 +29,7 @@ class NetworkPlugin(BasePlugin):
         self.config = config
         self.name = "NetworkPlugin"
         loader = PluginInfoLoader()
-        self.instructions = loader.load("network_plugin")
+        self.instructions = loader.load("network")
         self.scratchpad = scratchpad
 
     def _run_net_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:

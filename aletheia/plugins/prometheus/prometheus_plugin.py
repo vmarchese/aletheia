@@ -69,7 +69,7 @@ class PrometheusPlugin(BasePlugin):
         # Store auth config if provided
         self.auth_config = config.prometheus_credentials_type
         loader = PluginInfoLoader()
-        self.instructions = loader.load("prometheus_plugin")
+        self.instructions = loader.load("prometheus")
 
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for authentication.

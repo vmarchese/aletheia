@@ -16,6 +16,7 @@ from aletheia.session import Session
 from aletheia.agents.middleware import LoggingAgentMiddleware, LoggingFunctionMiddleware
 from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
 from aletheia.plugins.base import BasePlugin
+from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
 from aletheia.agents.skills import SkillLoader
 
 
@@ -91,7 +92,7 @@ class BaseAgent(ABC):
         _tools.extend(tools or [])
 
         # Loading skills
-        skills = []
+        _skills = []
         if config is not None:
             skills_directory = self.config.skills_directory
             skill_directories = [skills_directory] if skills_directory else []
@@ -103,25 +104,28 @@ class BaseAgent(ABC):
 
             for skill_dir in skill_directories:
                 skillloader = SkillLoader(os.path.join(skill_dir, self.name.lower()))
-                skills.extend(skillloader.skills)
+                if skillloader.skills:
+                    _skills.extend(skillloader.skills)
 
-            _tools.append(skillloader.load_skill)
+        if len(_skills) > 0:
+            docker_plugin = DockerScriptPlugin(config=config, session=session, scratchpad=scratchpad)
+            plugins.append(docker_plugin)
+            _tools.append(skillloader.get_skill_instructions)
+            _tools.append(docker_plugin.sandbox_run)
 
-        # prompt template
         rendered_instructions = ""
         if instructions:
             rendered_instructions = instructions
             if render_instructions:
                 template = Template(instructions)
-                rendered_instructions = template.render(plugins=plugins, skills=skills)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins)
         else:
             prompt_template = self.load_prompt_template()
-
             agent_info = AgentInfo(self.name)
             rendered_instructions = prompt_template
             if render_instructions:
                 template = Template(prompt_template)
-                rendered_instructions = template.render(plugins=plugins, skills=skills, agent_info=agent_info)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info)
 
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()

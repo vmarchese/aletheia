@@ -48,7 +48,7 @@ class GitPlugin(BasePlugin):
         self.name = "GitPlugin"
         self.session = session
         loader = PluginInfoLoader()
-        self.instructions = loader.load("git_plugin")
+        self.instructions = loader.load("git")
 
     def git_clone_repo(
         self,

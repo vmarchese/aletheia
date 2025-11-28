@@ -10,7 +10,7 @@ class PluginInfoLoader:
 
     def load(self, plugin_name: str) -> str:
         """Load the plugin information file for the given plugin name."""
-        prompt_file = self.prompts_dir / f"plugins/{plugin_name}.md"
+        prompt_file = self.prompts_dir / f"plugins/{plugin_name}/instructions.md"
         content = ""
         try:
             with open(prompt_file, 'r', encoding='utf-8') as file:

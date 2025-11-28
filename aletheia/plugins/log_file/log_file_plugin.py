@@ -33,7 +33,7 @@ class LogFilePlugin:
         self.config = config
         self.session = session
         loader = PluginInfoLoader()
-        self.instructions = loader.load("log_file_plugin")
+        self.instructions = loader.load("log_file")
 
     def fetch_logs_from_file(
         self,

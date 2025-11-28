@@ -148,11 +148,18 @@ See `aletheia/config.py` for advanced usage and helper methods.
 
 ## Skills (experimental)
 Aletheia's skills are complex orchestration of the Aletheia's agents' tools that can be defined in external yaml files.
-The skills must be in `<skill_folder>/<agent_name>` 
+The skills must be in `<skill_folder>/<agent_name>/<skill_name>` 
 
 Where `<skill_folder>` can be set with the environment variable `ALETHEIA_USER_SKILLS_DIRS`
 
 An example could be:
+```
+<skill_folder>
+  |--aws
+      |-- instructions.yaml
+```      
+in which `instructions.yaml` is: 
+
 ```yaml
 ---
 name: Check IP in ELBV2 Security Groups

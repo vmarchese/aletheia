@@ -23,7 +23,7 @@ class KubernetesPlugin(BasePlugin):
         self.config = config
         self.name = "KubernetesPlugin"
         loader = PluginInfoLoader()
-        self.instructions = loader.load("kubernetes_plugin")
+        self.instructions = loader.load("kubernetes")
         self.context = getattr(config, "kubernetes_context", None)
         self.namespace = getattr(config, "kubernetes_namespace", "default") or "default"
 

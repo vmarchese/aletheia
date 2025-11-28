@@ -26,7 +26,7 @@ class ClaudeCodePlugin(BasePlugin):
         self.config = config
         self.name = "ClaudeCodePlugin"
         loader = PluginInfoLoader()
-        self.instructions = loader.load("claude_code_plugin")
+        self.instructions = loader.load("claude_code")
 
     def code_analyze(
         self,
