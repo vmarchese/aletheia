@@ -8,6 +8,7 @@ from jinja2 import Template
 import yaml
 
 from agent_framework import ChatAgent, ToolProtocol
+from agent_framework.openai import OpenAIChatClient
 from agent_framework.azure import AzureOpenAIChatClient
 from azure.identity import AzureCliCredential
 
@@ -130,11 +131,26 @@ class BaseAgent(ABC):
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()
 
+        client = None
+        if os.environ.get("AZURE_OPENAI_ENDPOINT") is None:
+            if os.environ.get("ALETHEIA_OPENAI_ENDPOINT") is not None:
+                api_key = os.environ.get("ALETHEIA_OPENAI_API_KEY", "none")
+                client = OpenAIChatClient(
+                    api_key=api_key,
+                    base_url=os.environ.get("ALETHEIA_OPENAI_ENDPOINT"),
+                    model_id=os.environ.get("ALETHEIA_OPENAI_MODEL", "gpt-4o"),
+                )
+        else:
+            client = AzureOpenAIChatClient(credential=AzureCliCredential())
+
+        if client is None:
+            raise ValueError("No valid LLM configuration found in environment variables.")
+
         self.agent = ChatAgent(
             name=self.name,
             description=description,
             instructions=rendered_instructions,
-            chat_client=AzureOpenAIChatClient(credential=AzureCliCredential()),
+            chat_client=client,
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
             middleware=[logging_agent_middleware, logging_function_middleware],
