@@ -8,9 +8,6 @@ from jinja2 import Template
 import yaml
 
 from agent_framework import ChatAgent, ToolProtocol
-from agent_framework.openai import OpenAIChatClient
-from agent_framework.azure import AzureOpenAIChatClient
-from azure.identity import AzureCliCredential
 
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session
@@ -19,6 +16,7 @@ from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
 from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
 from aletheia.agents.skills import SkillLoader
+from aletheia.agents.client import LLMClient
 
 
 class AgentInfo(ABC):
@@ -114,43 +112,30 @@ class BaseAgent(ABC):
             _tools.append(skillloader.get_skill_instructions)
             _tools.append(docker_plugin.sandbox_run)
 
+        client = LLMClient()
+
         rendered_instructions = ""
         if instructions:
             rendered_instructions = instructions
             if render_instructions:
                 template = Template(instructions)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client)
         else:
             prompt_template = self.load_prompt_template()
             agent_info = AgentInfo(self.name)
             rendered_instructions = prompt_template
             if render_instructions:
                 template = Template(prompt_template)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client)
 
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()
-
-        client = None
-        if os.environ.get("AZURE_OPENAI_ENDPOINT") is None:
-            if os.environ.get("ALETHEIA_OPENAI_ENDPOINT") is not None:
-                api_key = os.environ.get("ALETHEIA_OPENAI_API_KEY", "none")
-                client = OpenAIChatClient(
-                    api_key=api_key,
-                    base_url=os.environ.get("ALETHEIA_OPENAI_ENDPOINT"),
-                    model_id=os.environ.get("ALETHEIA_OPENAI_MODEL", "gpt-4o"),
-                )
-        else:
-            client = AzureOpenAIChatClient(credential=AzureCliCredential())
-
-        if client is None:
-            raise ValueError("No valid LLM configuration found in environment variables.")
 
         self.agent = ChatAgent(
             name=self.name,
             description=description,
             instructions=rendered_instructions,
-            chat_client=client,
+            chat_client=client.get_client(),
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
             middleware=[logging_agent_middleware, logging_function_middleware],

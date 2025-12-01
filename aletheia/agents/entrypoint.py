@@ -31,5 +31,5 @@ class Orchestrator(BaseAgent):
                          instructions=instructions,
                          session=session,
                          tools=tools,
-                         render_instructions=False
+                         render_instructions=True
                          )
