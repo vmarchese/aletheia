@@ -175,6 +175,8 @@ An example could be:
 <skill_folder>
   |--aws
       |-- instructions.yaml
+      |--scripts
+            |-- myscript.py
 ```      
 in which `instructions.yaml` is: 
 
@@ -197,5 +199,96 @@ instructions: |-
 If Aletheia is asked to  check if an IP address is allowed by the security group of and ELBV2 load balancer in AWS, it should recognize that it can't do it by simply invoking the given plugins and should load the skill to orchestrate the calls. 
 
 When writing a skill try to avoid name overlapping with the Aletheia's plugins tool names
+
+### Python scripts execution
+
+You can add some python scripts to the skills and ask Aletheia to execute them if the skill is loaded. The scripts are executed in a docker container. 
+
+1. **Build the docker image**
+
+Build the aletheia-script-executor image from `aletheia-script-executor/Dockerfile`
+```
+cd aletheia-script-executor
+docker build -t aletheia:latest .
+```
+
+2. **Add your scripts to the `<skill_folder>/<your skill>/scripts` folder**
+
+e.g.:
+```
+<skills folder>
+  |-- kubernetes_data_fetcher
+        |--awesome_skill
+              |-- instructions.yaml
+              |-- scripts
+                     |-- myscript.py
+```
+
+where `myscript.py` is
+
+```python
+import os
+
+my_variable = os.environ.get("MY_VARIABLE")
+print("Here's the pod in pending state:", my_variable)
+```
+
+3. **Reference your script from the skill instructions and ask Aletheia to inject variables**
+
+```yaml
+---
+name: My Awesome Kubernetes skill
+description: An awesome Kubernetes skill 
+instructions: |-
+  Use this awesome skill to find a pending pod in the kubernetes cluster:
+  1. list the pods in the namespace with `list_kubernetes_pods()`
+  2. Find the name of the pod that is in a `Pending` state
+  3. call the script `myscript.py` passing as a parameter my_variable=<name of the pending pod>
+```
+
+4. **Run Aletheia**
+
+```
+> aletheia session open --unsafe -vv
+[INC-25E3] 👤 YOU: execute my awesome skill for kubernetes in namespace aletheia-test
+
+[INC-25E3] 🤖 Aletheia
+────────────────────────────────────────────────────────────────────────────────
+Loading skill from: [...]/test_skills/kubernetes_data_fetcher/awesome_skill
+AGENT: kubernetes_data_fetcher
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Section Findings:
+
+ • Listed all pods in namespace aletheia-test using list_kubernetes_pods(). Found the following pods:
+    • golang-test-service-6c6787f8dc-jmmfr (Running)
+    • golang-test-service-6c6787f8dc-wnf5b (Running)
+    • java-test-service-5cdf59696b-8bzr2 (Running)
+    • java-test-service-5cdf59696b-t4lkc (Running)
+    • ms-call-6579c46bdf-5gmb9 (Running)
+    • ms-call-6579c46bdf-vl5zm (Running)
+    • ms-called-b8f45d8c7-9xdz6 (Running)
+    • ms-called-b8f45d8c7-ftmpc (Running)
+    • pod-with-missing-secret (Pending)
+ • Found the pod in Pending state: pod-with-missing-secret.
+ • Executed the script myscript.py from the skill, passing my_variable=pod-with-missing-secret.
+ • Script output: "Here's the pod in pending state: pod-with-missing-secret"
+
+Section Decisions:
+
+ • Loaded the skill "My Awesome Kubernetes skill" as requested, following the instructions exactly.
+ • Used list_kubernetes_pods() to get all pods in the namespace, identified the pending pod, and executed the required script with the pod name as parameter.
+ • Did not use direct tool calls beyond those required by the skill instructions.
+
+Section Suggested actions:
+
+ • If you need further investigation on why the pod is pending, consider describing the pod or checking events for pod-with-missing-secret.
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+You can ask questions about the investigation or type 'exit' to end the session.
+```
+
+
 
 
