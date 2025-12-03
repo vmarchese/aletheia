@@ -244,7 +244,8 @@ async def _start_investigation(session: Session) -> None:
                                       prompt_loader=prompt_loader,
                                       session=session,
                                       scratchpad=scratchpad),
-            scratchpad=scratchpad
+            scratchpad=scratchpad,
+            config=config
         )
 
         chatting = True
@@ -252,6 +253,11 @@ async def _start_investigation(session: Session) -> None:
         completion_usage = UsageDetails()
 
         thread: AgentThread = entry.agent.get_new_thread()
+
+        tools = None
+        from aletheia.mcp.mcp import load_mcp_tools
+        if config and config.mcp_servers_yaml:
+            tools = load_mcp_tools(yaml_file=config.mcp_servers_yaml)
 
         while chatting:
             console.print("[cyan]" + "─" * console.width + "[/cyan]")
@@ -282,7 +288,8 @@ async def _start_investigation(session: Session) -> None:
 
                     async for response in entry.agent.run_stream(
                         messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
-                        thread=thread
+                        thread=thread,
+                        tools=tools
                     ):
                         if response and str(response.text) != "":
                             if not stop_event.is_set():

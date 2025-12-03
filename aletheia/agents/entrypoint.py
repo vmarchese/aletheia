@@ -20,7 +20,8 @@ class Orchestrator(BaseAgent):
                  instructions: str,
                  session: Session,
                  scratchpad: Scratchpad,
-                 sub_agents: List[ToolProtocol]):
+                 sub_agents: List[ToolProtocol],
+                 config=None):
         tools = []
         tools.extend(sub_agents)
         tools.extend(scratchpad.get_tools())
@@ -31,5 +32,6 @@ class Orchestrator(BaseAgent):
                          instructions=instructions,
                          session=session,
                          tools=tools,
-                         render_instructions=True
+                         render_instructions=True,
+                         config=config
                          )
