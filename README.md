@@ -174,9 +174,10 @@ An example could be:
 ```
 <skill_folder>
   |--aws
-      |-- instructions.yaml
-      |--scripts
-            |-- myscript.py
+      <skill name>
+        |-- instructions.yaml
+        |--scripts
+              |-- myscript.py
 ```      
 in which `instructions.yaml` is: 
 
