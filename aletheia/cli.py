@@ -53,6 +53,7 @@ from aletheia.utils import set_verbose_commands, enable_trace_logging
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.config import Config
+from aletheia.commands import COMMANDS, AgentsInfo
 
 THINKING_MESSAGES = [
     "🕺 Galavanting...",
@@ -195,6 +196,8 @@ def _build_plugins(config: Config,
                                      scratchpad=scratchpad)
         plugins.append(code_analyzer.agent.as_tool())
 
+    COMMANDS["agents"] = AgentsInfo(agents=plugins)
+
     return plugins
 
 
@@ -245,18 +248,24 @@ async def _start_investigation(session: Session) -> None:
         )
 
         chatting = True
+
         completion_usage = UsageDetails()
 
         thread: AgentThread = entry.agent.get_new_thread()
 
         while chatting:
             console.print("[cyan]" + "─" * console.width + "[/cyan]")
-            console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session.[/i cyan]\n")
+            console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session. Type '/help' for help.[/i cyan]\n")
             user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]")
             if user_input.lower() in ['exit', 'quit']:
                 chatting = False
                 console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
                 break
+            elif user_input.strip().startswith("/"):
+                command = user_input.strip()[1:]
+                if command in COMMANDS:
+                    COMMANDS[command].execute(console, completion_usage=completion_usage, config=config)
+                    continue
 
             # Start thinking animation in a background thread
             stop_event = asyncio.Event()
@@ -280,13 +289,10 @@ async def _start_investigation(session: Session) -> None:
                                 stop_event.set()
                                 await asyncio.sleep(0.1)  # Give animation time to stop
                                 # Clear the live display
-#                                live.update("")
-#                                live.refresh()
 
                             full_response += str(response.text)
                             buf += response.text
                             live.update(Markdown(safe_md(buf)))
-#                            live.refresh()
 
                         if response and response.contents:
                             for content in response.contents:
@@ -297,15 +303,7 @@ async def _start_investigation(session: Session) -> None:
                     stop_event.set()
 
         # evaluate total session cost
-        input_token = completion_usage.input_token_count
-        output_token = completion_usage.output_token_count
-        total_tokens = input_token + output_token
-        total_cost = (input_token * config.cost_per_input_token) + (output_token * config.cost_per_output_token)
-        cost_table = "| Metric | Total | Input | Output |\n"
-        cost_table += "|--------|-------|-------|--------|\n"
-        cost_table += f"| Tokens | {total_tokens} | {input_token} | {output_token} |\n"
-        cost_table += f"| Cost (€) | €{total_cost:.6f} | €{input_token * config.cost_per_input_token:.6f} | €{output_token * config.cost_per_output_token:.6f} |\n"
-        console.print(Markdown(cost_table))
+        COMMANDS["cost"].execute(console, completion_usage=completion_usage, config=config)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")
