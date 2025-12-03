@@ -289,13 +289,10 @@ async def _start_investigation(session: Session) -> None:
                                 stop_event.set()
                                 await asyncio.sleep(0.1)  # Give animation time to stop
                                 # Clear the live display
-#                                live.update("")
-#                                live.refresh()
 
                             full_response += str(response.text)
                             buf += response.text
                             live.update(Markdown(safe_md(buf)))
-#                            live.refresh()
 
                         if response and response.contents:
                             for content in response.contents:
