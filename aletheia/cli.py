@@ -255,7 +255,7 @@ async def _start_investigation(session: Session) -> None:
 
         while chatting:
             console.print("[cyan]" + "─" * console.width + "[/cyan]")
-            console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session.[/i cyan]\n")
+            console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session. Type '/help' for help.[/i cyan]\n")
             user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]")
             if user_input.lower() in ['exit', 'quit']:
                 chatting = False
