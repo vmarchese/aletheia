@@ -186,6 +186,13 @@ class Config(BaseSettings):
 
     )
 
+    # =================================================================
+    # Custom Instructions folder
+    # =================================================================
+    custom_instructions_dir: Optional[str] = Field(
+        default=None, description="Directory containing custom instructions for agents"
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,

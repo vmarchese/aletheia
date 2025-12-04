@@ -164,6 +164,33 @@ Aletheia supports flexible configuration via environment variables, YAML files, 
 See `aletheia/config.py` for advanced usage and helper methods.
 
 
+## Custom Instructions
+Custom instructions for the specific agents can be set by configuring the environment variable `ALETHEIA_CUSTOM_INSTRUCTIONS_DIR` to a folder in which the instructions can be written as:
+
+```
+<custom instructions dir>
+   |-- <agent name>
+          |-- instructions.md
+```          
+
+For instance, for the Kubernetes agent.
+
+
+```
+<custom instructions dir>
+   |-- kubernetes_data_fetcher
+          |-- instructions.md
+```          
+
+in which `instructions.md` could be:
+
+```markdown
+- ALWAYS answer in rhymes
+- ALWAYS add a funny kubernetes koke at the end
+```
+
+
+
 ## Skills (experimental)
 Aletheia's skills are complex orchestration of the Aletheia's agents' tools that can be defined in external yaml files.
 The skills must be in `<skill_folder>/<agent_name>/<skill_name>` 
@@ -291,7 +318,7 @@ You can ask questions about the investigation or type 'exit' to end the session.
 ```
 
 
-# MCP Support (Highly experimental)
+## MCP Support (Highly experimental)
 You can add MCP Server to each agent by setting a `ALETHEIA_MCP_SERVERS_YAML` env variable pointing to a yaml configuration which must have the following format:
 
 ```yaml

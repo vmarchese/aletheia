@@ -18,6 +18,7 @@ from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
 from aletheia.agents.skills import SkillLoader
 from aletheia.agents.client import LLMClient
 from aletheia.mcp.mcp import load_mcp_tools
+from aletheia.utils.logging import log_error
 
 
 class AgentInfo(ABC):
@@ -122,19 +123,22 @@ class BaseAgent(ABC):
 
         client = LLMClient()
 
+        # loading custom instructions
+        custom_instructions = self.load_custom_instructions()
+
         rendered_instructions = ""
         if instructions:
             rendered_instructions = instructions
             if render_instructions:
                 template = Template(instructions)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client, custom_instructions=custom_instructions)
         else:
             prompt_template = self.load_prompt_template()
             agent_info = AgentInfo(self.name)
             rendered_instructions = prompt_template
             if render_instructions:
                 template = Template(prompt_template)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client, custom_instructions=custom_instructions)
 
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()
@@ -156,7 +160,7 @@ class BaseAgent(ABC):
             if hasattr(mcp_tool, 'close'):
                 try:
                     await mcp_tool.close()
-                except Exception:
+                except (OSError, RuntimeError):
                     pass  # Ignore cleanup errors
 
     def load_prompt_template(self) -> str:
@@ -166,3 +170,18 @@ class BaseAgent(ABC):
         with open(prompt_template, 'r', encoding="utf-8") as file:
             content = file.read()
         return content
+
+    def load_custom_instructions(self):
+        """Load custom instructions for the agent from a YAML file."""
+        try:
+            if self.config is None:
+                return None
+            if self.config.custom_instructions_dir is None:
+                return None 
+            prompt_file = f"{self.config.custom_instructions_dir}/{self.name}/instructions.md"
+            with open(prompt_file, 'r', encoding="utf-8") as file:
+                content = file.read()
+                return content
+        except (OSError, FileNotFoundError, IsADirectoryError, PermissionError) as e:
+            log_error(f"BaseAgent::load_custom_instructions:: Error loading custom instructions for agent {self.name}: {e}")
+            return None
