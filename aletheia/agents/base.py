@@ -17,6 +17,7 @@ from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
 from aletheia.agents.skills import SkillLoader
 from aletheia.agents.client import LLMClient
+from aletheia.mcp.mcp import load_mcp_tools
 
 
 class AgentInfo(ABC):
@@ -90,6 +91,13 @@ class BaseAgent(ABC):
 
         _tools.extend(tools or [])
 
+        # mcp tools
+        self.mcp_tools = []
+        if config and config.mcp_servers_yaml:
+            mcp_tools = load_mcp_tools(agent=self.name, yaml_file=config.mcp_servers_yaml)
+            self.mcp_tools.extend(mcp_tools)
+            _tools.extend(mcp_tools)
+
         # Loading skills
         _skills = []
         if config is not None:
@@ -141,6 +149,15 @@ class BaseAgent(ABC):
             middleware=[logging_agent_middleware, logging_function_middleware],
             temperature=0.2
         )
+
+    async def cleanup(self):
+        """Clean up MCP tool connections."""
+        for mcp_tool in self.mcp_tools:
+            if hasattr(mcp_tool, 'close'):
+                try:
+                    await mcp_tool.close()
+                except Exception:
+                    pass  # Ignore cleanup errors
 
     def load_prompt_template(self) -> str:
         """Load the agent's prompt template from a markdown file."""

@@ -9,7 +9,7 @@ import random
 import getpass
 
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from collections import defaultdict
 
 import zipfile
@@ -123,18 +123,25 @@ THINKING_INTERVAL = 2.0  # seconds
 def _build_plugins(config: Config,
                    prompt_loader: Loader,
                    session: Session,
-                   scratchpad: Scratchpad) -> List[BaseAgent]:
-    """Build and return the list of available agent plugins."""
+                   scratchpad: Scratchpad) -> Tuple[List[BaseAgent], List[BaseAgent]]:
+    """Build and return the list of available agent plugins.
+    
+    Returns:
+        Tuple of (tool_list, agent_instances) where tool_list contains the tools for orchestrator
+        and agent_instances contains actual agent objects for cleanup.
+    """
     # Currently, plugins are built directly in the _start_investigation function.
     # This function can be expanded in the future to dynamically load plugins.
 
     plugins = []
+    agent_instances = []
 
     kubernetes_fetcher = KubernetesDataFetcher(name="kubernetes_data_fetcher",
                                                config=config,
                                                description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
                                                session=session,
                                                scratchpad=scratchpad)
+    agent_instances.append(kubernetes_fetcher)
     plugins.append(kubernetes_fetcher.agent.as_tool())
 
     log_file_fetcher = LogFileDataFetcher(name="log_file_data_fetcher",
@@ -142,6 +149,7 @@ def _build_plugins(config: Config,
                                           description="Log File Data Fetcher Agent for collecting logs from log files.",
                                           session=session,
                                           scratchpad=scratchpad)
+    agent_instances.append(log_file_fetcher)
     plugins.append(log_file_fetcher.agent.as_tool())
 
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
@@ -149,6 +157,7 @@ def _build_plugins(config: Config,
                                             description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
                                             session=session,
                                             scratchpad=scratchpad)
+    agent_instances.append(pcap_file_fetcher)
     plugins.append(pcap_file_fetcher.agent.as_tool())
 
     """
@@ -157,6 +166,7 @@ def _build_plugins(config: Config,
                                                description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
                                                session=session,
                                                scratchpad=scratchpad)
+    agent_instances.append(prometheus_fetcher)
     plugins.append(prometheus_fetcher.agent.as_tool())
     """
     aws_amp_agent = AWSAMPAgent(name="aws_amp",
@@ -164,6 +174,7 @@ def _build_plugins(config: Config,
                                 description="AWS Managed Prometheus Agent for fetching AWS Managed Prometheus related data.",
                                 session=session,
                                 scratchpad=scratchpad)
+    agent_instances.append(aws_amp_agent)
     plugins.append(aws_amp_agent.agent.as_tool())
 
     aws_agent = AWSAgent(name="aws",
@@ -171,6 +182,7 @@ def _build_plugins(config: Config,
                          description="AWS Agent for fetching AWS related data using AWS CLI.",
                          session=session,
                          scratchpad=scratchpad)
+    agent_instances.append(aws_agent)
     plugins.append(aws_agent.agent.as_tool())
 
     azure_agent = AzureAgent(name="azure",
@@ -178,6 +190,7 @@ def _build_plugins(config: Config,
                              description="Azure Agent for fetching Azure related data using Azure CLI.",
                              session=session,
                              scratchpad=scratchpad)
+    agent_instances.append(azure_agent)
     plugins.append(azure_agent.agent.as_tool())
 
     network_agent = NetworkAgent(name="network",
@@ -185,6 +198,7 @@ def _build_plugins(config: Config,
                                  description="Network Agent for fetching TCP Network related data.",
                                  session=session,
                                  scratchpad=scratchpad)
+    agent_instances.append(network_agent)
     plugins.append(network_agent.agent.as_tool())
 
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
@@ -194,11 +208,12 @@ def _build_plugins(config: Config,
                                      instructions=prompt_loader.load("code_analyzer", "instructions", prefix=config.code_analyzer.lower()),
                                      session=session,
                                      scratchpad=scratchpad)
+        agent_instances.append(code_analyzer)
         plugins.append(code_analyzer.agent.as_tool())
 
     COMMANDS["agents"] = AgentsInfo(agents=plugins)
 
-    return plugins
+    return plugins, agent_instances
 
 
 async def show_thinking_animation(live, stop_event):
@@ -235,15 +250,17 @@ async def _start_investigation(session: Session) -> None:
         )
         session.scratchpad = scratchpad
 
+        tools, agent_instances = _build_plugins(config=config,
+                                                prompt_loader=prompt_loader,
+                                                session=session,
+                                                scratchpad=scratchpad)
+        
         entry = Orchestrator(
             name="orchestrator",
             description="Orchestrator agent managing the investigation workflow",
             instructions=prompt_loader.load("orchestrator", "instructions"),
             session=session,
-            sub_agents=_build_plugins(config=config,
-                                      prompt_loader=prompt_loader,
-                                      session=session,
-                                      scratchpad=scratchpad),
+            sub_agents=tools,
             scratchpad=scratchpad,
             config=config
         )
@@ -254,60 +271,68 @@ async def _start_investigation(session: Session) -> None:
 
         thread: AgentThread = entry.agent.get_new_thread()
 
-        tools = None
-        from aletheia.mcp.mcp import load_mcp_tools
-        if config and config.mcp_servers_yaml:
-            tools = load_mcp_tools(yaml_file=config.mcp_servers_yaml)
+        try:
+            while chatting:
+                console.print("[cyan]" + "─" * console.width + "[/cyan]")
+                console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session. Type '/help' for help.[/i cyan]\n")
+                user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]")
+                if user_input.lower() in ['exit', 'quit']:
+                    chatting = False
+                    console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
+                    break
+                elif user_input.strip().startswith("/"):
+                    command = user_input.strip()[1:]
+                    if command in COMMANDS:
+                        COMMANDS[command].execute(console, completion_usage=completion_usage, config=config)
+                        continue
 
-        while chatting:
-            console.print("[cyan]" + "─" * console.width + "[/cyan]")
-            console.print("[i cyan]You can ask questions about the investigation or type 'exit' to end the session. Type '/help' for help.[/i cyan]\n")
-            user_input = Prompt.ask(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]")
-            if user_input.lower() in ['exit', 'quit']:
-                chatting = False
-                console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
-                break
-            elif user_input.strip().startswith("/"):
-                command = user_input.strip()[1:]
-                if command in COMMANDS:
-                    COMMANDS[command].execute(console, completion_usage=completion_usage, config=config)
-                    continue
+                # Start thinking animation in a background thread
+                stop_event = asyncio.Event()
 
-            # Start thinking animation in a background thread
-            stop_event = asyncio.Event()
+                full_response = ""
+                try:
+                    # Print header with horizontal line ONCE at the start
+                    console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold cyan]🤖 Aletheia[/bold cyan]")
+                    console.print("[cyan]" + "─" * 80 + "[/cyan]")
 
-            full_response = ""
+                    buf = ""
+                    with Live("", console=console, refresh_per_second=5) as live:
+                        _ = asyncio.create_task(show_thinking_animation(live, stop_event))
+
+                        async for response in entry.agent.run_stream(
+                            messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
+                            thread=thread,
+                        ):
+                            if response and str(response.text) != "":
+                                if not stop_event.is_set():
+                                    stop_event.set()
+                                    await asyncio.sleep(0.1)  # Give animation time to stop
+                                    # Clear the live display
+
+                                full_response += str(response.text)
+                                buf += response.text
+                                live.update(Markdown(safe_md(buf)))
+
+                            if response and response.contents:
+                                for content in response.contents:
+                                    if isinstance(content, UsageContent):
+                                        completion_usage += content.details
+                finally:
+                    if stop_event and not stop_event.is_set():
+                        stop_event.set()
+        finally:
+            # Clean up agent resources before exiting
             try:
-                # Print header with horizontal line ONCE at the start
-                console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold cyan]🤖 Aletheia[/bold cyan]")
-                console.print("[cyan]" + "─" * 80 + "[/cyan]")
-
-                buf = ""
-                with Live("", console=console, refresh_per_second=5) as live:
-                    _ = asyncio.create_task(show_thinking_animation(live, stop_event))
-
-                    async for response in entry.agent.run_stream(
-                        messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
-                        thread=thread,
-                        tools=tools
-                    ):
-                        if response and str(response.text) != "":
-                            if not stop_event.is_set():
-                                stop_event.set()
-                                await asyncio.sleep(0.1)  # Give animation time to stop
-                                # Clear the live display
-
-                            full_response += str(response.text)
-                            buf += response.text
-                            live.update(Markdown(safe_md(buf)))
-
-                        if response and response.contents:
-                            for content in response.contents:
-                                if isinstance(content, UsageContent):
-                                    completion_usage += content.details
-            finally:
-                if stop_event and not stop_event.is_set():
-                    stop_event.set()
+                await entry.cleanup()
+            except Exception:
+                pass  # Ignore cleanup errors
+            
+            # Clean up all sub-agents
+            for agent in agent_instances:
+                try:
+                    await agent.cleanup()
+                except Exception:
+                    pass  # Ignore cleanup errors
 
         # evaluate total session cost
         COMMANDS["cost"].execute(console, completion_usage=completion_usage, config=config)

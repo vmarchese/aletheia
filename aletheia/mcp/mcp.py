@@ -11,22 +11,26 @@ class MCPServer:
     """Class representing an MCP server configuration."""
     def __init__(self,
                  name: str,
+                 agent: str,
                  description: str,
                  server_type: str,
                  url: str = None,
                  bearer: str = None,
                  command: str = None,
-                 args: list[str] = None):
+                 args: list[str] = None,
+                 env: dict = None):
         self.url = url
         self.bearer = bearer
         self.description = description
         self.name = name
+        self.agent = agent
         self.server_type = server_type
         self.command = command
         self.args = args if args is not None else []
+        self.env = env if env is not None else {}
 
 
-def load_mcp_tools(yaml_file: str = None) -> list[MCPServer]:
+def load_mcp_tools(agent: str, yaml_file: str = None) -> list[MCPServer]:
     """Load MCP server configurations from a YAML file.
 
     Args:
@@ -42,14 +46,18 @@ def load_mcp_tools(yaml_file: str = None) -> list[MCPServer]:
         servers_data = yaml.safe_load(content)
         servers = []
         for server_info in servers_data.get("mcp_servers", []):
+            if server_info.get("agent") != agent:
+                continue
             server = MCPServer(
                 name=server_info.get("name"),
+                agent=server_info.get("agent"),
                 url=server_info.get("url"),
                 description=server_info.get("description"),
                 bearer=server_info.get("bearer"),
                 server_type=server_info.get("type"),
                 command=server_info.get("command"),
                 args=server_info.get("args", []),
+                env=server_info.get("env", {})
             )
             servers.append(server)
 
