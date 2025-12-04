@@ -291,5 +291,30 @@ You can ask questions about the investigation or type 'exit' to end the session.
 ```
 
 
+# MCP Support (Highly experimental)
+You can add MCP Server to each agent by setting a `ALETHEIA_MCP_SERVERS_YAML` env variable pointing to a yaml configuration which must have the following format:
 
+```yaml
+mcp_servers:
+  # STDIO Transport
+  - name: # MCP Server Name
+    type: stdio # if stdio 
+    agent: # name of the agent that will access the server
+    description: # mcp server description
+    command: # mcp servert command. e.g.: uvx
+    args:  # array of arguments
+    env: # dictionary ov environment variables
+    ...
+  # HTTP Streamable Transport
+  - name: # MCP Server Name
+    type: streamable_http # if stdio 
+    agent: # name of the agent that will access the server
+    description: # mcp server description
+    url: # uri of the server
+    bearer:  # bearer token
+    ...
+```
+
+
+ 
 

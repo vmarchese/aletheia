@@ -22,7 +22,6 @@ class Command:
         """
         Execute the command.
         """
-        pass
 
 
 class Help(Command):
@@ -115,7 +114,7 @@ class CostInfo(Command):
             cost_table += "|--------|-------|-------|--------|\n"
             cost_table += f"| Tokens | {total_tokens} | {input_token} | {output_token} |\n"
             cost_table += f"| Cost (€) | €{total_cost:.6f} | €{input_token * config.cost_per_input_token:.6f} | €{output_token * config.cost_per_output_token:.6f} |\n"
-            console.print(Markdown(cost_table))        
+            console.print(Markdown(cost_table))
 
 
 COMMANDS["help"] = Help()

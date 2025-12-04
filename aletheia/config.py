@@ -170,13 +170,20 @@ class Config(BaseSettings):
         default=True, description="Auto-adjust metric resolution based on time range"
     )
 
-
     # =================================================================
     # Temp folder
     # =================================================================
     temp_folder: str = Field(
         default="/tmp/aletheia",
         description="Temporary folder for storing intermediate files"
+    )
+
+    # =================================================================
+    # MCP Servers Configuration (flat)
+    # =================================================================
+    mcp_servers_yaml: Optional[str] = Field(
+        default=None, description="Path to MCP servers YAML configuration file"
+
     )
 
     @classmethod
