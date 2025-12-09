@@ -22,6 +22,11 @@ The Kubernetes Plugin can access the kubernetes cluster to perform the following
    - Use `ps()` to list processes in container in a pod
    - Use `sigquit()` to send to the process a SIGQUIT.
 
+   **Secret Operations:**
+   - Use `list_secrets()` to list secrets in a namespace
+   - Use `describe_secret()` to get detailed secret information (values hidden)
+   - Use `get_secret()` to retrieve and decode secret values (sensitive)
+
    **General Operations:**
    - Use `pod_from_ip()` to get a pod from an ip address
    - Use `service_from_ip()` to get a service from an ip address
