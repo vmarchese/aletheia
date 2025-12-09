@@ -72,4 +72,7 @@ Before submitting a Pull Request, ensure you have run the following:
 ## 6. Frameworks
 Use the following frameworks:
 - FastAPI for APIs
-- Tailwind CSS for css
+- Tailwind CSS for csso
+
+# IMPORTANT
+- ALWAYS activate the virtual environment before running the agent

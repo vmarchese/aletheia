@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aletheia - AI Troubleshooting</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Sidebar -->
@@ -17,7 +21,7 @@
                 <div class="logo-icon">A</div>
                 <h1>Aletheia</h1>
             </div>
-            
+
             <button id="new-session-btn" class="btn-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -43,15 +47,35 @@
                     <span id="current-session-id" class="badge"></span>
                 </div>
                 <div class="header-actions">
+                    <button id="theme-toggle-btn" class="btn-icon" title="Toggle Theme">
+                        <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" style="display: none;">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </button>
                     <button id="export-btn" class="btn-icon" title="Export Session" disabled>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                             <polyline points="7 10 12 15 17 10"></polyline>
                             <line x1="12" y1="15" x2="12" y2="3"></line>
                         </svg>
                     </button>
                     <button id="timeline-btn" class="btn-icon" title="View Timeline" disabled>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
                             <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
@@ -72,14 +96,11 @@
             <div class="input-area">
                 <form id="chat-form" class="chat-form">
                     <div class="input-wrapper">
-                        <textarea 
-                            id="message-input" 
-                            placeholder="Describe the issue or ask a question..." 
-                            rows="1"
-                            disabled
-                        ></textarea>
+                        <textarea id="message-input" placeholder="Describe the issue or ask a question..." rows="1"
+                            disabled></textarea>
                         <button type="submit" id="send-btn" class="btn-send" disabled>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
                                 <line x1="22" y1="2" x2="11" y2="13"></line>
                                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                             </svg>
@@ -110,6 +131,10 @@
                     <input type="checkbox" id="session-unsafe">
                     <label for="session-unsafe">Unsafe Mode (No Encryption)</label>
                 </div>
+                <div class="form-group checkbox">
+                    <input type="checkbox" id="session-verbose" checked>
+                    <label for="session-verbose">Verbose Mode (-vv)</label>
+                </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary btn-close-modal">Cancel</button>
                     <button type="submit" class="btn-primary">Create Session</button>
@@ -117,8 +142,21 @@
             </form>
         </div>
     </div>
+    <!-- Timeline Modal -->
+    <div id="timeline-modal" class="modal">
+        <div class="modal-content modal-lg">
+            <span class="close-modal btn-close-modal">&times;</span>
+            <h2>Session Timeline</h2>
+            <div id="timeline-container" class="timeline-container">
+                <!-- Timeline items will be injected here -->
+                <div class="loading-state">Generating timeline...</div>
+            </div>
+        </div>
+    </div>
 
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
+
 </html>

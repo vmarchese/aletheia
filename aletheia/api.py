@@ -16,7 +16,7 @@ from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.cli import _build_plugins
-from agent_framework import ChatMessage, TextContent, Role
+from agent_framework import ChatMessage, TextContent, Role, UsageDetails, UsageContent
 
 from fastapi.staticfiles import StaticFiles
 
@@ -44,6 +44,7 @@ class SessionCreateRequest(BaseModel):
     name: Optional[str] = None
     password: Optional[str] = None
     unsafe: bool = False
+    verbose: bool = True
 
 class SessionResumeRequest(BaseModel):
     password: Optional[str] = None
@@ -83,7 +84,8 @@ async def create_session(request: SessionCreateRequest):
         session = Session.create(
             name=request.name,
             password=request.password,
-            unsafe=request.unsafe
+            unsafe=request.unsafe,
+            verbose=request.verbose
         )
         return session.get_metadata().to_dict()
     except SessionExistsError:
@@ -159,18 +161,22 @@ async def get_session_timeline(session_id: str, password: Optional[str] = None, 
         from aletheia.agents.timeline.timeline_agent import TimelineAgent
         prompt_loader = Loader()
         timeline_agent = TimelineAgent(name="timeline_agent",
-                                       instructions=prompt_loader.load("timeline", "instructions"),
+                                       instructions=prompt_loader.load("timeline", "json_instructions"),
                                        description="Timeline Agent")
         
         message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       The timeline should summarize key actions, findings, and next steps in chronological order.
-                                       The output should be in the following format:
-                                       - [Time/Step]: Short description of action or finding
-                                       No additional commentary is needed.
                                        """)])
         response = await timeline_agent.agent.run(message)
-        return {"timeline": str(response.text)}
+        
+        # Parse JSON from response
+        try:
+            timeline_data = json.loads(str(response.text))
+        except json.JSONDecodeError:
+            # Fallback if LLM returns text/markdown
+             timeline_data = [{"timestamp": "", "type": "INFO", "description": str(response.text)}]
+
+        return {"timeline": timeline_data}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -203,28 +209,11 @@ async def get_or_create_orchestrator(session_id: str, password: Optional[str], u
     # The CLI keeps them to call cleanup().
     orchestrator.sub_agent_instances = agent_instances 
     
+    if not hasattr(orchestrator, 'completion_usage'):
+        orchestrator.completion_usage = UsageDetails()
+
     active_investigations[session_id] = orchestrator
     return orchestrator
-
-@app.post("/sessions/{session_id}/chat")
-async def chat_session(session_id: str, request: ChatRequest, background_tasks: BackgroundTasks, unsafe: bool = False):
-    """Send a message to the investigation session."""
-    try:
-        orchestrator = await get_or_create_orchestrator(session_id, request.password, unsafe)
-        
-        # We need a way to stream results back. 
-        # We'll use a queue for this session.
-        if session_id not in investigation_queues:
-            investigation_queues[session_id] = asyncio.Queue()
-            
-        queue = investigation_queues[session_id]
-        
-        # Run the agent in background and push updates to queue
-        background_tasks.add_task(run_agent_step, orchestrator, request.message, queue)
-        
-        return {"status": "processing"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asyncio.Queue):
     try:
@@ -241,11 +230,106 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
             if response and str(response.text) != "":
                 await queue.put({"type": "text", "content": str(response.text)})
             
-            # Handle usage/other types if needed
+            if response and response.contents:
+                for content in response.contents:
+                    if isinstance(content, UsageContent):
+                        orchestrator.completion_usage += content.details
             
         await queue.put({"type": "done"})
     except Exception as e:
         await queue.put({"type": "error", "content": str(e)})
+
+
+# --- Helpers for Commands ---
+
+from aletheia.commands import COMMANDS
+from rich.console import Console
+from rich.markdown import Markdown
+import io
+
+class MockConsole:
+    def __init__(self):
+        self.file = io.StringIO()
+        self.console = Console(file=self.file, force_terminal=False, width=80)
+        
+    def print(self, *args, **kwargs):
+        for arg in args:
+            if isinstance(arg, Markdown):
+               self.file.write(arg.markup + "\n")
+            else:
+               self.console.print(arg, **kwargs)
+
+    def get_output(self):
+        return self.file.getvalue()
+
+async def run_command_step(command_name: str, args: list, queue: asyncio.Queue, session_id: str):
+    try:
+        command = COMMANDS.get(command_name)
+        if not command:
+            await queue.put({"type": "error", "content": f"Unknown command: /{command_name}"})
+            return
+
+        mock_console = MockConsole()
+        
+        # Prepare kwargs - some commands might need config or other contexts
+        # replicating what CLI typically passes
+        kwargs = {}
+        if command_name == "cost":
+             config = load_config()
+             kwargs["config"] = config
+             # retrieving completion usage might be tricky without active context
+             # For now we'll pass empty or dummy if strictly required, 
+             # but CostInfo expects it. 
+             # Let's try to get it from the orchestrator if it exists
+             # Let's try to get it from the orchestrator if it exists
+             if session_id in active_investigations:
+                 orchestrator = active_investigations[session_id]
+                 if hasattr(orchestrator, 'completion_usage'):
+                    kwargs["completion_usage"] = orchestrator.completion_usage
+
+        command.execute(console=mock_console, *args, **kwargs)
+        
+        output = mock_console.get_output()
+        await queue.put({"type": "text", "content": output})
+        await queue.put({"type": "done"})
+        
+    except Exception as e:
+        await queue.put({"type": "error", "content": str(e)})
+
+
+@app.post("/sessions/{session_id}/chat")
+async def chat_session(session_id: str, request: ChatRequest, background_tasks: BackgroundTasks, unsafe: bool = False):
+    """Send a message to the investigation session."""
+    try:
+        # Check for Slash Command
+        if request.message.strip().startswith("/"):
+            command_parts = request.message.strip()[1:].split()
+            command_name = command_parts[0]
+            args = command_parts[1:]
+            
+            if session_id not in investigation_queues:
+                investigation_queues[session_id] = asyncio.Queue()
+            queue = investigation_queues[session_id]
+            
+            background_tasks.add_task(run_command_step, command_name, args, queue, session_id)
+            return {"status": "processing_command"}
+
+        orchestrator = await get_or_create_orchestrator(session_id, request.password, unsafe)
+        
+        # We need a way to stream results back. 
+        # We'll use a queue for this session.
+        if session_id not in investigation_queues:
+            investigation_queues[session_id] = asyncio.Queue()
+            
+        queue = investigation_queues[session_id]
+        
+        # Run the agent in background and push updates to queue
+        background_tasks.add_task(run_agent_step, orchestrator, request.message, queue)
+        
+        return {"status": "processing"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/sessions/{session_id}/stream")
 async def stream_session(session_id: str):

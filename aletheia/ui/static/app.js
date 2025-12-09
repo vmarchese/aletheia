@@ -41,9 +41,13 @@ const currentSessionName = document.getElementById('current-session-name');
 const currentSessionIdBadge = document.getElementById('current-session-id');
 const exportBtn = document.getElementById('export-btn');
 const timelineBtn = document.getElementById('timeline-btn');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
+const sunIcon = document.querySelector('.sun-icon');
+const moonIcon = document.querySelector('.moon-icon');
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     fetchSessions();
     setupEventListeners();
 });
@@ -56,9 +60,19 @@ function setupEventListeners() {
     });
 
     closeModalBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            newSessionModal.classList.remove('show');
+        btn.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                modal.classList.remove('show');
+            }
         });
+    });
+
+    // Close on click outside
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('show');
+        }
     });
 
     // Create Session
@@ -67,12 +81,13 @@ function setupEventListeners() {
         const name = document.getElementById('session-name').value;
         const password = document.getElementById('session-password').value;
         const unsafe = document.getElementById('session-unsafe').checked;
+        const verbose = document.getElementById('session-verbose').checked;
 
         try {
             const response = await fetch('/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, password, unsafe })
+                body: JSON.stringify({ name, password, unsafe, verbose })
             });
 
             if (!response.ok) throw new Error('Failed to create session');
@@ -143,17 +158,64 @@ function setupEventListeners() {
     });
 
     timelineBtn.addEventListener('click', async () => {
-        if (currentSessionId) {
-            try {
-                const response = await fetch(`/sessions/${currentSessionId}/timeline?unsafe=true`);
-                const data = await response.json();
-                // Simple alert for now, or modal
-                alert(data.timeline);
-            } catch (e) {
-                alert("Error fetching timeline");
-            }
+        if (!currentSessionId) return;
+
+        const timelineModal = document.getElementById('timeline-modal');
+        const timelineContainer = document.getElementById('timeline-container');
+
+        timelineModal.classList.add('show');
+        timelineContainer.innerHTML = '<div class="loading-state">Generating timeline...</div>';
+
+        try {
+            const response = await fetch(`/sessions/${currentSessionId}/timeline?unsafe=true`);
+            const data = await response.json();
+            renderTimeline(data.timeline, timelineContainer);
+        } catch (e) {
+            timelineContainer.innerHTML = `<div class="loading-state" style="color: red">Error fetching timeline: ${e.message}</div>`;
         }
     });
+
+    // Theme Toggle
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', toggleTheme);
+    }
+}
+
+// Theme Functions
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    // Default to dark if no preference, or if system prefers dark and no saved preference
+    // Actually, let's default to saved, or system, or dark.
+    let theme = 'dark';
+    if (savedTheme) {
+        theme = savedTheme;
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        theme = 'light';
+    }
+
+    setTheme(theme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+
+    // Update Icons
+    if (theme === 'light') {
+        sunIcon.style.display = 'none';
+        moonIcon.style.display = 'block';
+    } else {
+        sunIcon.style.display = 'block';
+        moonIcon.style.display = 'none';
+    }
 }
 
 // API Functions
@@ -311,7 +373,7 @@ function appendMessage(content, role) {
     if (role === 'bot') {
         // Store raw content for updates
         msgDiv.dataset.raw = content;
-        contentDiv.innerHTML = marked.parse(content);
+        contentDiv.innerHTML = parseSections(content);
     } else {
         contentDiv.textContent = content; // User messages are plain text usually
     }
@@ -338,8 +400,90 @@ function updateLastBotMessage(content) {
     let currentText = lastMsg.dataset.raw || "";
     currentText += content;
     lastMsg.dataset.raw = currentText;
-    contentDiv.innerHTML = marked.parse(currentText);
+    contentDiv.innerHTML = parseSections(currentText);
     scrollToBottom();
+}
+
+function parseSections(text) {
+    // Regex to find the sections
+    const findingsRegex = /\*\*Section Findings:\*\*([\s\S]*?)(?=\*\*Section Decisions:\*\*|$)/;
+    const decisionsRegex = /\*\*Section Decisions:\*\*([\s\S]*?)(?=\*\*Section Suggested actions:\*\*|$)/;
+    const actionsRegex = /\*\*Section Suggested actions:\*\*([\s\S]*?)$/;
+
+    const findingsMatch = text.match(findingsRegex);
+    const decisionsMatch = text.match(decisionsRegex);
+    const actionsMatch = text.match(actionsRegex);
+
+    if (findingsMatch || decisionsMatch || actionsMatch) {
+        let html = '';
+
+        if (findingsMatch) {
+            html += `<div class="section section-findings">
+                <div class="section-header">🔍 Findings</div>
+                <div class="section-body">${marked.parse(findingsMatch[1].trim())}</div>
+            </div>`;
+        }
+
+        if (decisionsMatch) {
+            html += `<div class="section section-decisions">
+                <div class="section-header">🧠 Decisions</div>
+                <div class="section-body">${marked.parse(decisionsMatch[1].trim())}</div>
+            </div>`;
+        }
+
+        if (actionsMatch) {
+            html += `<div class="section section-actions">
+                <div class="section-header">🚀 Suggested Actions</div>
+                <div class="section-body">${marked.parse(actionsMatch[1].trim())}</div>
+            </div>`;
+        }
+
+        // Also handle any introductory text before the first section?
+        // For now, we assume the format is strictly followed if any section is present.
+        // But let's check if there is text BEFORE the first match
+        const firstMatchIndex = Math.min(
+            findingsMatch ? findingsMatch.index : Infinity,
+            decisionsMatch ? decisionsMatch.index : Infinity,
+            actionsMatch ? actionsMatch.index : Infinity
+        );
+
+        if (firstMatchIndex > 0 && firstMatchIndex !== Infinity) {
+            const intro = text.substring(0, firstMatchIndex);
+            if (intro.trim()) {
+                html = `<div class="section section-intro">${marked.parse(intro)}</div>` + html;
+            }
+        }
+
+        return html;
+    } else {
+        return marked.parse(text);
+    }
+}
+
+
+function renderTimeline(timelineData, container) {
+    if (!Array.isArray(timelineData) || timelineData.length === 0) {
+        container.innerHTML = '<div class="loading-state">No timeline events found.</div>';
+        return;
+    }
+
+    let html = '';
+    timelineData.forEach(event => {
+        const typeClass = `type-${event.type.toLowerCase()}`;
+        html += `
+            <div class="timeline-item ${typeClass}">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <div class="timeline-header">
+                        <span class="timeline-type">${event.type}</span>
+                        <span class="timeline-timestamp">${event.timestamp}</span>
+                    </div>
+                    <div class="timeline-body">${marked.parse(event.description)}</div>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
 }
 
 function scrollToBottom() {
