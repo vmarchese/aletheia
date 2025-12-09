@@ -3,13 +3,15 @@ import json
 import subprocess
 from datetime import datetime
 
-from typing import Annotated, Optional, List
+from typing import Annotated, Optional, List, TYPE_CHECKING
 from pydantic import Field
 from agent_framework import ToolProtocol
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
-from aletheia.session import Session, SessionDataType
+from aletheia.enums import SessionDataType
+if TYPE_CHECKING:
+    from aletheia.session import Session
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
 from aletheia.utils.command import sanitize_command
@@ -18,7 +20,7 @@ from aletheia.utils.command import sanitize_command
 class KubernetesPlugin(BasePlugin):
     """plugin for Kubernetes operations."""
 
-    def __init__(self, config: Config, session: Session):
+    def __init__(self, config: Config, session: "Session"):
         self.session = session
         self.config = config
         self.name = "KubernetesPlugin"
@@ -59,7 +61,7 @@ class KubernetesPlugin(BasePlugin):
         container: Annotated[str, "Optional container name within the pod"] = None,
         tail_lines: Annotated[int, "Number of lines to fetch from the end of logs (default: 100)"] = 100,
         since_minutes: Annotated[str, "Fetch logs from the last N minutes (default: 30m)"] = "30",
-        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None,
     ) -> str:
         """Fetch logs from a Kubernetes pod."""
         cmd = ["kubectl"]
@@ -124,7 +126,7 @@ class KubernetesPlugin(BasePlugin):
 
     def get_nodes(
         self,
-        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None,
     ) -> Annotated[str, "JSON object with nodes information including status and resources"]:
         """Get Kubernetes nodes.
 
@@ -193,7 +195,7 @@ class KubernetesPlugin(BasePlugin):
     def describe_node(
         self,
         node: Annotated[str, "The name of the node to describe"] = "",
-        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None,
     ) -> Annotated[str, "Human-readable description of the node with events and detailed information"]:
         """Describe a Kubernetes node in detail.
 
@@ -244,7 +246,7 @@ class KubernetesPlugin(BasePlugin):
 #    @ai_function( name="get_namespaces", description="Get the list of all Kubernetes namespaces with their status")
     def get_namespaces(
         self,
-        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None,
     ) -> Annotated[str, "JSON object with namespaces information including status and age"]:
         """Get Kubernetes namespaces.
 
@@ -301,7 +303,7 @@ class KubernetesPlugin(BasePlugin):
     def describe_namespace(
         self,
         namespace: Annotated[str, "The name of the namespace to describe"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None,
     ) -> Annotated[str, "Human-readable description of the namespace with resource quotas and limits"]:
         """Describe a Kubernetes namespace in detail.
 
@@ -350,8 +352,8 @@ class KubernetesPlugin(BasePlugin):
 
     def get_services(
         self,
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         namespace: Annotated[str, "The Kubernetes namespace to list services from. Use 'all' for all namespaces"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "JSON object with services information including type, cluster IP, and ports"]:
         """Get Kubernetes services.
 
@@ -420,8 +422,8 @@ class KubernetesPlugin(BasePlugin):
     def describe_service(
         self,
         svc: Annotated[str, "The name of the service to describe"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         namespace: Annotated[str, "The Kubernetes namespace containing the service"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "Human-readable description of the service with endpoints and events"]:
         """Describe a Kubernetes service in detail.
 
@@ -474,8 +476,8 @@ class KubernetesPlugin(BasePlugin):
     def get_pod_status(
         self,
         pod: Annotated[str, "The name of the pod to get status for"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"] = None,
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> str:
         """Get detailed status information for a specific Kubernetes pod."""
         cmd = ["kubectl"]
@@ -508,8 +510,8 @@ class KubernetesPlugin(BasePlugin):
     def describe_pod(
         self,
         pod: Annotated[str, "The name of the pod to describe"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "Detailed pod description including events and configuration"]:
         """Describe a Kubernetes pod with full details.
 
@@ -562,10 +564,10 @@ class KubernetesPlugin(BasePlugin):
     def sigquit(
         self,
         pod: Annotated[str, "The name of the pod"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         container: Annotated[str, "The name of the container"] = "",
         namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
-        pid: Annotated[str, "The PID of the process"] = ""
+        pid: Annotated[str, "The PID of the process"] = "",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "Detailed pod description including events and configuration"]:
         """Sends a SIGQUIT to a process in a Kubernetes pod.
 
@@ -619,9 +621,9 @@ class KubernetesPlugin(BasePlugin):
     def ps(
         self,
         pod: Annotated[str, "The name of the pod"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
         container: Annotated[str, "The name of the container"] = "",
-        namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default"
+        namespace: Annotated[str, "The Kubernetes namespace containing the pod"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "Detailed process list from the pod"]:
         """Lists all processes running in a Kubernetes pod.
 
@@ -676,7 +678,7 @@ class KubernetesPlugin(BasePlugin):
     def pod_from_ip(
         self,
         ip_address: Annotated[str, "The IP address to look up tjhe pod for"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "Details of the pod associated with the given IP address"]:
         """Find the pod associated with a given IP address.
 
@@ -709,7 +711,6 @@ class KubernetesPlugin(BasePlugin):
             output = self._run_kubernetes_command(cmd, save_key=None, log_prefix="KubernetesPlugin::pod_from_ip::")
             return output
 
-
         except (json.JSONDecodeError, TypeError) as e:
             return json.dumps({
                 "error": f"Failed to get pod from ip: {str(e)}",
@@ -719,7 +720,7 @@ class KubernetesPlugin(BasePlugin):
     def service_from_ip(
         self,
         ip_address: Annotated[str, "The IP address to look up the service for"],
-        context: Annotated[str, "Kubernetes context to use (overrides default)"],
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
     ) -> Annotated[str, "Details of the service associated with the given IP address"]:
         """Find the service associated with a given IP address.
 
@@ -758,7 +759,7 @@ class KubernetesPlugin(BasePlugin):
             return json.dumps({
                 "error": f"Failed to get svc from ip: {str(e)}",
                 "ip": ip_address
-            })            
+            })
 
     def get_tools(self) -> List[ToolProtocol]:
         return [

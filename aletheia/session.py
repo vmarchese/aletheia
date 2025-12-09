@@ -34,13 +34,7 @@ from aletheia.encryption import (
 )
 
 
-class SessionDataType(Enum):
-    """Types of session data."""
-    LOGS = "logs"
-    METRICS = "metrics"
-    TRACES = "traces"
-    INFO = "info"
-    TCPDUMP = "tcpdump"
+from aletheia.enums import SessionDataType
 
 
 class SessionError(Exception):
@@ -466,10 +460,13 @@ class Session:
             # Encrypt the archive using a key derived from the password
             # Use a fixed salt for archive encryption (deterministic)
 
-            archive_salt = b"aletheia-archive"  # Fixed salt for archives
-            archive_key = derive_session_key(self.password, archive_salt)
-
-            encrypt_file(tmp_path, archive_key, output_path)
+            if self.unsafe:
+                # In unsafe mode, just copy the tar.gz to output
+                shutil.copy2(tmp_path, output_path)
+            else:
+                archive_salt = b"aletheia-archive"  # Fixed salt for archives
+                archive_key = derive_session_key(self.password, archive_salt)
+                encrypt_file(tmp_path, archive_key, output_path)
 
         finally:
             # Clean up temporary file

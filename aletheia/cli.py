@@ -778,6 +778,25 @@ def show_banner() -> None:
         pass
 
 
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Host to bind the server to"),
+    port: int = typer.Option(8000, help="Port to bind the server to"),
+    reload: bool = typer.Option(False, help="Enable auto-reload"),
+) -> None:
+    """Start the Aletheia REST API server."""
+    try:
+        import uvicorn
+        console.print(f"[green]Starting Aletheia API server on http://{host}:{port}[/green]")
+        uvicorn.run("aletheia.api:app", host=host, port=port, reload=reload)
+    except ImportError:
+        console.print("[red]Error: 'uvicorn' not found. Please install it with 'pip install uvicorn'.[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error starting server: {e}[/red]")
+        raise typer.Exit(1)
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()
