@@ -761,6 +761,207 @@ class KubernetesPlugin(BasePlugin):
                 "ip": ip_address
             })
 
+    def list_secrets(
+        self,
+        namespace: Annotated[str, "The Kubernetes namespace to list secrets from"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
+    ) -> Annotated[str, "JSON object with secrets information including name, type, and data keys"]:
+        """List secrets in a Kubernetes namespace.
+
+        Args:
+            namespace: Kubernetes namespace (default: "default")
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            JSON string with secrets information including:
+            - name, namespace, type
+            - data keys (not values for security)
+            - age and creation timestamp
+        """
+        log_debug(f"KubernetesPlugin::list_secrets:: Listing secrets in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context
+        if _context:
+            cmd.extend(["--context", _context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "get", "secrets",
+            "-o", "json"
+        ])
+
+        try:
+            output = self._run_kubernetes_command(cmd, save_key=f"secrets_{namespace}", log_prefix="KubernetesPlugin::list_secrets::")
+            kubectl_output = json.loads(output)
+            secrets = []
+            for item in kubectl_output.get("items", []):
+                metadata = item.get("metadata", {})
+                secret_type = item.get("type", "Opaque")
+                data_keys = list(item.get("data", {}).keys())
+                secrets.append({
+                    "name": metadata.get("name"),
+                    "namespace": metadata.get("namespace"),
+                    "type": secret_type,
+                    "data_keys": data_keys,
+                    "age": metadata.get("creationTimestamp")
+                })
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"secrets_{namespace}", json.dumps(secrets, indent=2))
+                log_debug(f"KubernetesPlugin::list_secrets:: Saved secrets information to {saved}")
+            return json.dumps({
+                "secrets": secrets,
+                "count": len(secrets),
+                "namespace": namespace,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+        except (json.JSONDecodeError, TypeError) as e:
+            log_error(f"KubernetesPlugin::list_secrets:: Failed to list secrets: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to list secrets: {str(e)}",
+                "namespace": namespace
+            })
+
+    def describe_secret(
+        self,
+        secret: Annotated[str, "The name of the secret to describe"],
+        namespace: Annotated[str, "The Kubernetes namespace containing the secret"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
+    ) -> Annotated[str, "Human-readable description of the secret with metadata (values not shown for security)"]:
+        """Describe a Kubernetes secret in detail.
+
+        Args:
+            secret: Secret name to describe
+            namespace: Kubernetes namespace (default: "default")
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            Human-readable description string with:
+            - Secret information and labels
+            - Type and data keys
+            - Annotations and age
+            Note: Actual secret values are not displayed for security reasons
+        """
+        log_debug(f"KubernetesPlugin::describe_secret:: Describing secret '{secret}' in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context
+        if _context:
+            cmd.extend(["--context", _context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "describe", "secret", secret
+        ])
+
+        try:
+            output = self._run_kubernetes_command(cmd, save_key=f"secret_describe_{namespace}_{secret}", log_prefix="KubernetesPlugin::describe_secret::")
+            description = output
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"secret_describe_{namespace}_{secret}", description)
+                log_debug(f"KubernetesPlugin::describe_secret:: Saved secret description to {saved}")
+            return json.dumps({
+                "secret": secret,
+                "namespace": namespace,
+                "description": description,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2)
+        except (json.JSONDecodeError, TypeError) as e:
+            log_error(f"KubernetesPlugin::describe_secret:: Failed to describe secret: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to describe secret: {str(e)}",
+                "secret": secret,
+                "namespace": namespace
+            })
+
+    def get_secret(
+        self,
+        secret: Annotated[str, "The name of the secret to retrieve"],
+        namespace: Annotated[str, "The Kubernetes namespace containing the secret"] = "default",
+        context: Annotated[Optional[str], Field(description="Kubernetes context to use (overrides default)")] = None
+    ) -> Annotated[str, "JSON object with secret data including base64 decoded values"]:
+        """Get a Kubernetes secret and decode its values.
+
+        Args:
+            secret: Secret name to retrieve
+            namespace: Kubernetes namespace (default: "default")
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            JSON string with secret information including:
+            - name, namespace, type
+            - decoded data values (base64 decoded)
+            - metadata and annotations
+
+        Warning: This function exposes secret values. Use with caution.
+        """
+        log_debug(f"KubernetesPlugin::get_secret:: Getting secret '{secret}' in namespace '{namespace}'")
+        cmd = ["kubectl"]
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context
+        if _context:
+            cmd.extend(["--context", _context])
+
+        cmd.extend([
+            "--namespace", namespace,
+            "get", "secret", secret,
+            "-o", "json"
+        ])
+
+        try:
+            import base64
+            output = self._run_kubernetes_command(cmd, save_key=None, log_prefix="KubernetesPlugin::get_secret::")
+            kubectl_output = json.loads(output)
+
+            metadata = kubectl_output.get("metadata", {})
+            secret_type = kubectl_output.get("type", "Opaque")
+            data = kubectl_output.get("data", {})
+
+            # Decode base64 values
+            decoded_data = {}
+            for key, value in data.items():
+                try:
+                    decoded_data[key] = base64.b64decode(value).decode('utf-8')
+                except Exception as e:
+                    decoded_data[key] = f"<decode error: {str(e)}>"
+
+            result = {
+                "name": metadata.get("name"),
+                "namespace": metadata.get("namespace"),
+                "type": secret_type,
+                "data": decoded_data,
+                "labels": metadata.get("labels", {}),
+                "annotations": metadata.get("annotations", {}),
+                "created": metadata.get("creationTimestamp")
+            }
+
+            # Save the secret data to session (be careful - contains sensitive data)
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(SessionDataType.INFO, f"secret_{namespace}_{secret}", json.dumps(result, indent=2))
+                log_debug(f"KubernetesPlugin::get_secret:: Saved secret data to {saved}")
+
+            return json.dumps({
+                "secret": result,
+                "saved": str(saved),
+                "timestamp": datetime.now().isoformat(),
+                "warning": "This output contains decoded secret values. Handle with care."
+            }, indent=2)
+        except (json.JSONDecodeError, TypeError) as e:
+            log_error(f"KubernetesPlugin::get_secret:: Failed to get secret: {str(e)}")
+            return json.dumps({
+                "error": f"Failed to get secret: {str(e)}",
+                "secret": secret,
+                "namespace": namespace
+            })
+
     def get_tools(self) -> List[ToolProtocol]:
         return [
             self.fetch_kubernetes_logs,
@@ -776,5 +977,8 @@ class KubernetesPlugin(BasePlugin):
             self.sigquit,
             self.ps,
             self.pod_from_ip,
-            self.service_from_ip
+            self.service_from_ip,
+            self.list_secrets,
+            self.describe_secret,
+            self.get_secret
         ]
