@@ -68,106 +68,11 @@ Before submitting a Pull Request, ensure you have run the following:
 3.  Check types: `mypy .`
 4.  Run tests: `pytest`
 
-# How to Add a New Agent to Aletheia
 
-This guide outlines the process for implementing and registering a new agent in the Aletheia system.
+## 6. Frameworks
+Use the following frameworks:
+- FastAPI for APIs
+- Tailwind CSS for csso
 
-## 1. Create Agent Directory
-
-Create a new directory for your agent in `aletheia/agents/`. For example, if your agent is named `MyNewAgent`, create `aletheia/agents/my_new_agent/`.
-
-```bash
-mkdir aletheia/agents/my_new_agent
-touch aletheia/agents/my_new_agent/__init__.py
-```
-
-## 2. Implement Agent Class
-
-Create a python file for your agent (e.g., `aletheia/agents/my_new_agent/my_new_agent.py`).
-Your agent class must inherit from `BaseAgent` defined in `aletheia/agents/base.py`.
-
-```python
-from aletheia.agents.base import BaseAgent
-from aletheia.session import Session
-from aletheia.plugins.scratchpad.scratchpad import Scratchpad
-from aletheia.config import Config
-
-class MyNewAgent(BaseAgent):
-    """Description of what MyNewAgent does."""
-
-    def __init__(self,
-                 name: str,
-                 config: Config,
-                 description: str,
-                 session: Session,
-                 scratchpad: Scratchpad):
-        
-        # Initialize any specific plugins or tools your agent needs
-        plugins = [scratchpad] 
-        # Add other plugins if needed
-
-        # Load instructions (see step 3)
-        # You can pass instructions directly or let BaseAgent load them
-        # If passing directly, load them here. 
-        # If using BaseAgent's loading mechanism, ensure instructions.yaml exists.
-        
-        instructions = "You are a helpful agent..." # Or load from file
-
-        super().__init__(name=name,
-                         description=description,
-                         instructions=instructions,
-                         session=session,
-                         plugins=plugins)
-```
-
-## 3. Define Agent Instructions
-
-Create an instruction file (YAML or Markdown) in your agent's directory.
-If using `BaseAgent`'s default loading, create `instructions.yaml`.
-
-Example `instructions.yaml`:
-```yaml
-agent:
-  name: MyNewAgent
-  identity: "You are an expert in ..."
-  guidelines: "Always follow these rules..."
-```
-
-Or you can use a Markdown file and load it manually in `__init__` using `Loader`.
-
-## 4. Register the Agent
-
-To make the agent available to the system, you need to register it in `aletheia/cli.py`.
-
-1.  Import your agent class in `aletheia/cli.py`.
-    ```python
-    from aletheia.agents.my_new_agent.my_new_agent import MyNewAgent
-    ```
-
-2.  Instantiate and add your agent to the `plugins` list in the `_build_plugins` function in `aletheia/cli.py`.
-
-    ```python
-    def _build_plugins(...):
-        # ... existing agents ...
-
-        my_new_agent = MyNewAgent(name="my_new_agent",
-                                  config=config,
-                                  description="Description for the Orchestrator to understand when to use this agent.",
-                                  session=session,
-                                  scratchpad=scratchpad)
-        plugins.append(my_new_agent.agent.as_tool())
-
-        return plugins
-    ```
-
-## 5. (Optional) Configuration
-
-If your agent requires configuration settings, add them to `aletheia/config.py` and update `Config` class.
-
-## Summary
-
-1.  **Create Directory**: `aletheia/agents/<agent_name>/`
-2.  **Implement Class**: Inherit from `BaseAgent`.
-3.  **Add Instructions**: `instructions.yaml` or `.md`.
-4.  **Register**: Add to `_build_plugins` in `aletheia/cli.py`.
-
+# IMPORTANT
+- ALWAYS activate the virtual environment before running the agent

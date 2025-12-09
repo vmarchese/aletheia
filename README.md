@@ -317,6 +317,8 @@ Section Suggested actions:
 You can ask questions about the investigation or type 'exit' to end the session.
 ```
 
+## WEB UI (Alpha)
+Aletheia has a very rudimental WEB UI. To access it start Aletheia with `aletheia serve` and open `http://localhost:8000` in your browser.
 
 ## MCP Support (Highly experimental)
 You can add MCP Server to each agent by setting a `ALETHEIA_MCP_SERVERS_YAML` env variable pointing to a yaml configuration which must have the following format:

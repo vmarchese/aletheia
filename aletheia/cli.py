@@ -7,6 +7,7 @@ import os
 import asyncio
 import random
 import getpass
+import json
 
 from pathlib import Path
 from typing import Optional, List, Tuple
@@ -438,6 +439,7 @@ def session_list() -> None:
         console.print()
         table = Table(title="Aletheia Sessions")
         table.add_column("Session ID", style="magenta")
+        table.add_column("Name", style="green")
         table.add_column("Created", style="yellow")
         table.add_column("Path", style="cyan")
         table.add_column("Unsafe", style="cyan")
@@ -445,6 +447,7 @@ def session_list() -> None:
         for session_data in sessions:
             table.add_row(
                 session_data["id"],
+                session_data.get("name") or "",
                 session_data["created"],
                 session_data["path"],
                 session_data["unsafe"]
@@ -578,19 +581,39 @@ def session_timeline(
         prompt_loader = Loader()
 
         timeline_agent = TimelineAgent(name="timeline_agent",
-                                       instructions=prompt_loader.load("timeline", "instructions"),
+                                       instructions=prompt_loader.load("timeline", "json_instructions"),
                                        description="Timeline Agent for generating session timeline")
 
         message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       The timeline should summarize key actions, findings, and next steps in chronological order.
-                                       The output should be in the following format:
-                                       - [Time/Step]: Short description of action or finding
-                                       No additional commentary is needed.
                                        """)])
         response = asyncio.run(timeline_agent.agent.run(message))
+        
         if response:
-            console.print(f"\n{response}\n")
+            try:
+                timeline_data = json.loads(str(response.text))
+                
+                table = Table(title=f"Session Timeline: {session_id}")
+                table.add_column("Time", style="cyan", no_wrap=True)
+                table.add_column("Type", style="magenta")
+                table.add_column("Description", style="white")
+
+                for event in timeline_data:
+                    timestamp = event.get("timestamp", "")
+                    event_type = event.get("type", "INFO")
+                    description = event.get("description", "")
+                    
+                    # Color code types if desired
+                    type_style = "green" if event_type == "ACTION" else \
+                                 "yellow" if event_type == "FINDING" else \
+                                 "blue" if event_type == "DECISION" else "white"
+
+                    table.add_row(timestamp, f"[{type_style}]{event_type}[/{type_style}]", description)
+
+                console.print(table)
+                
+            except json.JSONDecodeError:
+                console.print(f"\n{response.text}\n")
 
     except FileNotFoundError as fne:
         typer.echo(f"Error: Session '{session_id}' not found {fne}", err=True)
@@ -776,6 +799,25 @@ def show_banner() -> None:
     except (OSError, IOError):
         # Ignore file read errors (banner is optional)
         pass
+
+
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Host to bind the server to"),
+    port: int = typer.Option(8000, help="Port to bind the server to"),
+    reload: bool = typer.Option(False, help="Enable auto-reload"),
+) -> None:
+    """Start the Aletheia REST API server."""
+    try:
+        import uvicorn
+        console.print(f"[green]Starting Aletheia API server on http://{host}:{port}[/green]")
+        uvicorn.run("aletheia.api:app", host=host, port=port, reload=reload)
+    except ImportError:
+        console.print("[red]Error: 'uvicorn' not found. Please install it with 'pip install uvicorn'.[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error starting server: {e}[/red]")
+        raise typer.Exit(1)
 
 
 def main() -> None:

@@ -14,6 +14,8 @@ import secrets
 import shutil
 import tarfile
 import tempfile
+import logging # Added for logging warning
+
 from enum import Enum
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -34,13 +36,7 @@ from aletheia.encryption import (
 )
 
 
-class SessionDataType(Enum):
-    """Types of session data."""
-    LOGS = "logs"
-    METRICS = "metrics"
-    TRACES = "traces"
-    INFO = "info"
-    TCPDUMP = "tcpdump"
+from aletheia.enums import SessionDataType
 
 
 class SessionError(Exception):
@@ -125,10 +121,9 @@ class Session:
 
     @property
     def metadata_file(self) -> Path:
-        """Path to metadata file (encrypted or plaintext based on unsafe mode)."""
-        if self.unsafe:
-            return self.session_path / "metadata.json"
-        return self.session_path / "metadata.encrypted"
+        """Path to metadata file. Always plaintext JSON now."""
+        # We always prefer the plaintext metadata file now.
+        return self.session_path / "metadata.json"
 
     @property
     def scratchpad_file(self) -> Path:
@@ -203,17 +198,31 @@ class Session:
         Returns:
             Loaded session metadata
         """
-        if not self.metadata_file.exists():
-            raise SessionNotFoundError(f"Session {self.session_id} not found")
-
-        if self.unsafe:
-            # Load plaintext metadata
+        # Check for plaintext metadata first (new standard)
+        if self.metadata_file.exists():
             with open(self.metadata_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-        else:
-            # Load encrypted metadata
-            data = decrypt_json_file(self.metadata_file, key)
-        return SessionMetadata.from_dict(data)
+            return SessionMetadata.from_dict(data)
+
+        # Fallback: Check for encrypted metadata (legacy)
+        legacy_encrypted_file = self.session_path / "metadata.encrypted"
+        if legacy_encrypted_file.exists():
+            if key is None:
+                # If we don't have a key but need to migrate, we can't fully load yet unless unsafe was explicitly requested but file is encrypted (shouldnt happen in valid state)
+                # But typically this method is called when we HAVE the key or are in unsafe mode.
+                # If we are here, it means we have an encrypted file.
+                raise SessionError("Cannot migrate legacy encrypted metadata without encryption key")
+            
+            # Decrypt legacy file
+            data = decrypt_json_file(legacy_encrypted_file, key)
+            
+            # Auto-migrate to plaintext
+            self._save_metadata(SessionMetadata.from_dict(data))
+            logging.info(f"Migrated session {self.session_id} metadata to plaintext.")
+            
+            return SessionMetadata.from_dict(data)
+
+        raise SessionNotFoundError(f"Session {self.session_id} metadata not found")
 
     def _save_metadata(self, metadata: SessionMetadata) -> None:
         """Save session metadata to file (encrypted or plaintext)."""
@@ -227,8 +236,9 @@ class Session:
             with open(self.metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(metadata.to_dict(), f, indent=2)
         else:
-            # Encrypt and save
-            encrypt_json_file(metadata.to_dict(), self.metadata_file, self.get_key())
+            # Save plaintext metadata (even for "authenticated" sessions, metadata is now open)
+            with open(self.metadata_file, 'w', encoding='utf-8') as f:
+                json.dump(metadata.to_dict(), f, indent=2)
 
     def get_key(self) -> Optional[bytes]:
         """Get or derive encryption key (None in unsafe mode)."""
@@ -405,15 +415,37 @@ class Session:
 
         sessions = []
         for session_path in base_dir.iterdir():
-            if session_path.is_dir() and ((session_path / "metadata.encrypted").exists() or (session_path / "metadata.json").exists()):
+            if session_path.is_dir():
+                metadata_path = session_path / "metadata.json"
+                encrypted_metadata_path = session_path / "metadata.encrypted"
+                
+                session_name = None
+                is_unsafe = "False" # Default to string "False" for consistency with existing return
+                
+                if metadata_path.exists():
+                   try:
+                       with open(metadata_path, 'r', encoding='utf-8') as f:
+                           meta = json.load(f)
+                           session_name = meta.get("name")
+                           is_unsafe = str(meta.get("unsafe", False))
+                   except Exception:
+                       pass
+                elif encrypted_metadata_path.exists():
+                    # Legacy session, name unknown without decryption
+                    pass
+                else:
+                    # No metadata found, skip
+                    continue
+
                 sessions.append(
                     {
                         "id": session_path.name,
+                        "name": session_name,
                         "path": str(session_path),
                         "created": datetime.fromtimestamp(
                             session_path.stat().st_ctime
                         ).strftime("%Y-%m-%d %H:%M:%S"),
-                        "unsafe": str((session_path / "metadata.json").exists()),
+                        "unsafe": is_unsafe,
                     }
                 )
 
@@ -466,10 +498,13 @@ class Session:
             # Encrypt the archive using a key derived from the password
             # Use a fixed salt for archive encryption (deterministic)
 
-            archive_salt = b"aletheia-archive"  # Fixed salt for archives
-            archive_key = derive_session_key(self.password, archive_salt)
-
-            encrypt_file(tmp_path, archive_key, output_path)
+            if self.unsafe:
+                # In unsafe mode, just copy the tar.gz to output
+                shutil.copy2(tmp_path, output_path)
+            else:
+                archive_salt = b"aletheia-archive"  # Fixed salt for archives
+                archive_key = derive_session_key(self.password, archive_salt)
+                encrypt_file(tmp_path, archive_key, output_path)
 
         finally:
             # Clean up temporary file
