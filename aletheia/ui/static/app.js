@@ -45,9 +45,24 @@ const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const sunIcon = document.querySelector('.sun-icon');
 const moonIcon = document.querySelector('.moon-icon');
 
+// Sidebar Info Elements
+const infoSessionName = document.getElementById('info-session-name');
+const infoSessionId = document.getElementById('info-session-id');
+const infoSessionCost = document.getElementById('info-session-cost');
+const infoSessionStatus = document.getElementById('info-session-status');
+
+// Sidebar Elements
+const infoSidebar = document.querySelector('.info-sidebar');
+const toggleInfoBtn = document.getElementById('toggle-info-btn');
+const chatWrapper = document.querySelector('.chat-wrapper');
+
+console.log('Sidebar Elements:', { infoSessionName, infoSessionId, infoSessionCost, infoSessionStatus });
+
+
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    initSidebar();
     fetchSessions();
     setupEventListeners();
 });
@@ -179,6 +194,11 @@ function setupEventListeners() {
     if (themeToggleBtn) {
         themeToggleBtn.addEventListener('click', toggleTheme);
     }
+
+    // Info Sidebar Toggle
+    if (toggleInfoBtn) {
+        toggleInfoBtn.addEventListener('click', toggleInfoSidebar);
+    }
 }
 
 // Theme Functions
@@ -219,6 +239,31 @@ function setTheme(theme) {
 }
 
 // API Functions
+function initSidebar() {
+    const isCollapsed = localStorage.getItem('infoSidebarCollapsed') === 'true';
+    if (isCollapsed) {
+        infoSidebar.classList.add('collapsed');
+        // Update chat wrapper width if needed, though flex should handle it
+        // If we want chat wrapper to take full width:
+        chatWrapper.style.maxWidth = '100%';
+        chatWrapper.style.flex = '0 0 100%';
+    }
+}
+
+function toggleInfoSidebar() {
+    infoSidebar.classList.toggle('collapsed');
+    const isCollapsed = infoSidebar.classList.contains('collapsed');
+    localStorage.setItem('infoSidebarCollapsed', isCollapsed);
+
+    if (isCollapsed) {
+        chatWrapper.style.maxWidth = '100%';
+        chatWrapper.style.flex = '0 0 100%';
+    } else {
+        chatWrapper.style.maxWidth = '80%';
+        chatWrapper.style.flex = '0 0 80%';
+    }
+}
+
 async function fetchSessions() {
     try {
         const response = await fetch('/sessions');
@@ -268,10 +313,14 @@ async function loadSession(sessionId) {
 
     // Get Metadata
     try {
-        const response = await fetch(`/sessions/${sessionId}?unsafe=true`);
+        const response = await fetch(`/sessions/${sessionId}?unsafe=true&ts=${Date.now()}`);
         const session = await response.json();
+        console.log('Session loaded:', session);
         currentSessionName.textContent = session.name || session.id;
         currentSessionIdBadge.textContent = session.id;
+
+        updateSessionSidebar(session);
+
     } catch (e) {
         console.error(e);
     }
@@ -305,6 +354,10 @@ function connectStream(sessionId) {
             if (lastMsg && lastMsg.classList.contains('bot')) {
                 lastMsg.dataset.complete = "true";
             }
+            // Update session info (cost, etc) after interaction
+            console.log('Stream finished (done event received). Refreshing session metadata...');
+            fetchSessionMetadata(currentSessionId);
+
         } else if (data.type === 'error') {
             stopThinking();
             appendMessage(`Error: ${data.content}`, 'bot');
@@ -486,6 +539,30 @@ function renderTimeline(timelineData, container) {
     container.innerHTML = html;
 }
 
+async function fetchSessionMetadata(sessionId) {
+    try {
+        const response = await fetch(`/sessions/${sessionId}?unsafe=true&ts=${Date.now()}`);
+        const session = await response.json();
+        updateSessionSidebar(session);
+    } catch (e) {
+        console.error("Failed to update session metadata", e);
+    }
+}
+
+function updateSessionSidebar(session) {
+    if (infoSessionName) infoSessionName.textContent = session.name || "-";
+    if (infoSessionId) infoSessionId.textContent = session.id;
+    if (infoSessionCost && session.total_cost !== undefined) {
+        const costStr = `€${parseFloat(session.total_cost).toFixed(6)}`;
+        console.log(`Updating session cost to: ${costStr}`);
+        infoSessionCost.textContent = costStr;
+    } else if (infoSessionCost) {
+        infoSessionCost.textContent = "€0.000000";
+    }
+    if (infoSessionStatus) infoSessionStatus.textContent = session.status || "Active";
+}
+
 function scrollToBottom() {
+
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }

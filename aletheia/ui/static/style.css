@@ -228,8 +228,81 @@ body {
 .main-content {
     flex: 1;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    /* Ensure row layout */
+    flex-wrap: nowrap;
+    /* Prevent wrapping */
     background-color: var(--bg-color);
+    overflow: hidden;
+}
+
+.chat-wrapper {
+    flex: 0 0 80%;
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-right: 1px solid var(--border-color);
+}
+
+.info-sidebar {
+    flex: 0 0 20%;
+    max-width: 20%;
+    background-color: var(--sidebar-bg);
+    /* Or same as bg but separated */
+    padding: 1.5rem;
+    overflow-y: auto;
+    transition: flex-basis 0.3s ease, max-width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+    overflow-x: hidden;
+    white-space: nowrap;
+}
+
+.info-sidebar.collapsed {
+    flex: 0 0 0;
+    max-width: 0;
+    padding: 1.5rem 0;
+    opacity: 0;
+}
+
+.info-group {
+    margin-bottom: 2rem;
+}
+
+.info-group h3 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+.info-item {
+    margin-bottom: 1rem;
+}
+
+.info-item label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.info-value {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    display: block;
+    word-break: break-word;
+}
+
+.info-value.cost {
+    font-family: var(--font-mono);
+    color: var(--accent-color);
+}
+
+.badge.text-xs {
+    font-size: 0.7rem;
 }
 
 .chat-header {

@@ -63,6 +63,8 @@ class SessionMetadata:
     salt: str  # Base64-encoded salt for encryption
     verbose: bool = False  # whether very-verbose mode (-vv) is enabled
     unsafe: bool = False  # whether plaintext mode is enabled (no encryption)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -77,6 +79,12 @@ class SessionMetadata:
         # Handle backwards compatibility for sessions without unsafe field
         if "unsafe" not in data:
             data["unsafe"] = False
+        # Handle backwards compatibility for sessions without token fields
+        if "total_input_tokens" not in data:
+            data["total_input_tokens"] = 0
+        if "total_output_tokens" not in data:
+            data["total_output_tokens"] = 0
+            
         return cls(**data)
 
 
@@ -257,6 +265,31 @@ class Session:
             self._key = self._derive_key(salt)
 
         return self._key
+
+    def update_usage(self, input_tokens: int, output_tokens: int) -> None:
+        """Update session token usage statistics.
+        
+        Args:
+            input_tokens: Total accumulated input tokens
+            output_tokens: Total accumulated output tokens
+        """
+        if self._metadata is None:
+             # Try to load if key is available or unsafe
+             key = self.get_key() if not self.unsafe else None
+             self._metadata = self._load_metadata(key)
+
+        self._metadata.total_input_tokens = input_tokens
+        self._metadata.total_output_tokens = output_tokens
+        self._metadata.updated = datetime.now().isoformat()
+        
+        self._save_metadata(self._metadata)
+
+    def get_metadata(self) -> SessionMetadata:
+        """Get session metadata."""
+        if self._metadata is None:
+            key = self.get_key() if not self.unsafe else None
+            self._metadata = self._load_metadata(key)
+        return self._metadata
 
     def _create_directory_structure(self) -> None:
         """Create session directory structure."""

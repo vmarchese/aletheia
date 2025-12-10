@@ -114,7 +114,29 @@ async def get_session_metadata(session_id: str, unsafe: bool = False):
     
     try:
         session = Session.resume(session_id=session_id, password=None, unsafe=use_unsafe)
-        return session.get_metadata().to_dict()
+        data = session.get_metadata().to_dict()
+        
+        # Attach runtime info if available
+        
+        if session_id in active_investigations:
+            orchestrator = active_investigations[session_id]
+            if hasattr(orchestrator, 'completion_usage'):
+                 usage = orchestrator.completion_usage
+                 # Sync to be sure (though run_agent_step should have saved it)
+                 if usage.input_token_count > 0:
+                     session.update_usage(usage.input_token_count, usage.output_token_count)
+
+        # Load fresh metadata (or use what we have)
+        data = session.get_metadata().to_dict()
+        
+        # Calculate cost
+        config = load_config()
+        input_tokens = data.get("total_input_tokens", 0)
+        output_tokens = data.get("total_output_tokens", 0)
+        
+        data["total_cost"] = (input_tokens * config.cost_per_input_token) + (output_tokens * config.cost_per_output_token)
+        
+        return data
     except Exception:
         # If we can't load metadata (e.g. password needed for encrypted session), 
         # fall back to list info which has limited data.
@@ -210,7 +232,11 @@ async def get_or_create_orchestrator(session_id: str, password: Optional[str], u
     orchestrator.sub_agent_instances = agent_instances 
     
     if not hasattr(orchestrator, 'completion_usage'):
-        orchestrator.completion_usage = UsageDetails()
+        meta = session.get_metadata()
+        orchestrator.completion_usage = UsageDetails(
+            input_token_count=meta.total_input_tokens,
+            output_token_count=meta.total_output_tokens
+        )
 
     active_investigations[session_id] = orchestrator
     return orchestrator
@@ -234,6 +260,11 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
                 for content in response.contents:
                     if isinstance(content, UsageContent):
                         orchestrator.completion_usage += content.details
+                        # Persist usage to session metadata
+                        orchestrator.session.update_usage(
+                            input_tokens=orchestrator.completion_usage.input_token_count,
+                            output_tokens=orchestrator.completion_usage.output_token_count
+                        )
             
         await queue.put({"type": "done"})
     except Exception as e:
@@ -343,10 +374,18 @@ async def stream_session(session_id: str):
     
     async def event_generator():
         while True:
-            # Wait for data
-            data = await queue.get()
+            try:
+                # Wait for data with timeout for heartbeat
+                data = await asyncio.wait_for(queue.get(), timeout=15.0)
+            except asyncio.TimeoutError:
+                # Send heartbeat comment to keep connection alive
+                yield {"event": "ping", "data": ""}
+                continue
+
             if data["type"] == "done":
-                break
+                yield {"data": json.dumps(data)}
+                continue
+            
             if data["type"] == "error":
                 yield {"event": "error", "data": data["content"]}
                 break
