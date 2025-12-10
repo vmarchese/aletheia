@@ -41,6 +41,7 @@ const currentSessionName = document.getElementById('current-session-name');
 const currentSessionIdBadge = document.getElementById('current-session-id');
 const exportBtn = document.getElementById('export-btn');
 const timelineBtn = document.getElementById('timeline-btn');
+const scratchpadBtn = document.getElementById('scratchpad-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const sunIcon = document.querySelector('.sun-icon');
 const moonIcon = document.querySelector('.moon-icon');
@@ -190,6 +191,31 @@ function setupEventListeners() {
         }
     });
 
+    scratchpadBtn.addEventListener('click', async () => {
+        if (!currentSessionId) return;
+
+        const scratchpadModal = document.getElementById('scratchpad-modal');
+        const scratchpadContainer = document.getElementById('scratchpad-container');
+
+        scratchpadModal.classList.add('show');
+        scratchpadContainer.innerHTML = '<div class="loading-state">Loading scratchpad...</div>';
+
+        try {
+            const response = await fetch(`/sessions/${currentSessionId}/scratchpad?unsafe=true`);
+            const data = await response.json();
+
+            // Check if content is empty
+            if (!data.content) {
+                scratchpadContainer.innerHTML = '<div class="empty-state">No scratchpad entries yet.</div>';
+            } else {
+                // Render markdown
+                scratchpadContainer.innerHTML = marked.parse(data.content);
+            }
+        } catch (e) {
+            scratchpadContainer.innerHTML = `<div class="loading-state" style="color: red">Error fetching scratchpad: ${e.message}</div>`;
+        }
+    });
+
     // Theme Toggle
     if (themeToggleBtn) {
         themeToggleBtn.addEventListener('click', toggleTheme);
@@ -310,6 +336,7 @@ async function loadSession(sessionId) {
     messageInput.disabled = false;
     exportBtn.disabled = false;
     timelineBtn.disabled = false;
+    scratchpadBtn.disabled = false;
 
     // Get Metadata
     try {
@@ -378,7 +405,8 @@ function showThinking() {
 
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
-    avatar.textContent = '🤖';
+    avatar.textContent = '';
+    avatar.style.backgroundImage = 'url(/static/icons/owl.png)';
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';

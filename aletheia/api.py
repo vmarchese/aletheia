@@ -203,6 +203,19 @@ async def get_session_timeline(session_id: str, password: Optional[str] = None, 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/sessions/{session_id}/scratchpad")
+async def get_session_scratchpad(session_id: str, password: Optional[str] = None, unsafe: bool = False):
+    """Get session scratchpad content."""
+    try:
+        session = get_session(session_id, password, unsafe)
+        # We need the key to decrypt if strictly necessary, but Scratchpad handles it.
+        # Actually Scratchpad needs the key.
+        scratchpad = Scratchpad(session_dir=session.session_path, encryption_key=session.get_key())
+        content = scratchpad.read_scratchpad()
+        return {"content": content}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # --- Investigation / Chat ---
 
 async def get_or_create_orchestrator(session_id: str, password: Optional[str], unsafe: bool) -> Orchestrator:

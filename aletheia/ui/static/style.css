@@ -429,7 +429,8 @@ body {
 }
 
 .message.user .avatar {
-    background-color: var(--accent-color);
+    background-color: white;
+    border: 1px solid var(--border-color);
     color: white;
 }
 

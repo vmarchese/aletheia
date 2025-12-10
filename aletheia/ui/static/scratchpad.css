@@ -1,0 +1,41 @@
+/* Scratchpad Modal */
+#scratchpad-modal .modal-content {
+    max-width: 90vw;
+    /* Much wider */
+    height: 90vh;
+    /* Taller */
+    display: flex;
+    flex-direction: column;
+}
+
+#scratchpad-modal .scratchpad-container {
+    flex: 1;
+    /* Take remaining height */
+    max-height: none;
+    /* Remove previous limit */
+}
+
+
+.scratchpad-container {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 1rem;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    /* For raw text fallbacks */
+}
+
+/* Markdown styling overrides within scratchpad if needed */
+.scratchpad-container h1,
+.scratchpad-container h2,
+.scratchpad-container h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.scratchpad-container p {
+    margin-bottom: 1rem;
+}
