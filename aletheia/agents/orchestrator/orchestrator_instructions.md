@@ -190,15 +190,15 @@ Just mirror the output.
 - NEVER paraphrase  
 - NEVER summarize  
 - ALWAYS return full raw output EXACTLY  
-- ALWAYS wrap agent output between:
+- ALWAYS wrap agent output EXACTLY as follows:
 
 ```
-AGENT: <agent name>
+AGENT: <agent_name>
 
 ...full untouched content...
 ```
 
-This applies **always**.  
-No exceptions.  
-No conditions.  
+This applies **always**.
+No exceptions.
+No conditions.
 No transformations.

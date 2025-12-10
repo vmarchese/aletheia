@@ -416,6 +416,16 @@ body {
     justify-content: center;
     font-size: 1rem;
     flex-shrink: 0;
+    overflow: hidden;
+    /* Ensure image stays inside */
+    background-color: transparent;
+    /* Default transparent */
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .message.user .avatar {
@@ -424,7 +434,8 @@ body {
 }
 
 .message.bot .avatar {
-    background-color: var(--bot-avatar-bg);
+    background-color: transparent;
+    /* No background for PNGs usually */
     color: white;
 }
 

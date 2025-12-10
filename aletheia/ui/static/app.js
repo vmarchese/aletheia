@@ -411,49 +411,112 @@ function stopThinking() {
     }
 }
 
+const AGENT_ICONS = {
+    'kubernetes_data_fetcher': '/static/icons/k8s.png',
+    'awsamp': '/static/icons/aws.png',
+    'log_file_data_fetcher': '/static/icons/log.png',
+    'pcap_file_data_fetcher': '/static/icons/pcap.png',
+    'claude_code_analyzer': '/static/icons/code.png',
+    'copilot_code_analyzer': '/static/icons/code.png',
+    'aws': '/static/icons/aws.png',
+    'azure': '/static/icons/azure.png',
+    'network': '/static/icons/network.png',
+    'orchestrator': '/static/icons/owl.png',
+    'default': '/static/icons/owl.png'
+};
+
+function getAgentIcon(agentName) {
+    return AGENT_ICONS[agentName] || AGENT_ICONS['default'];
+}
+
+
 function appendMessage(content, role) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${role}`;
 
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
-    avatar.textContent = role === 'user' ? '👤' : '🤖';
 
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'message-content';
+    // Default avatar
+    let avatarIcon = role === 'user' ? '👤' : '/static/icons/owl.png';
+    let displayContent = content;
 
-    // Render Markdown
     if (role === 'bot') {
+        // Check for AGENT: <name> prefix
+        const agentMatch = content.match(/^AGENT:\s*([a-zA-Z0-9_]+)\s*\n/);
+
+        if (agentMatch) {
+            const agentName = agentMatch[1].trim();
+            avatarIcon = getAgentIcon(agentName);
+            // Remove the prefix from display
+            displayContent = content.substring(agentMatch[0].length);
+        }
+
         // Store raw content for updates
         msgDiv.dataset.raw = content;
-        contentDiv.innerHTML = parseSections(content);
-    } else {
-        contentDiv.textContent = content; // User messages are plain text usually
-    }
 
-    msgDiv.appendChild(avatar);
-    msgDiv.appendChild(contentDiv);
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.innerHTML = parseSections(displayContent);
+
+        renderAvatar(avatar, avatarIcon, agentMatch ? agentMatch[1] : 'Bot');
+
+        msgDiv.appendChild(avatar);
+        msgDiv.appendChild(contentDiv);
+    } else {
+        avatar.textContent = avatarIcon; // User is still emoji/text for now
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.textContent = displayContent;
+        msgDiv.appendChild(avatar);
+        msgDiv.appendChild(contentDiv);
+    }
 
     chatContainer.appendChild(msgDiv);
     scrollToBottom();
 }
 
+function renderAvatar(container, iconSource, title) {
+    if (iconSource.startsWith('/')) {
+        const img = document.createElement('img');
+        img.src = iconSource;
+        img.alt = title;
+        if (title) container.title = title;
+        container.innerHTML = '';
+        container.appendChild(img);
+    } else {
+        container.textContent = iconSource;
+    }
+}
+
 function updateLastBotMessage(content) {
     const lastMsg = chatContainer.lastElementChild;
+    const avatar = lastMsg.querySelector('.avatar');
     const contentDiv = lastMsg.querySelector('.message-content');
-    // For streaming, we might get chunks. 
-    // If the API sends full text updates (accumulated), we replace.
-    // If it sends chunks, we append.
-    // The CLI implementation sends chunks.
-    // But `marked.parse` expects full markdown.
-    // So we need to accumulate locally if we want to render markdown properly during stream.
-    // For now, let's assume the API sends chunks and we just append text, 
-    // OR we store the full raw text in a data attribute and re-render.
 
     let currentText = lastMsg.dataset.raw || "";
     currentText += content;
     lastMsg.dataset.raw = currentText;
-    contentDiv.innerHTML = parseSections(currentText);
+
+    // Check for agent prefix in full accumulated text
+    const agentMatch = currentText.match(/^AGENT:\s*([a-zA-Z0-9_]+)\s*\n/);
+    let displayContent = currentText;
+
+    if (agentMatch) {
+        const agentName = agentMatch[1].trim();
+        const icon = getAgentIcon(agentName);
+
+        // Check if we need to update avatar (simple check on src or text)
+        const currentImg = avatar.querySelector('img');
+        const currentSrc = currentImg ? currentImg.getAttribute('src') : null;
+
+        if (currentSrc !== icon) {
+            renderAvatar(avatar, icon, agentName);
+        }
+        displayContent = currentText.substring(agentMatch[0].length);
+    }
+
+    contentDiv.innerHTML = parseSections(displayContent);
     scrollToBottom();
 }
 
