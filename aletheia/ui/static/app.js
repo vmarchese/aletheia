@@ -23,6 +23,7 @@ const THINKING_MESSAGES = [
 ];
 
 // State
+const sessionPasswords = {}; // Cache for session passwords
 let currentSessionId = null;
 let eventSource = null;
 let thinkingInterval = null;
@@ -39,18 +40,39 @@ const createSessionForm = document.getElementById('create-session-form');
 const closeModalBtns = document.querySelectorAll('.btn-close, .btn-close-modal');
 const currentSessionName = document.getElementById('current-session-name');
 const currentSessionIdBadge = document.getElementById('current-session-id');
+const passwordModal = document.getElementById('password-modal');
+const passwordForm = document.getElementById('password-form');
+const passwordInput = document.getElementById('session-password-input');
+const passwordTargetId = document.getElementById('password-target-session-id');
+const passwordErrorMsg = document.getElementById('password-error-message');
 const exportBtn = document.getElementById('export-btn');
 const timelineBtn = document.getElementById('timeline-btn');
 const scratchpadBtn = document.getElementById('scratchpad-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const sunIcon = document.querySelector('.sun-icon');
 const moonIcon = document.querySelector('.moon-icon');
+const scratchpadSessionName = document.getElementById('scratchpad-session-name');
+const scratchpadSessionId = document.getElementById('scratchpad-session-id');
+const timelineSessionName = document.getElementById('timeline-session-name');
+const timelineSessionId = document.getElementById('timeline-session-id');
 
 // Sidebar Info Elements
 const infoSessionName = document.getElementById('info-session-name');
 const infoSessionId = document.getElementById('info-session-id');
 const infoSessionCost = document.getElementById('info-session-cost');
 const infoSessionStatus = document.getElementById('info-session-status');
+
+// API Helpers
+const getSessionPassword = (sessionId) => sessionPasswords[sessionId] || null;
+const getAuthParams = (sessionId) => {
+    const pwd = getSessionPassword(sessionId);
+    const params = new URLSearchParams();
+    if (pwd) params.append('password', pwd);
+    // Only append unsafe=true if we KNOW it's unsafe? 
+    // Actually, backend needs either password OR unsafe=true.
+    // We should probably store unsafe status in sessionPasswords or separate map.
+    return params;
+};
 
 // Sidebar Elements
 const infoSidebar = document.querySelector('.info-sidebar');
@@ -109,12 +131,38 @@ function setupEventListeners() {
             if (!response.ok) throw new Error('Failed to create session');
 
             const session = await response.json();
+
+            // Cache password if created successfully
+            if (password) {
+                sessionPasswords[session.id] = password;
+            }
+
             newSessionModal.classList.remove('show');
             createSessionForm.reset();
             await fetchSessions();
             loadSession(session.id);
         } catch (error) {
             alert(error.message);
+        }
+    });
+
+    // Password Modal
+    passwordForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const sessionId = passwordTargetId.value;
+        const pwd = passwordInput.value;
+        if (sessionId && pwd) {
+            sessionPasswords[sessionId] = pwd;
+            // Don't close modal yet, wait for success or failure
+            // But loadSession is async. We can trigger it and let it handle UI.
+            // Actually, we should probably show loading state in modal?
+            // For now, let's just trigger loadSession.
+
+            // Clear previous error
+            passwordErrorMsg.style.display = 'none';
+            passwordErrorMsg.textContent = '';
+
+            loadSession(sessionId, true);
         }
     });
 
@@ -151,12 +199,14 @@ function setupEventListeners() {
 
         try {
             // Send to API
-            // Note: For this demo, we assume unsafe/cached auth or simple passwordless for chat if session is active
-            // In a real app, we'd handle auth better.
-            const response = await fetch(`/sessions/${currentSessionId}/chat?unsafe=true`, {
+            const body = { message };
+            const pwd = getSessionPassword(currentSessionId);
+            if (pwd) body.password = pwd;
+
+            const response = await fetch(`/sessions/${currentSessionId}/chat?unsafe=false`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
+                body: JSON.stringify(body)
             });
 
             if (!response.ok) throw new Error('Failed to send message');
@@ -169,7 +219,8 @@ function setupEventListeners() {
     // Actions
     exportBtn.addEventListener('click', () => {
         if (currentSessionId) {
-            window.open(`/sessions/${currentSessionId}/export?unsafe=true`, '_blank');
+            const params = getAuthParams(currentSessionId);
+            window.open(`/sessions/${currentSessionId}/export?${params.toString()}`, '_blank');
         }
     });
 
@@ -180,10 +231,19 @@ function setupEventListeners() {
         const timelineContainer = document.getElementById('timeline-container');
 
         timelineModal.classList.add('show');
+
+        // Update header details
+        if (timelineSessionName) timelineSessionName.textContent = currentSessionName.textContent;
+        if (timelineSessionId) timelineSessionId.textContent = currentSessionId;
+
+        timelineContainer.innerHTML = '<div class="loading-state">Generating timeline...</div>';
+
         timelineContainer.innerHTML = '<div class="loading-state">Generating timeline...</div>';
 
         try {
-            const response = await fetch(`/sessions/${currentSessionId}/timeline?unsafe=true`);
+            const params = getAuthParams(currentSessionId);
+            const response = await fetch(`/sessions/${currentSessionId}/timeline?${params.toString()}`);
+            if (!response.ok) throw new Error('Unauthorized or failed');
             const data = await response.json();
             renderTimeline(data.timeline, timelineContainer);
         } catch (e) {
@@ -198,10 +258,17 @@ function setupEventListeners() {
         const scratchpadContainer = document.getElementById('scratchpad-container');
 
         scratchpadModal.classList.add('show');
+
+        // Update header details
+        if (scratchpadSessionName) scratchpadSessionName.textContent = currentSessionName.textContent;
+        if (scratchpadSessionId) scratchpadSessionId.textContent = currentSessionId;
+
         scratchpadContainer.innerHTML = '<div class="loading-state">Loading scratchpad...</div>';
 
         try {
-            const response = await fetch(`/sessions/${currentSessionId}/scratchpad?unsafe=true`);
+            const params = getAuthParams(currentSessionId);
+            const response = await fetch(`/sessions/${currentSessionId}/scratchpad?${params.toString()}`);
+            if (!response.ok) throw new Error('Unauthorized or failed');
             const data = await response.json();
 
             // Check if content is empty
@@ -315,8 +382,8 @@ function renderSessionsList(sessions) {
     });
 }
 
-async function loadSession(sessionId) {
-    if (currentSessionId === sessionId) return;
+async function loadSession(sessionId, force = false) {
+    if (currentSessionId === sessionId && !force) return;
 
     // Cleanup old stream
     if (eventSource) {
@@ -340,9 +407,73 @@ async function loadSession(sessionId) {
 
     // Get Metadata
     try {
-        const response = await fetch(`/sessions/${sessionId}?unsafe=true&ts=${Date.now()}`);
+        const password = getSessionPassword(sessionId);
+        // First try to check if we can access it (unsafe check is done in list, but let's see)
+        // We do NOT send unsafe=true blindly anymore.
+
+        let url = `/sessions/${sessionId}?ts=${Date.now()}`;
+        if (password) {
+            url += `&password=${encodeURIComponent(password)}`;
+        }
+
+        const response = await fetch(url);
+
+        if (response.status === 401 || response.status === 400 || !response.ok) {
+            // Likely needs password or password wrong
+            // Check if session is actually unsafe from list?
+            // But if we failed here, we probably need password.
+            // Let's assume 400 with "password" related error means we need prompt.
+            const errorText = await response.text(); // or json
+
+            // If we don't have a password yet, show prompt
+            if (!password) {
+                showPasswordPrompt(sessionId);
+                return;
+            }
+
+            // If we HAD a password but it failed, message depends on if we are forcing (user just entered it)
+            if (password) {
+                if (force) {
+                    // User just entered this password and it failed.
+                    // Show error in modal and keep it open.
+                    if (passwordErrorMsg) {
+                        passwordErrorMsg.textContent = "Incorrect password. Please try again.";
+                        passwordErrorMsg.style.display = 'block';
+                    }
+                    // Ensure modal is open (should be already)
+                    passwordModal.classList.add('show');
+                    return;
+                } else {
+                    // Cached password failed? Clear it and prompt again.
+                    alert("Session authentication failed. Please enter password again.");
+                    delete sessionPasswords[sessionId];
+                    showPasswordPrompt(sessionId);
+                    return;
+                }
+            }
+        }
+
         const session = await response.json();
+
+        // Success! If we were forcing (modal open), close it now.
+        if (force) {
+            passwordModal.classList.remove('show');
+            passwordForm.reset();
+            // Clear passwords input too (already done by reset, but ensure)
+            passwordInput.value = '';
+        }
+
         console.log('Session loaded:', session);
+
+        // Check if session is encrypted (safe) but we don't have a password.
+        // The API returns basic metadata even for locked sessions.
+        // Unsafe field is now boolean true/false, but handle string "False" for backward compat.
+        if ((session.unsafe === false || session.unsafe === "False") && !password) {
+            console.log('Session is encrypted and locked. Prompting for password.');
+            showPasswordPrompt(sessionId);
+            return;
+        }
+
         currentSessionName.textContent = session.name || session.id;
         currentSessionIdBadge.textContent = session.id;
 
@@ -350,6 +481,7 @@ async function loadSession(sessionId) {
 
     } catch (e) {
         console.error(e);
+        return; // Stop loading
     }
 
     // Clear chat
@@ -359,8 +491,28 @@ async function loadSession(sessionId) {
     connectStream(sessionId);
 }
 
+function showPasswordPrompt(sessionId) {
+    passwordTargetId.value = sessionId;
+    passwordInput.value = '';
+    // Clear error
+    if (passwordErrorMsg) {
+        passwordErrorMsg.style.display = 'none';
+        passwordErrorMsg.textContent = '';
+    }
+    passwordModal.classList.add('show');
+    passwordInput.focus();
+}
+
 function connectStream(sessionId) {
-    eventSource = new EventSource(`/sessions/${sessionId}/stream`);
+    // There is no easy way to pass headers to EventSource.
+    // We can pass password in URL query params.
+    const pwd = getSessionPassword(sessionId);
+    let url = `/sessions/${sessionId}/stream`;
+    if (pwd) {
+        url += `?password=${encodeURIComponent(pwd)}`;
+    }
+
+    eventSource = new EventSource(url);
 
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -388,6 +540,10 @@ function connectStream(sessionId) {
         } else if (data.type === 'error') {
             stopThinking();
             appendMessage(`Error: ${data.content}`, 'bot');
+        } else if (data.type === 'usage') {
+            // Update the last bot message with usage info
+            console.log('Usage data received:', data.content);
+            updateLastBotMessageUsage(data.content);
         }
     };
 
@@ -396,6 +552,32 @@ function connectStream(sessionId) {
         // eventSource.close(); // Don't close, let it retry?
     };
 }
+
+async function fetchSessionMetadata(sessionId) {
+    // Helper to refresh metadata silently
+    if (!sessionId) return;
+    try {
+        const pwd = getSessionPassword(sessionId);
+        let url = `/sessions/${sessionId}?ts=${Date.now()}`;
+        if (pwd) url += `&password=${encodeURIComponent(pwd)}`;
+
+        const response = await fetch(url);
+        if (response.ok) {
+            const session = await response.json();
+            updateSessionSidebar(session);
+        }
+    } catch (e) {
+        console.error("Failed to refresh session metadata", e);
+    }
+}
+
+function updateSessionSidebar(session) {
+    if (infoSessionName) infoSessionName.textContent = session.name || session.id;
+    if (infoSessionId) infoSessionId.textContent = session.id;
+    if (infoSessionCost) infoSessionCost.textContent = `€${(session.total_cost || 0).toFixed(6)}`;
+    if (infoSessionStatus) infoSessionStatus.textContent = session.status;
+}
+
 
 function showThinking() {
     // Create a temporary thinking message
@@ -454,7 +636,43 @@ const AGENT_ICONS = {
 };
 
 function getAgentIcon(agentName) {
-    return AGENT_ICONS[agentName] || AGENT_ICONS['default'];
+    if (!agentName) return AGENT_ICONS['default'];
+    // Normalize agent name (lowercase, remove extra spaces)
+    const normalized = agentName.toLowerCase().trim();
+    return AGENT_ICONS[normalized] || AGENT_ICONS['default'];
+}
+
+function parseFrontmatter(text) {
+    // Try to match standard frontmatter with closing ---
+    let match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n/);
+
+    // Fallback: Try to match frontmatter ended by double newline if no closing ---
+    if (!match) {
+        // Look for block starting with ---, containing key:value pairs, ending with double newline
+        // We ensure newlines exists to avoid matching simple horizontal rules
+        match = text.match(/^---\s*\n((?:.*?:.*\n)+)\n/);
+    }
+
+    if (!match) return { metadata: {}, content: text };
+
+    const frontmatterRaw = match[1];
+    // If strict match, use match[0].length. If fallback, we need to calculate length carefully
+    // match[0] in fallback includes the trailing newline, so usage is safe?
+    // Wait, regex 2 `^---\s*\n((?:.*?:.*\n)+)\n` matches `---` then lines then `\n`. 
+    // It consumes the separator newline.
+    const content = text.substring(match[0].length);
+    const metadata = {};
+
+    frontmatterRaw.split('\n').forEach(line => {
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+            const key = parts[0].trim();
+            const value = parts.slice(1).join(':').trim();
+            metadata[key] = value;
+        }
+    });
+
+    return { metadata, content };
 }
 
 
@@ -468,16 +686,23 @@ function appendMessage(content, role) {
     // Default avatar
     let avatarIcon = role === 'user' ? '👤' : '/static/icons/owl.png';
     let displayContent = content;
+    let agentName = null;
 
     if (role === 'bot') {
-        // Check for AGENT: <name> prefix
-        const agentMatch = content.match(/^AGENT:\s*([a-zA-Z0-9_]+)\s*\n/);
+        const parsed = parseFrontmatter(content);
+        displayContent = parsed.content;
 
-        if (agentMatch) {
-            const agentName = agentMatch[1].trim();
+        if (parsed.metadata.agent) {
+            agentName = parsed.metadata.agent;
             avatarIcon = getAgentIcon(agentName);
-            // Remove the prefix from display
-            displayContent = content.substring(agentMatch[0].length);
+        } else {
+            // Fallback for old format or streaming partials
+            const agentMatch = content.match(/^AGENT:\s*([a-zA-Z0-9_]+)\s*\n/);
+            if (agentMatch) {
+                agentName = agentMatch[1].trim();
+                avatarIcon = getAgentIcon(agentName);
+                displayContent = content.substring(agentMatch[0].length);
+            }
         }
 
         // Store raw content for updates
@@ -487,17 +712,37 @@ function appendMessage(content, role) {
         contentDiv.className = 'message-content';
         contentDiv.innerHTML = parseSections(displayContent);
 
-        renderAvatar(avatar, avatarIcon, agentMatch ? agentMatch[1] : 'Bot');
+        renderAvatar(avatar, avatarIcon, agentName || 'Bot');
+
+        const bodyWrapper = document.createElement('div');
+        bodyWrapper.className = 'message-body-wrapper';
+        bodyWrapper.appendChild(contentDiv);
 
         msgDiv.appendChild(avatar);
-        msgDiv.appendChild(contentDiv);
+        msgDiv.appendChild(bodyWrapper);
+
+        // Add metadata footer if available
+        if (parsed.metadata && (parsed.metadata.usage || parsed.metadata.timestamp)) {
+            const footerDiv = document.createElement('div');
+            footerDiv.className = 'message-footer';
+            let footerText = '';
+            if (parsed.metadata.usage) footerText += `Usage: ${parsed.metadata.usage} `;
+            if (parsed.metadata.timestamp) footerText += ` • ${parsed.metadata.timestamp}`;
+            footerDiv.textContent = footerText;
+            bodyWrapper.appendChild(footerDiv);
+        }
     } else {
         avatar.textContent = avatarIcon; // User is still emoji/text for now
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         contentDiv.textContent = displayContent;
+
+        const bodyWrapper = document.createElement('div');
+        bodyWrapper.className = 'message-body-wrapper';
+        bodyWrapper.appendChild(contentDiv);
+
         msgDiv.appendChild(avatar);
-        msgDiv.appendChild(contentDiv);
+        msgDiv.appendChild(bodyWrapper);
     }
 
     chatContainer.appendChild(msgDiv);
@@ -526,40 +771,141 @@ function updateLastBotMessage(content) {
     currentText += content;
     lastMsg.dataset.raw = currentText;
 
-    // Check for agent prefix in full accumulated text
-    const agentMatch = currentText.match(/^AGENT:\s*([a-zA-Z0-9_]+)\s*\n/);
-    let displayContent = currentText;
+    const parsed = parseFrontmatter(currentText);
 
-    if (agentMatch) {
-        const agentName = agentMatch[1].trim();
+    console.log('updateLastBotMessage:', {
+        textLength: currentText.length,
+        metadata: parsed.metadata,
+        contentLength: parsed.content.length
+    });
+
+    let displayContent = parsed.content;
+    let agentName = null;
+
+    if (parsed.metadata.agent) {
+        agentName = parsed.metadata.agent;
         const icon = getAgentIcon(agentName);
 
-        // Check if we need to update avatar (simple check on src or text)
+        // Check if we need to update avatar
         const currentImg = avatar.querySelector('img');
         const currentSrc = currentImg ? currentImg.getAttribute('src') : null;
 
         if (currentSrc !== icon) {
             renderAvatar(avatar, icon, agentName);
         }
-        displayContent = currentText.substring(agentMatch[0].length);
+
+        // Update content
+        contentDiv.innerHTML = parseSections(displayContent);
+    } else {
+        // Fallback for streaming partials (frontmatter closing might not be arrived yet)
+        // or old format
+        const agentMatch = currentText.match(/^AGENT:\s*([a-zA-Z0-9_]+)\s*\n/);
+        if (agentMatch) {
+            agentName = agentMatch[1].trim();
+            const icon = getAgentIcon(agentName);
+            contentDiv.innerHTML = parseSections(displayContent);
+
+            // Update footer (only timestamp from frontmatter now)
+
+            let footerDiv = lastMsg.querySelector('.message-footer');
+            if (parsed.metadata && parsed.metadata.timestamp) {
+                if (!footerDiv) {
+                    footerDiv = document.createElement('div');
+                    footerDiv.className = 'message-footer';
+                    // Append to wrapper if exists, else lastMsg (fallback)
+                    const wrapper = lastMsg.querySelector('.message-body-wrapper');
+                    if (wrapper) wrapper.appendChild(footerDiv);
+                    else lastMsg.appendChild(footerDiv);
+                }
+                // Preserve usage if it was set by SSE
+                const usageMatch = footerDiv.textContent.match(/Usage: \d+/);
+                let footerText = '';
+                if (usageMatch) footerText += usageMatch[0] + ' • ';
+                footerText += parsed.metadata.timestamp;
+                footerDiv.textContent = footerText;
+            }
+
+            scrollToBottom();
+        }
+    }
+}
+
+function updateLastBotMessageUsage(usageData) {
+    const lastMsg = chatContainer.lastElementChild;
+    if (!lastMsg || !lastMsg.classList.contains('bot')) return;
+
+    let footerDiv = lastMsg.querySelector('.message-footer');
+    if (!footerDiv) {
+        footerDiv = document.createElement('div');
+        footerDiv.className = 'message-footer';
+        const wrapper = lastMsg.querySelector('.message-body-wrapper');
+        if (wrapper) wrapper.appendChild(footerDiv);
+        else lastMsg.appendChild(footerDiv);
     }
 
-    contentDiv.innerHTML = parseSections(displayContent);
-    scrollToBottom();
+    const usageStr = `Usage: ${usageData.total_tokens} (in: ${usageData.input_tokens}, out: ${usageData.output_tokens})`;
+
+    // Append or replace usage in footer
+    // If footer already has timestamp (from Frontmatter), keep it
+    // Format: "Usage: ... • <timestamp>"
+
+    let currentText = footerDiv.textContent;
+    let timestamp = "";
+    if (currentText.includes('•')) {
+        timestamp = currentText.split('•')[1].trim();
+    } else if (currentText.match(/^\d{4}-\d{2}-\d{2}/)) {
+        // purely timestamp?
+        timestamp = currentText;
+    }
+
+    if (timestamp) {
+        footerDiv.textContent = `${usageStr} • ${timestamp}`;
+    } else {
+        footerDiv.textContent = usageStr;
+    }
 }
 
 function parseSections(text) {
-    // Regex to find the sections
-    const findingsRegex = /\*\*Section Findings:\*\*([\s\S]*?)(?=\*\*Section Decisions:\*\*|$)/;
-    const decisionsRegex = /\*\*Section Decisions:\*\*([\s\S]*?)(?=\*\*Section Suggested actions:\*\*|$)/;
-    const actionsRegex = /\*\*Section Suggested actions:\*\*([\s\S]*?)$/;
+    console.log('parseSections input length:', text.length);
+    // Regex to find the sections with markdown headers
+    // Using ## Header
+    const findingsRegex = /##\s*Findings\r?\n([\s\S]*?)(?=##\s*Decisions|$)/i;
+    const decisionsRegex = /##\s*Decisions\r?\n([\s\S]*?)(?=##\s*Suggested Actions|$)/i;
+    const actionsRegex = /##\s*Suggested Actions\r?\n([\s\S]*?)$/i;
 
-    const findingsMatch = text.match(findingsRegex);
-    const decisionsMatch = text.match(decisionsRegex);
-    const actionsMatch = text.match(actionsRegex);
+    // Fallback for old format
+    const oldFindingsRegex = /\*\*Section Findings:\*\*([\s\S]*?)(?=\*\*Section Decisions:\*\*|$)/;
+    const oldDecisionsRegex = /\*\*Section Decisions:\*\*([\s\S]*?)(?=\*\*Section Suggested actions:\*\*|$)/;
+    const oldActionsRegex = /\*\*Section Suggested actions:\*\*([\s\S]*?)$/;
 
+    let findingsMatch = text.match(findingsRegex);
+    let decisionsMatch = text.match(decisionsRegex);
+    let actionsMatch = text.match(actionsRegex);
+
+    console.log('Matches:', { findings: !!findingsMatch, decisions: !!decisionsMatch, actions: !!actionsMatch });
+
+    // Try old format if new one fails for all
+    if (!findingsMatch && !decisionsMatch && !actionsMatch) {
+        findingsMatch = text.match(oldFindingsRegex);
+        decisionsMatch = text.match(oldDecisionsRegex);
+        actionsMatch = text.match(oldActionsRegex);
+    }
     if (findingsMatch || decisionsMatch || actionsMatch) {
         let html = '';
+
+        // Find intro text (before first section)
+        const firstIndex = Math.min(
+            findingsMatch ? findingsMatch.index : Infinity,
+            decisionsMatch ? decisionsMatch.index : Infinity,
+            actionsMatch ? actionsMatch.index : Infinity
+        );
+
+        if (firstIndex > 0 && firstIndex !== Infinity) {
+            const intro = text.substring(0, firstIndex);
+            if (intro.trim()) {
+                html += `<div class="section section-intro">${marked.parse(intro)}</div>`;
+            }
+        }
 
         if (findingsMatch) {
             html += `<div class="section section-findings">
@@ -582,24 +928,10 @@ function parseSections(text) {
             </div>`;
         }
 
-        // Also handle any introductory text before the first section?
-        // For now, we assume the format is strictly followed if any section is present.
-        // But let's check if there is text BEFORE the first match
-        const firstMatchIndex = Math.min(
-            findingsMatch ? findingsMatch.index : Infinity,
-            decisionsMatch ? decisionsMatch.index : Infinity,
-            actionsMatch ? actionsMatch.index : Infinity
-        );
-
-        if (firstMatchIndex > 0 && firstMatchIndex !== Infinity) {
-            const intro = text.substring(0, firstMatchIndex);
-            if (intro.trim()) {
-                html = `<div class="section section-intro">${marked.parse(intro)}</div>` + html;
-            }
-        }
-
+        console.log('Returning HTML length:', html.length);
         return html;
     } else {
+        console.log('Returning marked.parse(text)');
         return marked.parse(text);
     }
 }
@@ -650,7 +982,16 @@ function updateSessionSidebar(session) {
     } else if (infoSessionCost) {
         infoSessionCost.textContent = "€0.000000";
     }
-    if (infoSessionStatus) infoSessionStatus.textContent = session.status || "Active";
+
+    // Unsafe Mode Handling
+    const isUnsafe = session.unsafe === true || session.unsafe === "True"; // Handle bool or string from API
+    if (isUnsafe) {
+        document.body.classList.add('unsafe-mode');
+        if (infoSessionStatus) infoSessionStatus.textContent = "Unsafe";
+    } else {
+        document.body.classList.remove('unsafe-mode');
+        if (infoSessionStatus) infoSessionStatus.textContent = session.status || "Active";
+    }
 }
 
 function scrollToBottom() {

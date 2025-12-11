@@ -147,16 +147,18 @@ After completing your work ALWAYS write to the Scratchpad your findings in the r
 ALWAYS Provide the response in the following format and write the same format to the Scratchpad:
 
 ---
-**Section Findings:**
+
+## Findings
 - Summarize your findings **without omitting any tool output**, which must already have been shown in full. ALWAYS respect the specific formatting asked by the user (e.g.: table, bullet point list,...)
 - Specify exactly what data you collected, from which functions, and what the results were.
 - NO abbreviations, NO truncation, NO omitted sections.
 
-**Section Decisions:**
+## Decisions
 - EXPLAIN your decisions, what process you used, what tools, what skills and what scripts you executed with **sandbox_run**. Be clear about why you chose to use direct tool calls and not one of the skills
 
-**Section Suggested actions:**
+## Suggested Actions
 - next suggested actions if needed
+
 ---
 
 # REMEMBER

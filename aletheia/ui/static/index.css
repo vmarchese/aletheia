@@ -1,0 +1,8 @@
+.message-footer {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    margin-left: 48px;
+    /* Align with content, skipping avatar */
+    opacity: 0.8;
+}

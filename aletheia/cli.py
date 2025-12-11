@@ -22,7 +22,11 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markdown import Markdown
+import yaml
 from rich.live import Live
+from rich.rule import Rule
+from rich.panel import Panel
+from rich.text import Text
 
 
 from agent_framework import (
@@ -297,6 +301,9 @@ async def _start_investigation(session: Session) -> None:
                     console.print("[cyan]" + "─" * 80 + "[/cyan]")
 
                     buf = ""
+                    current_agent_name = "Orchestrator" # Default
+                    header_printed = False
+                    
                     with Live("", console=console, refresh_per_second=5) as live:
                         _ = asyncio.create_task(show_thinking_animation(live, stop_event))
 
@@ -312,12 +319,48 @@ async def _start_investigation(session: Session) -> None:
 
                                 full_response += str(response.text)
                                 buf += response.text
-                                live.update(Markdown(safe_md(buf)))
+                                
+                                # Try to parse frontmatter if not yet printed header with agent info
+                                display_text = buf
+                                if not header_printed:
+                                    if buf.startswith("---"):
+                                        parts = buf.split("---", 2)
+                                        if len(parts) >= 3:
+                                            # Frontmatter complete
+                                            try:
+                                                frontmatter = yaml.safe_load(parts[1])
+                                                if frontmatter and "agent" in frontmatter:
+                                                    current_agent_name = frontmatter["agent"]
+                                                    # Update live with a nice header
+                                                    agent_info = f"🤖 Aletheia (Agent: {current_agent_name})"
+                                                    if "timestamp" in frontmatter:
+                                                        agent_info += f" @ {frontmatter['timestamp']}"
+                                                    # We don't print here to avoid breaking live, we just update what we renders
+                                                    # Actually, let's treat frontmatter as metadata and only show content
+                                                    display_text = parts[2]
+                                                    # But we want to show the agent info. 
+                                                    # Let's prepend it as a Rule or similar in the Markdown
+                                                    display_text = f"**Agent:** {current_agent_name}\n\n" + display_text.lstrip()
+                                                    
+                                                    # Append usage info at the bottom - BUT frontmatter usage is removed.
+                                                    # We print real usage at the end of stream now.
+                                                    pass
+                                            except yaml.YAMLError:
+                                                pass
+                                    elif "AGENT:" in buf[:50]: # Fallback for old/partial
+                                         pass 
+
+                                live.update(Markdown(safe_md(display_text)))
 
                             if response and response.contents:
                                 for content in response.contents:
                                     if isinstance(content, UsageContent):
                                         completion_usage += content.details
+                                        
+                    # Print final usage for this turn
+                    if completion_usage:
+                         console.print(f"_[dim]Usage: {completion_usage.total_token_count} (In: {completion_usage.input_token_count}, Out: {completion_usage.output_token_count})[/dim]_", style="dim")
+
                 finally:
                     if stop_event and not stop_event.is_set():
                         stop_event.set()
@@ -408,8 +451,8 @@ def session_open(
         )
 
         # Enable trace logging if very-verbose mode
+        # Enable trace logging if very-verbose mode
         if very_verbose:
-            enable_trace_logging(session.session_path)
             console.print(f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n")
 
         console.print(f"[green]Session '{session.session_id}' created successfully![/green]")

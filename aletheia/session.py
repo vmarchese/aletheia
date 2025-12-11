@@ -25,14 +25,15 @@ from typing import Any, Dict, List, Optional
 from aletheia.encryption import encrypt_file, decrypt_file
 from aletheia.plugins.scratchpad.scratchpad import ScratchpadFileName
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
-from aletheia.utils.logging import log_debug
+from aletheia.utils.logging import log_debug, enable_trace_logging
 
 from aletheia.encryption import (
     create_session_encryption,
     decrypt_json_file,
     derive_session_key,
     encrypt_json_file,
-    encrypt_data
+    encrypt_data,
+    decrypt_data
 )
 
 
@@ -266,6 +267,45 @@ class Session:
 
         return self._key
 
+    def _validate_key(self) -> None:
+        """
+        Validate that the derived key is correct by attempting to decrypt known files.
+        Raises SessionError if validation fails.
+        """
+        if self.unsafe or self._key is None:
+            return
+
+        # 1. Check for canary file (new sessions)
+        canary_file = self.session_path / ".canary"
+        if canary_file.exists():
+            try:
+                with open(canary_file, 'rb') as f:
+                    data = f.read()
+                decrypted = decrypt_data(data, self._key)
+                if decrypted != b"ALETHEIA_CHECK":
+                    raise SessionError("Invalid password (canary check failed)")
+                return # Validated
+            except Exception:
+                raise SessionError("Invalid password")
+
+        # 2. Check for scratchpad (existing sessions)
+
+        # 2. Check for scratchpad (existing sessions)
+        scratchpad_file = self.session_path / ScratchpadFileName.ENCRYPTED.value
+        if scratchpad_file.exists():
+            try:
+                with open(scratchpad_file, 'rb') as f:
+                    data = f.read()
+                if data: # Only check if not empty
+                    decrypt_data(data, self._key)
+                return # Validated (or empty)
+            except Exception:
+                raise SessionError("Invalid password")
+        
+        # 3. If no encrypted files exist, we can't validate, assume OK.
+        # This happens for old empty sessions. User will just create new encrypted files with this password.
+
+
     def update_usage(self, input_tokens: int, output_tokens: int) -> None:
         """Update session token usage statistics.
         
@@ -358,6 +398,12 @@ class Session:
             salt_file = session.session_path / "salt"
             salt_file.write_text(base64.b64encode(salt).decode("utf-8"))
 
+            # Create canary file for password validation
+            canary_file = session.session_path / ".canary"
+            canary_ciphertext = encrypt_data(b"ALETHEIA_CHECK", key)
+            with open(canary_file, 'wb') as f:
+                f.write(canary_ciphertext)
+
         # Create metadata
         now = datetime.now().isoformat()
         metadata = SessionMetadata(
@@ -373,6 +419,10 @@ class Session:
 
         session._metadata = metadata
         session._save_metadata(metadata)
+
+        # Enable trace logging if verbose
+        if verbose:
+            enable_trace_logging(session.session_path)
 
         return session
 
@@ -425,8 +475,15 @@ class Session:
             # Derive key
             session._key = session._derive_key(salt)
 
-            # Load metadata (this will validate password)
+            # Load metadata (metadata is plaintext now, so this doesn't validate password)
             session._metadata = session._load_metadata(session._key)
+            
+            # Explicitly validate password
+            session._validate_key()
+
+        # Enable trace logging if sticky verbose mode is on
+        if session._metadata.verbose:
+            enable_trace_logging(session.session_path)
 
         return session
 
@@ -460,7 +517,12 @@ class Session:
                        with open(metadata_path, 'r', encoding='utf-8') as f:
                            meta = json.load(f)
                            session_name = meta.get("name")
-                           is_unsafe = str(meta.get("unsafe", False))
+                           # Handle unsafe: "True"/"False" string or boolean
+                           unsafe_val = meta.get("unsafe", False)
+                           if isinstance(unsafe_val, str):
+                               is_unsafe = unsafe_val == "True"
+                           else:
+                               is_unsafe = bool(unsafe_val)
                    except Exception:
                        pass
                 elif encrypted_metadata_path.exists():

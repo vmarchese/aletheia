@@ -188,24 +188,80 @@
     </div>
     <!-- Scratchpad Modal -->
     <div id="scratchpad-modal" class="modal">
-        <div class="modal-content modal-lg">
-            <span class="close-modal btn-close-modal">&times;</span>
-            <h2>Session Scratchpad</h2>
-            <div id="scratchpad-container" class="scratchpad-container markdown-body">
-                <!-- Scratchpad content will be injected here -->
-                <div class="loading-state">Loading scratchpad...</div>
+        <div class="modal-content modal-xl">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h3>Session Scratchpad</h3>
+                    <div class="session-badges">
+                        <span id="scratchpad-session-name" class="badge-pill primary">-</span>
+                        <span id="scratchpad-session-id" class="badge-pill secondary">-</span>
+                    </div>
+                </div>
+                <button class="btn-close-modal btn-icon-only" title="Close">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="scratchpad-container" class="scratchpad-container markdown-body">
+                    <!-- Scratchpad content will be injected here -->
+                    <div class="loading-state">Loading scratchpad...</div>
+                </div>
             </div>
         </div>
     </div>
     <!-- Timeline Modal -->
     <div id="timeline-modal" class="modal">
         <div class="modal-content modal-lg">
-            <span class="close-modal btn-close-modal">&times;</span>
-            <h2>Session Timeline</h2>
-            <div id="timeline-container" class="timeline-container">
-                <!-- Timeline items will be injected here -->
-                <div class="loading-state">Generating timeline...</div>
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h3>Session Timeline</h3>
+                    <div class="session-badges">
+                        <span id="timeline-session-name" class="badge-pill primary">-</span>
+                        <span id="timeline-session-id" class="badge-pill secondary">-</span>
+                    </div>
+                </div>
+                <button class="btn-close-modal btn-icon-only" title="Close">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
+            <div class="modal-body">
+                <div id="timeline-container" class="timeline-container">
+                    <!-- Timeline items will be injected here -->
+                    <div class="loading-state">Generating timeline...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Enter Session Password</h3>
+                <button class="btn-close-modal">&times;</button>
+            </div>
+            <form id="password-form">
+                <p class="modal-description">This session is encrypted. Please enter the password to open it.</p>
+                <div id="password-error-message" class="error-message"
+                    style="display: none; color: var(--error-color, #ff4d4d); margin-bottom: 10px;"></div>
+                <div class="form-group">
+                    <label for="session-password-input">Password</label>
+                    <input type="password" id="session-password-input" placeholder="Enter password" required autofocus>
+                </div>
+                <!-- Hidden inputs to track context -->
+                <input type="hidden" id="password-target-session-id">
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-close-modal">Cancel</button>
+                    <button type="submit" class="btn-primary">Unlock Session</button>
+                </div>
+            </form>
         </div>
     </div>
 

@@ -70,6 +70,28 @@ def get_session(session_id: str, password: Optional[str] = None, unsafe: bool = 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+def get_session_auto(session_id: str, password: Optional[str] = None, unsafe: bool = False) -> Session:
+    """
+    Helper to get session with auto-detection of unsafe status.
+    Prioritizes explicit 'unsafe' param, then checks list_sessions metadata.
+    """
+    if unsafe:
+         return Session.resume(session_id=session_id, password=None, unsafe=True)
+    
+    # Check metadata
+    sessions = Session.list_sessions()
+    is_unsafe = False
+    for s in sessions:
+        if s['id'] == session_id:
+            is_unsafe = s.get("unsafe") is True
+            break
+            
+    # Resume with detected unsafe status if password not provided or if it's strictly unsafe
+    # If is_unsafe is True, we MUST enable unsafe mode.
+    use_unsafe = unsafe or is_unsafe
+    return Session.resume(session_id=session_id, password=password, unsafe=use_unsafe)
+
+
 # --- Endpoints ---
 
 @app.get("/sessions", response_model=List[Dict[str, Any]])
@@ -94,7 +116,7 @@ async def create_session(request: SessionCreateRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/sessions/{session_id}", response_model=Dict[str, Any])
-async def get_session_metadata(session_id: str, unsafe: bool = False):
+async def get_session_metadata(session_id: str, password: Optional[str] = None, unsafe: bool = False):
     # Check if session exists and get its unsafe status from list_sessions
     sessions = Session.list_sessions()
     target_session = None
@@ -106,14 +128,14 @@ async def get_session_metadata(session_id: str, unsafe: bool = False):
     if not target_session:
         raise HTTPException(status_code=404, detail="Session not found")
         
-    is_unsafe = target_session.get("unsafe") == "True"
+    is_unsafe = target_session.get("unsafe") is True
     
     # If user passed unsafe=True, we respect it.
     # If user passed False (default) but session IS unsafe, we must use unsafe=True to resume it.
     use_unsafe = unsafe or is_unsafe
     
     try:
-        session = Session.resume(session_id=session_id, password=None, unsafe=use_unsafe)
+        session = Session.resume(session_id=session_id, password=password, unsafe=use_unsafe)
         data = session.get_metadata().to_dict()
         
         # Attach runtime info if available
@@ -137,9 +159,13 @@ async def get_session_metadata(session_id: str, unsafe: bool = False):
         data["total_cost"] = (input_tokens * config.cost_per_input_token) + (output_tokens * config.cost_per_output_token)
         
         return data
+        return data
     except Exception:
         # If we can't load metadata (e.g. password needed for encrypted session), 
         # fall back to list info which has limited data.
+        if password:
+            # If password was provided but validation failed, raise error
+            raise HTTPException(status_code=400, detail="Invalid password or session data")
         return target_session
 
 @app.delete("/sessions/{session_id}")
@@ -161,7 +187,7 @@ async def delete_session(session_id: str):
 async def export_session(session_id: str, password: Optional[str] = None, unsafe: bool = False):
     """Export session as zip/tar."""
     try:
-        session = get_session(session_id, password, unsafe)
+        session = get_session_auto(session_id, password, unsafe)
         export_path = session.export()
         return FileResponse(export_path, filename=export_path.name, media_type='application/gzip')
     except Exception as e:
@@ -171,7 +197,7 @@ async def export_session(session_id: str, password: Optional[str] = None, unsafe
 async def get_session_timeline(session_id: str, password: Optional[str] = None, unsafe: bool = False):
     """Get session timeline."""
     try:
-        session = get_session(session_id, password, unsafe)
+        session = get_session_auto(session_id, password, unsafe)
         scratchpad = Scratchpad(session_dir=session.session_path, encryption_key=session.get_key())
         journal_content = scratchpad.read_scratchpad()
         
@@ -207,7 +233,7 @@ async def get_session_timeline(session_id: str, password: Optional[str] = None, 
 async def get_session_scratchpad(session_id: str, password: Optional[str] = None, unsafe: bool = False):
     """Get session scratchpad content."""
     try:
-        session = get_session(session_id, password, unsafe)
+        session = get_session_auto(session_id, password, unsafe)
         # We need the key to decrypt if strictly necessary, but Scratchpad handles it.
         # Actually Scratchpad needs the key.
         scratchpad = Scratchpad(session_dir=session.session_path, encryption_key=session.get_key())
@@ -222,7 +248,10 @@ async def get_or_create_orchestrator(session_id: str, password: Optional[str], u
     if session_id in active_investigations:
         return active_investigations[session_id]
     
-    session = get_session(session_id, password, unsafe)
+    if session_id in active_investigations:
+        return active_investigations[session_id]
+    
+    session = get_session_auto(session_id, password, unsafe)
     config = load_config()
     prompt_loader = Loader()
     scratchpad = Scratchpad(session_dir=session.session_path, encryption_key=session.get_key())
@@ -269,6 +298,7 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
             if response and str(response.text) != "":
                 await queue.put({"type": "text", "content": str(response.text)})
             
+            
             if response and response.contents:
                 for content in response.contents:
                     if isinstance(content, UsageContent):
@@ -279,6 +309,15 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
                             output_tokens=orchestrator.completion_usage.output_token_count
                         )
             
+        # Send final usage stats
+        await queue.put({
+            "type": "usage", 
+            "content": {
+                "input_tokens": orchestrator.completion_usage.input_token_count,
+                "output_tokens": orchestrator.completion_usage.output_token_count,
+                "total_tokens": orchestrator.completion_usage.total_token_count
+            }
+        })
         await queue.put({"type": "done"})
     except Exception as e:
         await queue.put({"type": "error", "content": str(e)})

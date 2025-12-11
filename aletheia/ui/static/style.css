@@ -224,6 +224,23 @@ body {
     color: var(--text-secondary);
 }
 
+/* Message Footer */
+/* Message Footer */
+.message-footer {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    margin-left: 0;
+    opacity: 0.8;
+}
+
+.message-body-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
 /* Main Content */
 .main-content {
     flex: 1;
@@ -603,16 +620,88 @@ textarea {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     width: 100%;
-    max-width: 400px;
     padding: 1.5rem;
     box-shadow: 0 8px 24px var(--shadow-color);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    max-width: 50%;
 }
+
+.modal-content.modal-xl {
+    max-width: 1000px;
+    width: 95%;
+    height: 90vh;
+}
+
+.modal-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    /* Crucial for flex scrolling */
+    padding-top: 1rem;
+}
+
 
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.modal-title-group {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.modal-title-group h3 {
+    margin: 0;
+}
+
+.session-badges {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.badge-pill {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+}
+
+.badge-pill.primary {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.badge-pill.secondary {
+    background-color: var(--badge-bg);
+    color: var(--text-secondary);
+}
+
+.btn-icon-only {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-icon-only:hover {
+    color: var(--text-primary);
+    background-color: var(--hover-bg);
 }
 
 .btn-close {
@@ -876,4 +965,36 @@ textarea {
     padding: 40px;
     color: var(--text-secondary);
     font-style: italic;
+}
+
+/* Unsafe Mode Styles */
+body.unsafe-mode .chat-header {
+    border-top: 3px solid #ff4444;
+}
+
+body.unsafe-mode .chat-header::before {
+    content: "UNSAFE";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #ff4444;
+    color: white;
+    font-size: 0.6rem;
+    padding: 0 0.5rem;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    z-index: 10;
+}
+
+body.unsafe-mode .info-value.status {
+    color: #ff4444;
+    font-weight: bold;
+}
+
+/* Add warning icon if status is Unsafe */
+body.unsafe-mode #info-session-status::before {
+    content: "⚠️ ";
 }
