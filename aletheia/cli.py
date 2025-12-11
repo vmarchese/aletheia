@@ -493,7 +493,7 @@ def session_list() -> None:
                 session_data.get("name") or "",
                 session_data["created"],
                 session_data["path"],
-                session_data["unsafe"]
+                str(session_data["unsafe"])
             )
 
         console.print(table)
