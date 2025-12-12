@@ -631,6 +631,8 @@ const AGENT_ICONS = {
     'aws': '/static/icons/aws.png',
     'azure': '/static/icons/azure.png',
     'network': '/static/icons/network.png',
+    'security': '/static/icons/security.png',
+    'securityagent': '/static/icons/security.png',
     'orchestrator': '/static/icons/owl.png',
     'default': '/static/icons/owl.png'
 };

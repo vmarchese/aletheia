@@ -111,6 +111,10 @@ Azure resources and queries.
 ### network
 DNS, IPs, ports, connectivity, network tools.
 
+### Security
+httpx, sslscan
+
+
 If you are asked what a specific agent can or cannot do ALWAYS route the request to the agent
 
 ---
