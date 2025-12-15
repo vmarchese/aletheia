@@ -47,6 +47,7 @@ from aletheia.encryption import decrypt_file, DecryptionError
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.security.security import SecurityAgent
 from aletheia.agents.network.network import NetworkAgent
 from aletheia.agents.aws.aws import AWSAgent
 from aletheia.agents.aws_amp.amp_prometheus import AWSAMPAgent
@@ -205,6 +206,13 @@ def _build_plugins(config: Config,
                                  scratchpad=scratchpad)
     agent_instances.append(network_agent)
     plugins.append(network_agent.agent.as_tool())
+
+    security_agent = SecurityAgent(name="security",
+                                   config=config,
+                                   description="Security Agent for performing security testing and analysis.",
+                                   session=session,
+                                   scratchpad=scratchpad)
+    plugins.append(security_agent.agent.as_tool())
 
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
         code_analyzer = CodeAnalyzer(name=f"{config.code_analyzer}_code_analyzer",
