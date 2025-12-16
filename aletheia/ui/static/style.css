@@ -584,6 +584,48 @@ body {
     margin-right: 0.25rem;
 }
 
+/* Skill Usage Indicator Badge */
+.skill-indicator {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    padding: 0.3rem 0.7rem;
+    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+    border: 1px solid #ea580c;
+    border-radius: 14px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: help;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: none;
+    letter-spacing: normal;
+    box-shadow: 0 2px 4px rgba(249, 115, 22, 0.3);
+}
+
+.skill-indicator:hover {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    border-color: #c2410c;
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.5);
+}
+
+/* Dark mode skill indicator */
+:root[data-theme="dark"] .skill-indicator {
+    background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+    border-color: #f97316;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(251, 146, 60, 0.4);
+}
+
+:root[data-theme="dark"] .skill-indicator:hover {
+    background: linear-gradient(135deg, #fdba74 0%, #fb923c 100%);
+    border-color: #fb923c;
+    box-shadow: 0 4px 12px rgba(251, 146, 60, 0.6);
+}
+
 .message-content code {
     font-family: var(--font-mono);
     background-color: var(--inline-code-bg);

@@ -710,9 +710,15 @@ function appendMessage(content, role) {
         // Store raw content for updates
         msgDiv.dataset.raw = content;
 
+        // Detect skills first
+        console.log('[Skill Detection] Checking response for skills...');
+        console.log('[Skill Detection] Display content preview:', displayContent.substring(0, 500));
+        const skills = extractSkillUsage(displayContent);
+        console.log('[Skill Detection] Skills found:', skills);
+
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
-        contentDiv.innerHTML = parseSections(displayContent);
+        contentDiv.innerHTML = parseSections(displayContent, skills);
 
         // Make code blocks collapsible after rendering
         makeCodeBlocksCollapsible(contentDiv);
@@ -799,8 +805,13 @@ function updateLastBotMessage(content) {
             renderAvatar(avatar, icon, agentName);
         }
 
-        // Update content
-        contentDiv.innerHTML = parseSections(displayContent);
+        // Update skill badge if skills detected
+        console.log('[Skill Detection UPDATE] Checking for skills in updated content...');
+        const skills = extractSkillUsage(displayContent);
+        console.log('[Skill Detection UPDATE] Skills found:', skills);
+
+        // Update content with skills
+        contentDiv.innerHTML = parseSections(displayContent, skills);
         makeCodeBlocksCollapsible(contentDiv);
     } else {
         // Fallback for streaming partials (frontmatter closing might not be arrived yet)
@@ -809,7 +820,13 @@ function updateLastBotMessage(content) {
         if (agentMatch) {
             agentName = agentMatch[1].trim();
             const icon = getAgentIcon(agentName);
-            contentDiv.innerHTML = parseSections(displayContent);
+
+            // Update skill badge for streaming
+            console.log('[Skill Detection FALLBACK] Checking for skills...');
+            const skills = extractSkillUsage(displayContent);
+            console.log('[Skill Detection FALLBACK] Skills found:', skills);
+
+            contentDiv.innerHTML = parseSections(displayContent, skills);
             makeCodeBlocksCollapsible(contentDiv);
 
             // Update footer (only timestamp from frontmatter now)
@@ -872,7 +889,7 @@ function updateLastBotMessageUsage(usageData) {
     }
 }
 
-function parseSections(text) {
+function parseSections(text, skills = null) {
     console.log('parseSections input length:', text.length);
     // Regex to find the sections with markdown headers
     // Support both new format (### 📊 Findings) and legacy format (## Findings)
@@ -917,8 +934,19 @@ function parseSections(text) {
         }
 
         if (findingsMatch) {
+            // Create skill badge HTML if skills are provided
+            let skillBadgeHtml = '';
+            if (skills && skills.length > 0) {
+                const badgeText = skills.length === 1 ? '🎯 Skill' : `🎯 ${skills.length} Skills`;
+                const badgeTitle = skills.join(', ');
+                skillBadgeHtml = `<span class="skill-indicator" title="${badgeTitle}">${badgeText}</span>`;
+            }
+
             html += `<div class="section section-findings">
-                <div class="section-header">🔍 Findings</div>
+                <div class="section-header">
+                    <span>🔍 Findings</span>
+                    ${skillBadgeHtml}
+                </div>
                 <div class="section-body">${marked.parse(findingsMatch[1].trim())}</div>
             </div>`;
         }
@@ -1017,6 +1045,40 @@ function formatBytes(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+/**
+ * Extract skill usage from agent response text
+ * Looks for "Skills Loaded:" in the Decisions section
+ * Returns array of skill names or null if no skills found
+ */
+function extractSkillUsage(text) {
+    // Pattern matches various formats:
+    // - **Skills Loaded**: skill_name (markdown bold)
+    // - Skills Loaded: skill_name
+    // - Skill Loaded: skill_name (singular)
+    // Stops at: (via ...) or newline or end of string
+    const skillRegex = /\*\*Skills?\s+Loaded\*\*:\s*([^(\n]+?)(?:\s*\(via|[\r\n]|$)/im;
+    let match = text.match(skillRegex);
+
+    // Try without bold markers if first pattern doesn't match
+    if (!match) {
+        const plainRegex = /Skills?\s+Loaded:\s*([^(\n]+?)(?:\s*\(via|[\r\n]|$)/im;
+        match = text.match(plainRegex);
+    }
+
+    if (match && match[1]) {
+        // Split by commas and clean up each skill name
+        const skills = match[1]
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && s !== '-' && s !== '•');
+
+        console.log('Skills detected:', skills);
+        return skills.length > 0 ? skills : null;
+    }
+
+    console.log('No skill pattern matched in text');
+    return null;
+}
 
 function renderTimeline(timelineData, container) {
     if (!Array.isArray(timelineData) || timelineData.length === 0) {
