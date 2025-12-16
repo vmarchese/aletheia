@@ -489,6 +489,99 @@ body {
     font-family: var(--font-mono);
     font-size: 0.9em;
     border: 1px solid var(--border-color);
+    position: relative;
+}
+
+/* Collapsible Code Blocks */
+.collapsible-wrapper {
+    margin: 0.75rem 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: var(--code-bg);
+}
+
+.collapsible-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--section-header-bg);
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s ease;
+}
+
+.collapsible-header:hover {
+    background-color: var(--hover-bg);
+}
+
+.collapsible-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.collapsible-toggle {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--text-secondary);
+    transition: transform 0.2s ease;
+}
+
+.collapsible-wrapper.collapsed .collapsible-toggle {
+    transform: rotate(-90deg);
+}
+
+.collapsible-title {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.collapsible-size {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.collapsible-content {
+    max-height: 400px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.collapsible-wrapper.collapsed .collapsible-content {
+    max-height: 0;
+}
+
+.collapsible-content pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.collapsible-content pre code {
+    display: block;
+    padding: 0;
+}
+
+/* Large code block indicator */
+.collapsible-wrapper.large-output .collapsible-header {
+    background-color: rgba(251, 191, 36, 0.1);
+    border-bottom-color: rgba(251, 191, 36, 0.3);
+}
+
+.collapsible-wrapper.large-output .collapsible-title::before {
+    content: "⚠️ ";
+    margin-right: 0.25rem;
 }
 
 .message-content code {
@@ -824,7 +917,7 @@ textarea {
 }
 
 .section-body {
-    padding: 0.75rem;
+    padding: 2em;
 }
 
 .section-body>*:last-child {

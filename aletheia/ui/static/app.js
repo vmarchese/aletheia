@@ -714,6 +714,9 @@ function appendMessage(content, role) {
         contentDiv.className = 'message-content';
         contentDiv.innerHTML = parseSections(displayContent);
 
+        // Make code blocks collapsible after rendering
+        makeCodeBlocksCollapsible(contentDiv);
+
         renderAvatar(avatar, avatarIcon, agentName || 'Bot');
 
         const bodyWrapper = document.createElement('div');
@@ -798,6 +801,7 @@ function updateLastBotMessage(content) {
 
         // Update content
         contentDiv.innerHTML = parseSections(displayContent);
+        makeCodeBlocksCollapsible(contentDiv);
     } else {
         // Fallback for streaming partials (frontmatter closing might not be arrived yet)
         // or old format
@@ -806,6 +810,7 @@ function updateLastBotMessage(content) {
             agentName = agentMatch[1].trim();
             const icon = getAgentIcon(agentName);
             contentDiv.innerHTML = parseSections(displayContent);
+            makeCodeBlocksCollapsible(contentDiv);
 
             // Update footer (only timestamp from frontmatter now)
 
@@ -870,10 +875,11 @@ function updateLastBotMessageUsage(usageData) {
 function parseSections(text) {
     console.log('parseSections input length:', text.length);
     // Regex to find the sections with markdown headers
-    // Using ## Header
-    const findingsRegex = /##\s*Findings\r?\n([\s\S]*?)(?=##\s*Decisions|$)/i;
-    const decisionsRegex = /##\s*Decisions\r?\n([\s\S]*?)(?=##\s*Suggested Actions|$)/i;
-    const actionsRegex = /##\s*Suggested Actions\r?\n([\s\S]*?)$/i;
+    // Support both new format (### 📊 Findings) and legacy format (## Findings)
+    // More flexible - handle any whitespace between emoji and text
+    const findingsRegex = /###?\s*(?:📊\s*)?\s*Findings\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:🧠\s*)?\s*Decisions|###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|$)/i;
+    const decisionsRegex = /###?\s*(?:🧠\s*)?\s*Decisions\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|###?\s*(?:📊\s*)?\s*Findings|$)/i;
+    const actionsRegex = /###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)\s*[\r\n]+([\s\S]*?)(?=###?\s*\w+|$)/i;
 
     // Fallback for old format
     const oldFindingsRegex = /\*\*Section Findings:\*\*([\s\S]*?)(?=\*\*Section Decisions:\*\*|$)/;
@@ -885,6 +891,7 @@ function parseSections(text) {
     let actionsMatch = text.match(actionsRegex);
 
     console.log('Matches:', { findings: !!findingsMatch, decisions: !!decisionsMatch, actions: !!actionsMatch });
+    console.log('Text preview:', text.substring(0, 500));
 
     // Try old format if new one fails for all
     if (!findingsMatch && !decisionsMatch && !actionsMatch) {
@@ -936,6 +943,78 @@ function parseSections(text) {
         console.log('Returning marked.parse(text)');
         return marked.parse(text);
     }
+}
+
+/**
+ * Make code blocks collapsible for better UX
+ * Wraps large code blocks (>10 lines or >500 chars) in collapsible containers
+ */
+function makeCodeBlocksCollapsible(element) {
+    const codeBlocks = element.querySelectorAll('pre > code');
+
+    codeBlocks.forEach((codeBlock, index) => {
+        const pre = codeBlock.parentElement;
+        const codeText = codeBlock.textContent || '';
+        const lineCount = codeText.split('\n').length;
+        const charCount = codeText.length;
+
+        // Only make collapsible if it's reasonably large
+        if (lineCount > 10 || charCount > 500) {
+            // Determine if this looks like tool output
+            const isToolOutput = codeText.includes('Name:') ||
+                                codeText.includes('Status:') ||
+                                codeText.includes('Namespace:') ||
+                                codeText.includes('"timestamp"') ||
+                                pre.previousElementSibling?.textContent?.includes('Tool Output');
+
+            const title = isToolOutput ? 'Tool Output' : 'Code Block';
+            const isLarge = lineCount > 50 || charCount > 2000;
+
+            // Create wrapper
+            const wrapper = document.createElement('div');
+            wrapper.className = 'collapsible-wrapper' + (isLarge ? ' large-output' : '');
+
+            // Create header
+            const header = document.createElement('div');
+            header.className = 'collapsible-header';
+            header.innerHTML = `
+                <div class="collapsible-header-left">
+                    <span class="collapsible-toggle"></span>
+                    <span class="collapsible-title">${title} ${index + 1}</span>
+                </div>
+                <span class="collapsible-size">${lineCount} lines, ${formatBytes(charCount)}</span>
+            `;
+
+            // Create content container
+            const content = document.createElement('div');
+            content.className = 'collapsible-content';
+
+            // Move pre into content
+            pre.parentElement.insertBefore(wrapper, pre);
+            content.appendChild(pre);
+            wrapper.appendChild(header);
+            wrapper.appendChild(content);
+
+            // Add click handler
+            header.addEventListener('click', () => {
+                wrapper.classList.toggle('collapsed');
+            });
+
+            // Start collapsed if very large
+            if (isLarge) {
+                wrapper.classList.add('collapsed');
+            }
+        }
+    });
+}
+
+/**
+ * Format bytes into human-readable string
+ */
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 
