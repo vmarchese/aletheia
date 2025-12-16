@@ -990,6 +990,68 @@ textarea {
     border-bottom-color: var(--decisions-border);
 }
 
+/* Structured Decisions Layout */
+.decisions-structured {
+    display: flex;
+    flex-direction: column;
+    gap: 0rem;
+}
+
+.decision-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.decision-label {
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--decisions-header-text);
+    opacity: 0.9;
+}
+
+.decision-value {
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.decision-value code {
+    background: var(--inline-code-bg);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--accent-color);
+}
+
+.decision-value .skill-tag {
+    display: inline-block;
+    background: var(--decisions-header-bg);
+    color: var(--decisions-header-text);
+    padding: 0.25em 0.75em;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: 1px solid var(--decisions-border);
+}
+
+.decision-value .checklist {
+    margin: 0;
+    padding-left: 1.5em;
+    list-style-type: disc;
+}
+
+.decision-value .checklist li {
+    margin-bottom: 0.5em;
+    line-height: 1.6;
+}
+
+.decision-value .checklist li:last-child {
+    margin-bottom: 0;
+}
+
 /* Actions Section */
 .section-actions {
     border-color: var(--actions-border);

@@ -952,9 +952,10 @@ function parseSections(text, skills = null) {
         }
 
         if (decisionsMatch) {
+            const decisionsContent = renderDecisionsSection(decisionsMatch[1].trim());
             html += `<div class="section section-decisions">
                 <div class="section-header">🧠 Decisions</div>
-                <div class="section-body">${marked.parse(decisionsMatch[1].trim())}</div>
+                <div class="section-body">${decisionsContent}</div>
             </div>`;
         }
 
@@ -1046,38 +1047,125 @@ function formatBytes(bytes) {
 }
 
 /**
+ * Parse Decisions section into structured format
+ * Expected format:
+ * - **Approach**: ...
+ * - **Tools Used**: ...
+ * - **Skills Loaded**: ...
+ * - **Rationale**: ...
+ * - **Checklist**: ... (optional)
+ */
+function parseDecisionsSection(text) {
+    const decisions = {
+        approach: null,
+        tools_used: [],
+        skills_loaded: [],
+        rationale: null,
+        checklist: []
+    };
+
+    // Extract each field
+    const approachMatch = text.match(/\*\*Approach\*\*:\s*([^\n]+)/i);
+    if (approachMatch) decisions.approach = approachMatch[1].trim();
+
+    const toolsMatch = text.match(/\*\*Tools?\s+Used\*\*:\s*([^\n]+)/i);
+    if (toolsMatch) {
+        const toolsText = toolsMatch[1].trim();
+        // Parse tools - can be comma-separated or in backticks
+        decisions.tools_used = toolsText
+            .split(/[,\n]/)
+            .map(t => t.replace(/`/g, '').trim())
+            .filter(t => t.length > 0 && t !== '-' && t !== 'None');
+    }
+
+    const skillsMatch = text.match(/\*\*Skills?\s+Loaded\*\*:\s*([^\n(]+?)(?:\s*\(via|[\r\n]|$)/im);
+    if (skillsMatch) {
+        const skillsText = skillsMatch[1].trim();
+        decisions.skills_loaded = skillsText
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && s !== '-' && s !== '•' && s.toLowerCase() !== 'none');
+    }
+
+    const rationaleMatch = text.match(/\*\*Rationale\*\*:\s*([^\n]+)/i);
+    if (rationaleMatch) decisions.rationale = rationaleMatch[1].trim();
+
+    // Checklist might be in bullet list after Checklist header
+    const checklistMatch = text.match(/\*\*Checklist\*\*:\s*([\s\S]*?)(?=\n\*\*|$)/i);
+    if (checklistMatch) {
+        const checklistText = checklistMatch[1];
+        decisions.checklist = checklistText
+            .split('\n')
+            .map(line => line.replace(/^[\s\-\*•]+/, '').trim())
+            .filter(line => line.length > 0);
+    }
+
+    return decisions;
+}
+
+/**
+ * Render Decisions section with consistent structure
+ */
+function renderDecisionsSection(decisionsText) {
+    const decisions = parseDecisionsSection(decisionsText);
+
+    let html = '<div class="decisions-structured">';
+
+    if (decisions.approach) {
+        html += `
+            <div class="decision-field">
+                <div class="decision-label">Approach</div>
+                <div class="decision-value">${decisions.approach}</div>
+            </div>`;
+    }
+
+    if (decisions.tools_used.length > 0) {
+        const toolsList = decisions.tools_used.map(t => `<code>${t}</code>`).join(', ');
+        html += `
+            <div class="decision-field">
+                <div class="decision-label">Tools Used</div>
+                <div class="decision-value">${toolsList}</div>
+            </div>`;
+    }
+
+    if (decisions.skills_loaded.length > 0) {
+        const skillsList = decisions.skills_loaded.map(s => `<span class="skill-tag">${s}</span>`).join(' ');
+        html += `
+            <div class="decision-field">
+                <div class="decision-label">Skills Loaded</div>
+                <div class="decision-value">${skillsList}</div>
+            </div>`;
+    }
+
+    if (decisions.rationale) {
+        html += `
+            <div class="decision-field">
+                <div class="decision-label">Rationale</div>
+                <div class="decision-value">${decisions.rationale}</div>
+            </div>`;
+    }
+
+    if (decisions.checklist.length > 0) {
+        const checklistItems = decisions.checklist.map(item => `<li>${item}</li>`).join('');
+        html += `
+            <div class="decision-field">
+                <div class="decision-label">Checklist</div>
+                <div class="decision-value"><ul class="checklist">${checklistItems}</ul></div>
+            </div>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+/**
  * Extract skill usage from agent response text
  * Looks for "Skills Loaded:" in the Decisions section
  * Returns array of skill names or null if no skills found
  */
 function extractSkillUsage(text) {
-    // Pattern matches various formats:
-    // - **Skills Loaded**: skill_name (markdown bold)
-    // - Skills Loaded: skill_name
-    // - Skill Loaded: skill_name (singular)
-    // Stops at: (via ...) or newline or end of string
-    const skillRegex = /\*\*Skills?\s+Loaded\*\*:\s*([^(\n]+?)(?:\s*\(via|[\r\n]|$)/im;
-    let match = text.match(skillRegex);
-
-    // Try without bold markers if first pattern doesn't match
-    if (!match) {
-        const plainRegex = /Skills?\s+Loaded:\s*([^(\n]+?)(?:\s*\(via|[\r\n]|$)/im;
-        match = text.match(plainRegex);
-    }
-
-    if (match && match[1]) {
-        // Split by commas and clean up each skill name
-        const skills = match[1]
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s.length > 0 && s !== '-' && s !== '•');
-
-        console.log('Skills detected:', skills);
-        return skills.length > 0 ? skills : null;
-    }
-
-    console.log('No skill pattern matched in text');
-    return null;
+    const decisions = parseDecisionsSection(text);
+    return decisions.skills_loaded.length > 0 ? decisions.skills_loaded : null;
 }
 
 function renderTimeline(timelineData, container) {
