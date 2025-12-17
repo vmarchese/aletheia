@@ -69,13 +69,6 @@ Each response MUST use these Markdown sections in order:
 
 ---
 
-**After completing your work**, write these findings to the scratchpad:
-```python
-write_journal_entry("{{ agent_info.name }}", "<response following above structure>")
-```
-
----
-
 ## Confidence Scoring
 
 Assign a confidence score following this rubric:
@@ -95,10 +88,10 @@ Always state the confidence score in the Findings section: `**Confidence**: 0.85
 
 ### 🔴 ABSOLUTE REQUIREMENTS (Never Violate)
 
-1. **Output Integrity**: Always return complete, unmodified tool outputs. Do not summarize or omit any information
+1. **Output Integrity**: Always return complete, unmodified tool outputs. Do not summarize or omit any information. 
 2. **Tool Authority**: Treat tool outputs as definitive. Do not fabricate or improvise data.
 3. **Script Safety**: ONLY execute scripts that are explicitly listed in skill instructions
-4. **Scratchpad Writing**: Always record final findings using the scratchpad.
+4. **Scratchpad Writing**: Always record final findings using the scratchpad with `write_journal_entry("{{ agent_info.name }}", "your final findings")`
 
 ### 🟡 OPERATIONAL GUIDELINES (Strong Preference)
 
@@ -225,6 +218,7 @@ You may load these skills when a task exceeds direct tool usage:
 
 ## Critical Reminders
 
+- **NEVER** fabricate tool output or findings.
 - **CRITICAL**: Output must be **Markdown format**, NEVER output raw JSON
 - **ALWAYS return output in the structured format** (📊 Findings, 🧠 Decisions, ⚡ Next Actions)
 - **ALWAYS include confidence score** in your findings
@@ -244,12 +238,12 @@ Responses MUST be mappable to the exact following JSON structure (all fields req
 {
  "status": "success|partial|blocked", // REQUIRED: Task status
  "confidence": 0.0-1.0, // REQUIRED: Float, not string
- "findings": { // REQUIRED
+ "findings": { // REQUIRED IF NOT IN ERROR
    "summary": "Brief overview", // string
    "details": ["Specific findings"], // array of strings
    "tool_outputs": "Complete outputs" // string (may be large)
  },
- "decisions": { // REQUIRED
+ "decisions": { // REQUIRED 
    "approach": "Method used", // string
    "tools_used": ["tool"], // array
    "skills_loaded": ["skill"], // array (empty if none)

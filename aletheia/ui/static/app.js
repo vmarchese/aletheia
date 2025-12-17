@@ -891,6 +891,7 @@ function updateLastBotMessageUsage(usageData) {
 
 function parseSections(text, skills = null) {
     console.log('parseSections input length:', text.length);
+    console.log('parseSections text preview:', text.substring(0, 200));
     // Regex to find the sections with markdown headers
     // Support both new format (### 📊 Findings) and legacy format (## Findings)
     // More flexible - handle any whitespace between emoji and text

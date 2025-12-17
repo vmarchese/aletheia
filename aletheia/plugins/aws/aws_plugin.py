@@ -99,6 +99,7 @@ class AWSPlugin(BasePlugin):
         """
         try:
             # Read profiles from ~/.aws/config and ~/.aws/credentials
+            log_debug("AWSPlugin::aws_profiles:: Fetching available AWS profiles")
             profiles = boto3.Session().available_profiles
             self._save_response(profiles, "profiles", "AWSPlugin::aws_profiles::")
             return json.dumps(profiles)
@@ -115,6 +116,7 @@ class AWSPlugin(BasePlugin):
             JSON string with EC2 instances description
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_instances:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
@@ -138,6 +140,7 @@ class AWSPlugin(BasePlugin):
             JSON string with route tables description
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_route_tables:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
@@ -163,6 +166,7 @@ class AWSPlugin(BasePlugin):
             JSON string with load balancers description
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_load_balancers:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -191,6 +195,7 @@ class AWSPlugin(BasePlugin):
             JSON string with load balancer attributes
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_load_balancer_attributes:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -221,6 +226,7 @@ class AWSPlugin(BasePlugin):
             JSON string with security group IDs
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_security_groups:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -253,6 +259,7 @@ class AWSPlugin(BasePlugin):
             JSON string with listeners description
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_listeners:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -281,6 +288,7 @@ class AWSPlugin(BasePlugin):
             JSON string with listener attributes
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_listener_attributes:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -309,6 +317,7 @@ class AWSPlugin(BasePlugin):
             JSON string with target groups description
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_target_groups:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -337,6 +346,7 @@ class AWSPlugin(BasePlugin):
             JSON string with target group attributes
         """
         try:
+            log_debug(f"AWSPlugin::aws_elbv2_target_group_attributes:: Using profile: {profile}")
             session = self._get_session(profile)
             elbv2_client = session.client("elbv2")
 
@@ -364,6 +374,7 @@ class AWSPlugin(BasePlugin):
             JSON string with VPCs description
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_vpcs:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
@@ -387,6 +398,7 @@ class AWSPlugin(BasePlugin):
             JSON string with VPC endpoints description
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_vpc_endpoints:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
@@ -412,6 +424,7 @@ class AWSPlugin(BasePlugin):
             JSON string with caller identity information
         """
         try:
+            log_debug(f"AWSPlugin::aws_sts_caller_identity:: Using profile: {profile}")
             session = self._get_session(profile)
             sts_client = session.client("sts")
 
@@ -437,6 +450,7 @@ class AWSPlugin(BasePlugin):
             JSON string with S3 buckets list
         """
         try:
+            log_debug(f"AWSPlugin::aws_s3_buckets:: Using profile: {profile}")
             session = self._get_session(profile)
             s3_client = session.client("s3")
 
@@ -556,6 +570,10 @@ class AWSPlugin(BasePlugin):
             JSON string with list of downloaded file paths
         """
         try:
+            log_debug(
+                f"AWSPlugin::aws_elbv2_get_connection_logs:: Starting with bucket: {bucket}, "
+                f"cutoff_date: {cutoff_date}, profile: {profile}"
+            )
             # First, list the objects
             list_result = self.aws_elbv2_list_connection_logs(
                 bucket, caller_identity, cutoff_date, region, profile
@@ -626,6 +644,7 @@ class AWSPlugin(BasePlugin):
             Local file path where the object was downloaded
         """
         try:
+            log_debug("AWSPlugin::aws_s3_cp:: Starting download")
             session = self._get_session(profile)
             s3_client = session.client("s3")
 
@@ -675,6 +694,7 @@ class AWSPlugin(BasePlugin):
             JSON string with security group IDs and names
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_describe_eni_security_groups:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
@@ -716,6 +736,7 @@ class AWSPlugin(BasePlugin):
             JSON string with inbound rules
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_describe_security_group_inbound_rules:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
@@ -762,6 +783,7 @@ class AWSPlugin(BasePlugin):
             JSON string with outbound rules
         """
         try:
+            log_debug(f"AWSPlugin::aws_ec2_describe_security_group_outbound_rules:: Using profile: {profile}")
             session = self._get_session(profile)
             ec2_client = session.client("ec2")
 
