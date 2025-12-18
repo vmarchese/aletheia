@@ -10,6 +10,20 @@ Aletheia is a modular, AI-powered troubleshooting framework for SREs and system 
 
 Aletheia provides an interactive, agent-based workflow for troubleshooting distributed systems. It leverages Large Language Models (LLMs) and specialized plugins to automate data collection, pattern analysis, and root cause investigation across Kubernetes, Prometheus, log files, and more. The CLI offers a conversational interface for managing troubleshooting sessions, running investigations, and exploring demo scenarios.
 
+### Available agents
+
+- **Orchestrator** - Routes requests to appropriate specialist agents and relays their output
+- **Kubernetes Data Fetcher** - Collects Kubernetes logs, pod information, and cluster health data
+- **AWS Agent** - Manages AWS resources, logs, and AWS-specific investigations
+- **AWS Managed Prometheus** - Handles AWS Managed Prometheus metrics, CPU/memory data, and PromQL queries
+- **Azure Agent** - Manages Azure resources and performs Azure-specific queries and investigations
+- **Code Analyzer** - Analyzes code repositories using Claude or GitHub Copilot for code review and inspection
+- **Log File Data Fetcher** - Reads and analyzes local log files
+- **PCAP File Data Fetcher** - Analyzes packet capture (PCAP) files for network troubleshooting
+- **Network Agent** - Handles DNS queries, IP connectivity, port scanning, and general network tools
+- **Security Agent** - Performs security testing and analysis using tools like httpx and sslscan
+- **SysDiag Agent** - Provides system diagnostics and troubleshooting capabilities
+
 ## Installation
 
 Aletheia requires Python 3.12 and uses [uv](https://github.com/astral-sh/uv) for dependency management.

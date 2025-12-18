@@ -633,6 +633,7 @@ const AGENT_ICONS = {
     'network': '/static/icons/network.png',
     'security': '/static/icons/security.png',
     'securityagent': '/static/icons/security.png',
+    'sysdiag': '/static/icons/sysdiag.png',
     'orchestrator': '/static/icons/owl.png',
     'default': '/static/icons/owl.png'
 };
@@ -1001,10 +1002,10 @@ function makeCodeBlocksCollapsible(element) {
         if (lineCount > 10 || charCount > 500) {
             // Determine if this looks like tool output
             const isToolOutput = codeText.includes('Name:') ||
-                                codeText.includes('Status:') ||
-                                codeText.includes('Namespace:') ||
-                                codeText.includes('"timestamp"') ||
-                                pre.previousElementSibling?.textContent?.includes('Tool Output');
+                codeText.includes('Status:') ||
+                codeText.includes('Namespace:') ||
+                codeText.includes('"timestamp"') ||
+                pre.previousElementSibling?.textContent?.includes('Tool Output');
 
             const title = isToolOutput ? 'Tool Output' : 'Code Block';
             const isLarge = lineCount > 50 || charCount > 2000;
@@ -1133,7 +1134,7 @@ function renderDecisionsSection(decisionsText) {
  */
 function extractSkillUsage(text) {
     console.log('[Skill Debug] Input text preview:', text.substring(0, 500));
-    
+
     // Try all possible patterns for Skills Loaded
     const patterns = [
         // Block format: **Skills Loaded:** followed by bulleted items
@@ -1149,11 +1150,11 @@ function extractSkillUsage(text) {
     for (let i = 0; i < patterns.length; i++) {
         const match = text.match(patterns[i]);
         console.log(`[Skill Debug] Pattern ${i}:`, patterns[i], 'Match:', !!match);
-        
+
         if (match) {
             let skillsText = match[1].trim();
             console.log(`[Skill Debug] Raw skills text:`, skillsText);
-            
+
             let skills;
             if (skillsText.includes('\n')) {
                 // Multi-line (bulleted format)
@@ -1169,12 +1170,12 @@ function extractSkillUsage(text) {
                     .map(s => s.trim())
                     .filter(skill => skill.length > 0);
             }
-            
+
             // Filter out 'none'
             skills = skills.filter(skill => skill.toLowerCase() !== 'none');
-            
+
             console.log(`[Skill Debug] Final skills:`, skills);
-            
+
             if (skills.length > 0) return skills;
         }
     }
