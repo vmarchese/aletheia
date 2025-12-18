@@ -893,11 +893,13 @@ function parseSections(text, skills = null) {
     console.log('parseSections input length:', text.length);
     console.log('parseSections text preview:', text.substring(0, 200));
     // Regex to find the sections with markdown headers
-    // Support both new format (### 📊 Findings) and legacy format (## Findings)
-    // More flexible - handle any whitespace between emoji and text
-    const findingsRegex = /###?\s*(?:📊\s*)?\s*Findings\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:🧠\s*)?\s*Decisions|###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|$)/i;
-    const decisionsRegex = /###?\s*(?:🧠\s*)?\s*Decisions\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|$)/i;
-    const actionsRegex = /###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)\s*[\r\n]+([\s\S]*?)$/i;
+    // Match based on header text only, ignore emojis
+    // Findings: Stop at next ### Decisions or ### *Actions header
+    // Decisions: Stop at next ### *Actions header
+    // Actions: Last section, capture everything until end
+    const findingsRegex = /###?\s*(?:📊\s*)?Findings\s*[\r\n]+([\s\S]*?)(?=###\s*(?:🧠\s*)?Decisions|###\s*(?:⚡\s*)?\S*\s*Actions|$)/i;
+    const decisionsRegex = /###?\s*(?:🧠\s*)?Decisions\s*[\r\n]+([\s\S]*?)(?=###\s*(?:⚡\s*)?\S*\s*Actions|$)/i;
+    const actionsRegex = /###?\s*(?:⚡\s*)?\S*\s*Actions\s*[\r\n]+([\s\S]*?)$/i;
 
     // Fallback for old format
     const oldFindingsRegex = /\*\*Section Findings:\*\*([\s\S]*?)(?=\*\*Section Decisions:\*\*|$)/;
@@ -944,7 +946,8 @@ function parseSections(text, skills = null) {
             }
 
             html += `<div class="section section-findings">
-                <div class="section-header">
+                <div class="section-header section-collapsible" onclick="this.parentElement.classList.toggle('collapsed')">
+                    <span class="section-toggle">▼</span>
                     <span>🔍 Findings</span>
                     ${skillBadgeHtml}
                 </div>
@@ -954,15 +957,21 @@ function parseSections(text, skills = null) {
 
         if (decisionsMatch) {
             const decisionsContent = renderDecisionsSection(decisionsMatch[1].trim());
-            html += `<div class="section section-decisions">
-                <div class="section-header">🧠 Decisions</div>
+            html += `<div class="section section-decisions collapsed">
+                <div class="section-header section-collapsible" onclick="this.parentElement.classList.toggle('collapsed')">
+                    <span class="section-toggle">▼</span>
+                    <span>🧠 Decisions</span>
+                </div>
                 <div class="section-body">${decisionsContent}</div>
             </div>`;
         }
 
         if (actionsMatch) {
-            html += `<div class="section section-actions">
-                <div class="section-header">🚀 Suggested Actions</div>
+            html += `<div class="section section-actions collapsed">
+                <div class="section-header section-collapsible" onclick="this.parentElement.classList.toggle('collapsed')">
+                    <span class="section-toggle">▼</span>
+                    <span>🚀 Suggested Actions</span>
+                </div>
                 <div class="section-body">${marked.parse(actionsMatch[1].trim())}</div>
             </div>`;
         }

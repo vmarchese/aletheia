@@ -958,8 +958,40 @@ textarea {
     color: var(--text-primary);
 }
 
+.section-header.section-collapsible {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.section-header.section-collapsible:hover {
+    background-color: var(--hover-bg);
+}
+
+.section-toggle {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    font-size: 0.7rem;
+}
+
+.section.collapsed .section-toggle {
+    transform: rotate(-90deg);
+}
+
 .section-body {
     padding: 2em;
+    max-height: 5000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.section.collapsed .section-body {
+    max-height: 0;
+    padding: 0 2em;
+}
+
+.section.collapsed .section-header {
+    border-bottom: none;
 }
 
 .section-body>*:last-child {

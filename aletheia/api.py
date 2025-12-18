@@ -159,7 +159,6 @@ async def get_session_metadata(session_id: str, password: Optional[str] = None, 
         data["total_cost"] = (input_tokens * config.cost_per_input_token) + (output_tokens * config.cost_per_output_token)
         
         return data
-        return data
     except Exception:
         # If we can't load metadata (e.g. password needed for encrypted session), 
         # fall back to list info which has limited data.
