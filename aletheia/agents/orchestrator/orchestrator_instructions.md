@@ -105,6 +105,9 @@ Pods, containers, logs, services, events, cluster health, thread dumps,...
 ### awsamp
 Metrics, CPU/memory, dashboards, latency, PromQL from AWS MAnaged Prometheus
 
+### sysdiag
+Remote server diagnostics
+
 ### log_file_data_fetcher
 Local log file reading or analysis.
 

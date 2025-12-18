@@ -47,6 +47,7 @@ from aletheia.encryption import decrypt_file, DecryptionError
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import KubernetesDataFetcher
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import LogFileDataFetcher
 from aletheia.agents.pcap_file_data_fetcher.pcap_file_data_fetcher import PCAPFileDataFetcher
+from aletheia.agents.sysdiag.sysdiag import SysDiagAgent
 from aletheia.agents.security.security import SecurityAgent
 from aletheia.agents.network.network import NetworkAgent
 from aletheia.agents.aws.aws import AWSAgent
@@ -157,6 +158,14 @@ def _build_plugins(config: Config,
                                           scratchpad=scratchpad)
     agent_instances.append(log_file_fetcher)
     plugins.append(log_file_fetcher.agent.as_tool())
+
+    sysdiag_agent = SysDiagAgent(name="sysdiag",
+                                 config=config,
+                                 description="SysDiag Agent for system diagnostics and troubleshooting.",
+                                 session=session,
+                                 scratchpad=scratchpad)
+    agent_instances.append(sysdiag_agent)
+    plugins.append(sysdiag_agent.agent.as_tool())
 
     pcap_file_fetcher = PCAPFileDataFetcher(name="pcap_file_data_fetcher",
                                             config=config,
