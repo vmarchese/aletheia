@@ -896,8 +896,8 @@ function parseSections(text, skills = null) {
     // Support both new format (### 📊 Findings) and legacy format (## Findings)
     // More flexible - handle any whitespace between emoji and text
     const findingsRegex = /###?\s*(?:📊\s*)?\s*Findings\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:🧠\s*)?\s*Decisions|###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|$)/i;
-    const decisionsRegex = /###?\s*(?:🧠\s*)?\s*Decisions\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|###?\s*(?:📊\s*)?\s*Findings|$)/i;
-    const actionsRegex = /###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)\s*[\r\n]+([\s\S]*?)(?=###?\s*\w+|$)/i;
+    const decisionsRegex = /###?\s*(?:🧠\s*)?\s*Decisions\s*[\r\n]+([\s\S]*?)(?=###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)|$)/i;
+    const actionsRegex = /###?\s*(?:⚡\s*)?\s*(?:Next Actions|Suggested Actions)\s*[\r\n]+([\s\S]*?)$/i;
 
     // Fallback for old format
     const oldFindingsRegex = /\*\*Section Findings:\*\*([\s\S]*?)(?=\*\*Section Decisions:\*\*|$)/;
@@ -1065,36 +1065,40 @@ function parseDecisionsSection(text) {
         checklist: []
     };
 
-    // Extract each field
-    const approachMatch = text.match(/\*\*Approach\*\*:\s*([^\n]+)/i);
+    // Extract each field - handle bulleted format (- **Field**: content)
+    const approachMatch = text.match(/[-\*•]\s*\*\*Approach\*\*:\s*(.*?)(?=\n[-\*•]\s*\*\*(?:Tools?\s+Used|Skills?\s+Loaded|Rationale|Checklist)|$)/is);
     if (approachMatch) decisions.approach = approachMatch[1].trim();
 
-    const toolsMatch = text.match(/\*\*Tools?\s+Used\*\*:\s*([^\n]+)/i);
+    const toolsMatch = text.match(/[-\*•]\s*\*\*Tools?\s+Used\*\*:\s*(.*?)(?=\n[-\*•]\s*\*\*(?:Skills?\s+Loaded|Rationale|Checklist)|$)/is);
     if (toolsMatch) {
         const toolsText = toolsMatch[1].trim();
-        // Parse tools - can be comma-separated or in backticks
+        // Parse tools - can be comma-separated, in backticks, or bulleted
         decisions.tools_used = toolsText
             .split(/[,\n]/)
-            .map(t => t.replace(/`/g, '').trim())
-            .filter(t => t.length > 0 && t !== '-' && t !== 'None');
+            .map(t => t.replace(/^[\s\-\*•]+/, '').replace(/`/g, '').trim())
+            .filter(t => t.length > 0 && t !== '-' && t.toLowerCase() !== 'none');
     }
 
-    const skillsMatch = text.match(/\*\*Skills?\s+Loaded\*\*:\s*([^\n(]+?)(?:\s*\(via|[\r\n]|$)/im);
+    const skillsMatch = text.match(/[-\*•]\s*\*\*Skills?\s+Loaded\*\*:\s*(.*?)(?=\n[-\*•]\s*\*\*(?:Rationale|Checklist)|$)/is);
     if (skillsMatch) {
         const skillsText = skillsMatch[1].trim();
         decisions.skills_loaded = skillsText
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s.length > 0 && s !== '-' && s !== '•' && s.toLowerCase() !== 'none');
+            .split(/[,\n]/)
+            .map(s => s.replace(/^[\s\-\*•]+/, '').trim())
+            .filter(s => {
+                if (s.length === 0) return false;
+                const cleaned = s.trim().toLowerCase();
+                return cleaned !== '' && cleaned !== 'none';
+            });
     }
 
-    const rationaleMatch = text.match(/\*\*Rationale\*\*:\s*([^\n]+)/i);
+    const rationaleMatch = text.match(/[-\*•]\s*\*\*Rationale\*\*:\s*(.*?)(?=\n[-\*•]\s*\*\*Checklist|$)/is);
     if (rationaleMatch) decisions.rationale = rationaleMatch[1].trim();
 
-    // Checklist might be in bullet list after Checklist header
-    const checklistMatch = text.match(/\*\*Checklist\*\*:\s*([\s\S]*?)(?=\n\*\*|$)/i);
+    // Checklist has sub-bullets, so capture everything after the header
+    const checklistMatch = text.match(/[-\*•]\s*\*\*Checklist\*\*:\s*([\s\S]*?)$/i);
     if (checklistMatch) {
-        const checklistText = checklistMatch[1];
+        const checklistText = checklistMatch[1].trim();
         decisions.checklist = checklistText
             .split('\n')
             .map(line => line.replace(/^[\s\-\*•]+/, '').trim())
@@ -1105,68 +1109,69 @@ function parseDecisionsSection(text) {
 }
 
 /**
- * Render Decisions section with consistent structure
+ * Render Decisions section as formatted markdown
  */
 function renderDecisionsSection(decisionsText) {
-    const decisions = parseDecisionsSection(decisionsText);
-
-    let html = '<div class="decisions-structured">';
-
-    if (decisions.approach) {
-        html += `
-            <div class="decision-field">
-                <div class="decision-label">Approach</div>
-                <div class="decision-value">${decisions.approach}</div>
-            </div>`;
-    }
-
-    if (decisions.tools_used.length > 0) {
-        const toolsList = decisions.tools_used.map(t => `<code>${t}</code>`).join(', ');
-        html += `
-            <div class="decision-field">
-                <div class="decision-label">Tools Used</div>
-                <div class="decision-value">${toolsList}</div>
-            </div>`;
-    }
-
-    if (decisions.skills_loaded.length > 0) {
-        const skillsList = decisions.skills_loaded.map(s => `<span class="skill-tag">${s}</span>`).join(' ');
-        html += `
-            <div class="decision-field">
-                <div class="decision-label">Skills Loaded</div>
-                <div class="decision-value">${skillsList}</div>
-            </div>`;
-    }
-
-    if (decisions.rationale) {
-        html += `
-            <div class="decision-field">
-                <div class="decision-label">Rationale</div>
-                <div class="decision-value">${decisions.rationale}</div>
-            </div>`;
-    }
-
-    if (decisions.checklist.length > 0) {
-        const checklistItems = decisions.checklist.map(item => `<li>${item}</li>`).join('');
-        html += `
-            <div class="decision-field">
-                <div class="decision-label">Checklist</div>
-                <div class="decision-value"><ul class="checklist">${checklistItems}</ul></div>
-            </div>`;
-    }
-
-    html += '</div>';
-    return html;
+    return marked.parse(decisionsText);
 }
 
 /**
  * Extract skill usage from agent response text
- * Looks for "Skills Loaded:" in the Decisions section
- * Returns array of skill names or null if no skills found
+ * Handles multiple formats:
+ * 1. **Skills Loaded:** \n - skill
+ * 2. - **Skills Loaded:** \n `skill`  
+ * 3. - **Skills Loaded**: skill (inline)
  */
 function extractSkillUsage(text) {
-    const decisions = parseDecisionsSection(text);
-    return decisions.skills_loaded.length > 0 ? decisions.skills_loaded : null;
+    console.log('[Skill Debug] Input text preview:', text.substring(0, 500));
+    
+    // Try all possible patterns for Skills Loaded
+    const patterns = [
+        // Block format: **Skills Loaded:** followed by bulleted items
+        /\*\*Skills?\s+Loaded\*\*:\s*\n((?:\s*[-\*•]\s*.+(?:\n|$))*)/i,
+        // Inline with bullet: - **Skills Loaded:** `skill`
+        /[-\*•]\s*\*\*Skills?\s+Loaded\*\*:\s*([^\n]+)/i,
+        // Bulleted header with content on next line: - **Skills Loaded:** \n `skill`
+        /[-\*•]\s*\*\*Skills?\s+Loaded\*\*:\s*\n\s*([^\n]+?)(?=\n[-\*•]\s*\*\*|$)/i,
+        // Without bullet: **Skills Loaded:** content
+        /\*\*Skills?\s+Loaded\*\*:\s*([^\n]+)/i,
+    ];
+
+    for (let i = 0; i < patterns.length; i++) {
+        const match = text.match(patterns[i]);
+        console.log(`[Skill Debug] Pattern ${i}:`, patterns[i], 'Match:', !!match);
+        
+        if (match) {
+            let skillsText = match[1].trim();
+            console.log(`[Skill Debug] Raw skills text:`, skillsText);
+            
+            let skills;
+            if (skillsText.includes('\n')) {
+                // Multi-line (bulleted format)
+                skills = skillsText
+                    .split('\n')
+                    .map(line => line.replace(/^[\s\-\*•]+/, '').replace(/[`]/g, '').trim())
+                    .filter(skill => skill.length > 0);
+            } else {
+                // Single line
+                skills = skillsText
+                    .replace(/[`]/g, '')
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(skill => skill.length > 0);
+            }
+            
+            // Filter out 'none'
+            skills = skills.filter(skill => skill.toLowerCase() !== 'none');
+            
+            console.log(`[Skill Debug] Final skills:`, skills);
+            
+            if (skills.length > 0) return skills;
+        }
+    }
+
+    console.log('[Skill Debug] No skills found');
+    return null;
 }
 
 function renderTimeline(timelineData, container) {
