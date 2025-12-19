@@ -811,9 +811,14 @@ function updateLastBotMessage(content) {
         const skills = extractSkillUsage(displayContent);
         console.log('[Skill Detection UPDATE] Skills found:', skills);
 
-        // Update content with skills
-        contentDiv.innerHTML = parseSections(displayContent, skills);
-        makeCodeBlocksCollapsible(contentDiv);
+        // Update content with skills - pass contentDiv for incremental updates
+        const result = parseSections(displayContent, skills, contentDiv);
+        if (result !== undefined) {
+            // Only update innerHTML if parseSections returned HTML (initial creation)
+            contentDiv.innerHTML = result;
+            makeCodeBlocksCollapsible(contentDiv);
+        }
+        // If result is undefined, parseSections updated the tabs in place
     } else {
         // Fallback for streaming partials (frontmatter closing might not be arrived yet)
         // or old format
@@ -827,8 +832,11 @@ function updateLastBotMessage(content) {
             const skills = extractSkillUsage(displayContent);
             console.log('[Skill Detection FALLBACK] Skills found:', skills);
 
-            contentDiv.innerHTML = parseSections(displayContent, skills);
-            makeCodeBlocksCollapsible(contentDiv);
+            const result = parseSections(displayContent, skills, contentDiv);
+            if (result !== undefined) {
+                contentDiv.innerHTML = result;
+                makeCodeBlocksCollapsible(contentDiv);
+            }
 
             // Update footer (only timestamp from frontmatter now)
 
@@ -890,7 +898,7 @@ function updateLastBotMessageUsage(usageData) {
     }
 }
 
-function parseSections(text, skills = null) {
+function parseSections(text, skills = null, contentDiv = null) {
     console.log('parseSections input length:', text.length);
     console.log('parseSections text preview:', text.substring(0, 200));
     // Regex to find the sections with markdown headers
@@ -920,6 +928,26 @@ function parseSections(text, skills = null) {
         decisionsMatch = text.match(oldDecisionsRegex);
         actionsMatch = text.match(oldActionsRegex);
     }
+
+    // If we have an existing contentDiv with tabs, update them incrementally
+    if (contentDiv) {
+        const existingTabs = contentDiv.querySelector('.section-tabs');
+        if (existingTabs && (findingsMatch || decisionsMatch || actionsMatch)) {
+            updateTabsContent(existingTabs, text, findingsMatch, decisionsMatch, actionsMatch, skills);
+            return; // Don't return HTML, just update in place
+        }
+
+        // If tabs don't exist yet but we've detected section headers, create the structure early
+        if (!existingTabs) {
+            const hasSectionHeader = text.match(/###?\s*(?:📊\s*)?Findings|###?\s*(?:🧠\s*)?Decisions|###?\s*(?:⚡\s*)?\S*\s*Actions/i);
+            if (hasSectionHeader) {
+                // Create initial tab structure even if content isn't complete
+                const initialHtml = createInitialTabStructure(text, findingsMatch, decisionsMatch, actionsMatch, skills);
+                contentDiv.innerHTML = initialHtml;
+                return; // Tab structure created, future updates will be incremental
+            }
+        }
+    }
     if (findingsMatch || decisionsMatch || actionsMatch) {
         let html = '';
 
@@ -937,45 +965,62 @@ function parseSections(text, skills = null) {
             }
         }
 
-        if (findingsMatch) {
-            // Create skill badge HTML if skills are provided
-            let skillBadgeHtml = '';
-            if (skills && skills.length > 0) {
-                const badgeText = skills.length === 1 ? '🎯 Skill' : `🎯 ${skills.length} Skills`;
-                const badgeTitle = skills.join(', ');
-                skillBadgeHtml = `<span class="skill-indicator" title="${badgeTitle}">${badgeText}</span>`;
-            }
+        // Create tabbed interface
+        const tabId = `tabs-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
-            html += `<div class="section section-findings">
-                <div class="section-header section-collapsible" onclick="this.parentElement.classList.toggle('collapsed')">
-                    <span class="section-toggle">▼</span>
-                    <span>🔍 Findings</span>
-                    ${skillBadgeHtml}
-                </div>
-                <div class="section-body">${marked.parse(findingsMatch[1].trim())}</div>
+        // Create skill badge HTML if skills are provided
+        let skillBadgeHtml = '';
+        if (skills && skills.length > 0) {
+            const badgeText = skills.length === 1 ? '🎯 Skill' : `🎯 ${skills.length} Skills`;
+            const badgeTitle = skills.join(', ');
+            skillBadgeHtml = `<span class="skill-indicator" title="${badgeTitle}">${badgeText}</span>`;
+        }
+
+        html += `<div class="section-tabs" data-tab-id="${tabId}">`;
+
+        // Tab navigation
+        html += `<div class="tab-nav">`;
+        if (findingsMatch) {
+            html += `<button class="tab-button active" data-tab="findings" onclick="switchTab('${tabId}', 'findings')">
+                🔍 Findings ${skillBadgeHtml}
+            </button>`;
+        }
+        if (decisionsMatch) {
+            html += `<button class="tab-button" data-tab="decisions" onclick="switchTab('${tabId}', 'decisions')">
+                🧠 Decisions
+            </button>`;
+        }
+        if (actionsMatch) {
+            html += `<button class="tab-button" data-tab="actions" onclick="switchTab('${tabId}', 'actions')">
+                🚀 Next Actions
+            </button>`;
+        }
+        html += `</div>`;
+
+        // Tab panels
+        html += `<div class="tab-content">`;
+
+        if (findingsMatch) {
+            html += `<div class="tab-panel active" data-panel="findings">
+                ${marked.parse(findingsMatch[1].trim())}
             </div>`;
         }
 
         if (decisionsMatch) {
             const decisionsContent = renderDecisionsSection(decisionsMatch[1].trim());
-            html += `<div class="section section-decisions collapsed">
-                <div class="section-header section-collapsible" onclick="this.parentElement.classList.toggle('collapsed')">
-                    <span class="section-toggle">▼</span>
-                    <span>🧠 Decisions</span>
-                </div>
-                <div class="section-body">${decisionsContent}</div>
+            html += `<div class="tab-panel" data-panel="decisions">
+                ${decisionsContent}
             </div>`;
         }
 
         if (actionsMatch) {
-            html += `<div class="section section-actions collapsed">
-                <div class="section-header section-collapsible" onclick="this.parentElement.classList.toggle('collapsed')">
-                    <span class="section-toggle">▼</span>
-                    <span>🚀 Suggested Actions</span>
-                </div>
-                <div class="section-body">${marked.parse(actionsMatch[1].trim())}</div>
+            html += `<div class="tab-panel" data-panel="actions">
+                ${marked.parse(actionsMatch[1].trim())}
             </div>`;
         }
+
+        html += `</div>`; // Close tab-content
+        html += `</div>`; // Close section-tabs
 
         console.log('Returning HTML length:', html.length);
         return html;
@@ -1244,4 +1289,218 @@ function updateSessionSidebar(session) {
 function scrollToBottom() {
 
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+/**
+ * Switch between tabs in a tabbed section
+ */
+function switchTab(tabId, tabName) {
+    const container = document.querySelector(`[data-tab-id="${tabId}"]`);
+    if (!container) return;
+
+    // Update tab buttons
+    const buttons = container.querySelectorAll('.tab-button');
+    buttons.forEach(btn => {
+        if (btn.dataset.tab === tabName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Update tab panels
+    const panels = container.querySelectorAll('.tab-panel');
+    panels.forEach(panel => {
+        if (panel.dataset.panel === tabName) {
+            panel.classList.add('active');
+        } else {
+            panel.classList.remove('active');
+        }
+    });
+}
+
+/**
+ * Create initial tab structure when section headers are first detected
+ */
+function createInitialTabStructure(text, findingsMatch, decisionsMatch, actionsMatch, skills) {
+    let html = '';
+
+    // Find intro text (before first section)
+    const firstIndex = Math.min(
+        findingsMatch ? findingsMatch.index : Infinity,
+        decisionsMatch ? decisionsMatch.index : Infinity,
+        actionsMatch ? actionsMatch.index : Infinity,
+        text.search(/###?\s*(?:📊\s*)?Findings|###?\s*(?:🧠\s*)?Decisions|###?\s*(?:⚡\s*)?\S*\s*Actions/i)
+    );
+
+    if (firstIndex > 0 && firstIndex !== Infinity) {
+        const intro = text.substring(0, firstIndex);
+        if (intro.trim()) {
+            html += `<div class="section section-intro">${marked.parse(intro)}</div>`;
+        }
+    }
+
+    // Detect which sections have headers (even if content isn't complete)
+    const hasFindings = text.match(/###?\s*(?:📊\s*)?Findings/i);
+    const hasDecisions = text.match(/###?\s*(?:🧠\s*)?Decisions/i);
+    const hasActions = text.match(/###?\s*(?:⚡\s*)?\S*\s*Actions/i);
+
+    const tabId = `tabs-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+    // Create skill badge HTML if skills are provided
+    let skillBadgeHtml = '';
+    if (skills && skills.length > 0) {
+        const badgeText = skills.length === 1 ? '🎯 Skill' : `🎯 ${skills.length} Skills`;
+        const badgeTitle = skills.join(', ');
+        skillBadgeHtml = `<span class="skill-indicator" title="${badgeTitle}">${badgeText}</span>`;
+    }
+
+    html += `<div class="section-tabs" data-tab-id="${tabId}">`;
+
+    // Tab navigation - create buttons for detected headers
+    html += `<div class="tab-nav">`;
+    if (hasFindings) {
+        html += `<button class="tab-button active" data-tab="findings" onclick="switchTab('${tabId}', 'findings')">
+            🔍 Findings ${skillBadgeHtml}
+        </button>`;
+    }
+    if (hasDecisions) {
+        html += `<button class="tab-button${!hasFindings ? ' active' : ''}" data-tab="decisions" onclick="switchTab('${tabId}', 'decisions')">
+            🧠 Decisions
+        </button>`;
+    }
+    if (hasActions) {
+        html += `<button class="tab-button${!hasFindings && !hasDecisions ? ' active' : ''}" data-tab="actions" onclick="switchTab('${tabId}', 'actions')">
+            🚀 Next Actions
+        </button>`;
+    }
+    html += `</div>`;
+
+    // Tab panels - create empty panels for now
+    html += `<div class="tab-content">`;
+
+    if (hasFindings) {
+        const content = findingsMatch ? marked.parse(findingsMatch[1].trim()) : '<div class="loading-state">Loading...</div>';
+        html += `<div class="tab-panel active" data-panel="findings">${content}</div>`;
+    }
+
+    if (hasDecisions) {
+        const content = decisionsMatch ? renderDecisionsSection(decisionsMatch[1].trim()) : '<div class="loading-state">Loading...</div>';
+        html += `<div class="tab-panel${!hasFindings ? ' active' : ''}" data-panel="decisions">${content}</div>`;
+    }
+
+    if (hasActions) {
+        const content = actionsMatch ? marked.parse(actionsMatch[1].trim()) : '<div class="loading-state">Loading...</div>';
+        html += `<div class="tab-panel${!hasFindings && !hasDecisions ? ' active' : ''}" data-panel="actions">${content}</div>`;
+    }
+
+    html += `</div>`; // Close tab-content
+    html += `</div>`; // Close section-tabs
+
+    return html;
+}
+
+/**
+ * Update existing tabs content incrementally without rebuilding structure
+ */
+function updateTabsContent(tabsContainer, fullText, findingsMatch, decisionsMatch, actionsMatch, skills) {
+    const tabNav = tabsContainer.querySelector('.tab-nav');
+    const tabContent = tabsContainer.querySelector('.tab-content');
+    const tabId = tabsContainer.dataset.tabId;
+
+    // Update skill badge if needed
+    if (skills && skills.length > 0) {
+        const findingsButton = tabsContainer.querySelector('[data-tab="findings"]');
+        if (findingsButton) {
+            let existingBadge = findingsButton.querySelector('.skill-indicator');
+            const badgeText = skills.length === 1 ? '🎯 Skill' : `🎯 ${skills.length} Skills`;
+            const badgeTitle = skills.join(', ');
+
+            if (!existingBadge) {
+                existingBadge = document.createElement('span');
+                existingBadge.className = 'skill-indicator';
+                findingsButton.appendChild(existingBadge);
+            }
+            existingBadge.textContent = badgeText;
+            existingBadge.title = badgeTitle;
+        }
+    }
+
+    // Update intro if it exists
+    const firstIndex = Math.min(
+        findingsMatch ? findingsMatch.index : Infinity,
+        decisionsMatch ? decisionsMatch.index : Infinity,
+        actionsMatch ? actionsMatch.index : Infinity
+    );
+
+    if (firstIndex > 0 && firstIndex !== Infinity) {
+        const intro = fullText.substring(0, firstIndex);
+        if (intro.trim()) {
+            let introDiv = tabsContainer.previousElementSibling;
+            if (!introDiv || !introDiv.classList.contains('section-intro')) {
+                introDiv = document.createElement('div');
+                introDiv.className = 'section section-intro';
+                tabsContainer.parentElement.insertBefore(introDiv, tabsContainer);
+            }
+            introDiv.innerHTML = marked.parse(intro);
+        }
+    }
+
+    // Helper to add missing tab button
+    function ensureTabButton(tabName, label, isFirst) {
+        let button = tabNav.querySelector(`[data-tab="${tabName}"]`);
+        if (!button) {
+            button = document.createElement('button');
+            button.className = 'tab-button' + (isFirst ? ' active' : '');
+            button.dataset.tab = tabName;
+            button.onclick = () => switchTab(tabId, tabName);
+            button.innerHTML = label;
+            tabNav.appendChild(button);
+        }
+        return button;
+    }
+
+    // Helper to add missing tab panel
+    function ensureTabPanel(tabName, isFirst) {
+        let panel = tabContent.querySelector(`[data-panel="${tabName}"]`);
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'tab-panel' + (isFirst ? ' active' : '');
+            panel.dataset.panel = tabName;
+            panel.innerHTML = '<div class="loading-state">Loading...</div>';
+            tabContent.appendChild(panel);
+        }
+        return panel;
+    }
+
+    // Check which tabs currently exist
+    const hasFindings = tabNav.querySelector('[data-tab="findings"]');
+    const hasDecisions = tabNav.querySelector('[data-tab="decisions"]');
+    const hasActions = tabNav.querySelector('[data-tab="actions"]');
+
+    // Add missing tabs as they're detected
+    if (findingsMatch) {
+        const isFirst = !hasFindings && !hasDecisions && !hasActions;
+        ensureTabButton('findings', '🔍 Findings', isFirst);
+        const panel = ensureTabPanel('findings', isFirst);
+        panel.innerHTML = marked.parse(findingsMatch[1].trim());
+        makeCodeBlocksCollapsible(panel);
+    }
+
+    if (decisionsMatch) {
+        const isFirst = !hasFindings && !hasDecisions && !hasActions;
+        ensureTabButton('decisions', '🧠 Decisions', isFirst);
+        const panel = ensureTabPanel('decisions', isFirst);
+        const decisionsContent = renderDecisionsSection(decisionsMatch[1].trim());
+        panel.innerHTML = decisionsContent;
+        makeCodeBlocksCollapsible(panel);
+    }
+
+    if (actionsMatch) {
+        const isFirst = !hasFindings && !hasDecisions && !hasActions;
+        ensureTabButton('actions', '🚀 Next Actions', isFirst);
+        const panel = ensureTabPanel('actions', isFirst);
+        panel.innerHTML = marked.parse(actionsMatch[1].trim());
+        makeCodeBlocksCollapsible(panel);
+    }
 }
