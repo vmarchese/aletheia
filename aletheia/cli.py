@@ -61,6 +61,7 @@ from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.config import Config
 from aletheia.commands import COMMANDS, AgentsInfo
+from aletheia.agents.model import AgentResponse, Timeline
 
 THINKING_MESSAGES = [
     "🕺 Galavanting...",
@@ -327,6 +328,7 @@ async def _start_investigation(session: Session) -> None:
                         async for response in entry.agent.run_stream(
                             messages=[ChatMessage(role="user", contents=[TextContent(text=user_input)])],
                             thread=thread,
+                            response_format=AgentResponse
                         ):
                             if response and str(response.text) != "":
                                 if not stop_event.is_set():
@@ -647,7 +649,7 @@ def session_timeline(
         message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        """)])
-        response = asyncio.run(timeline_agent.agent.run(message))
+        response = asyncio.run(timeline_agent.agent.run(message,response_format=Timeline))
         
         if response:
             try:
@@ -656,19 +658,24 @@ def session_timeline(
                 table = Table(title=f"Session Timeline: {session_id}")
                 table.add_column("Time", style="cyan", no_wrap=True)
                 table.add_column("Type", style="magenta")
-                table.add_column("Description", style="white")
+                table.add_column("Content", style="white")
 
-                for event in timeline_data:
+                # Handle both Timeline model format and legacy format
+                entries = timeline_data.get("entries", timeline_data) if isinstance(timeline_data, dict) else timeline_data
+
+                for event in entries:
                     timestamp = event.get("timestamp", "")
-                    event_type = event.get("type", "INFO")
-                    description = event.get("description", "")
-                    
-                    # Color code types if desired
-                    type_style = "green" if event_type == "ACTION" else \
-                                 "yellow" if event_type == "FINDING" else \
-                                 "blue" if event_type == "DECISION" else "white"
+                    # Support both 'entry_type' (TimelineEntry model) and 'type' (legacy)
+                    event_type = event.get("entry_type", event.get("type", "INFO"))
+                    # Support both 'content' (TimelineEntry model) and 'description' (legacy)
+                    content = event.get("content", event.get("description", ""))
 
-                    table.add_row(timestamp, f"[{type_style}]{event_type}[/{type_style}]", description)
+                    # Color code types
+                    type_style = "green" if event_type.upper() == "ACTION" else \
+                                 "yellow" if event_type.upper() == "OBSERVATION" else \
+                                 "blue" if event_type.upper() == "DECISION" else "white"
+
+                    table.add_row(timestamp, f"[{type_style}]{event_type}[/{type_style}]", content)
 
                 console.print(table)
                 

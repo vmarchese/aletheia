@@ -13,64 +13,6 @@ These additional instructions are **mandatory**:
 {{ custom_instructions }}
 {% endif %}
 
----
-
-## Output Schema
-
-All responses MUST adhere to the following JSON schema:
-
-```json
-{
-  "status": "success|partial|blocked",
-  "confidence": 0.0-1.0,
-  "findings": {
-    "summary": "Brief overview",
-    "details": ["Specific findings"],
-    "tool_outputs": "Complete unmodified outputs"
-  },
-  "decisions": {
-    "approach": "Method used",
-    "tools_used": ["tool1", "tool2"],
-    "skills_loaded": ["skill1"],
-    "rationale": "Why this approach",
-    "checklist": ["conceptual checklist steps"]
-  },
-  "next_actions": ["Suggested next steps"],
-  "errors": ["Any errors encountered"]
-}
-```
-
-**CRITICAL**: Treat this schema as conceptual only – you MUST output in **Markdown**, NOT JSON. Render your response in markdown, following the Response Structure below.
-
----
-
-## Response Structure
-
-You MUST structure each response with these EXACT Markdown sections, order and format:
-```
-### 📊 Findings
-
-- **Summary**: Concise overview of discoveries
-- **Data Collected**: List of tools used and core results obtained
-- **Tool Outputs**: Present the complete, unmodified outputs from all tools (NO truncation)
-- **Issues Detected**: Highlight any errors, anomalies, or data concerns
-- **Confidence**: Float value, e.g., 0.85 (see Confidence Scoring rubric)
-
-### 🧠 Decisions
-
-- **Approach**: Describe your methodology (direct tools vs skill-based)
-- **Tools Used**: List all tools/plugins called: `tool_name(params)`
-- **Skills Loaded**: If used: enumerate the skills NAMES loaded using `get_skill_instructions(path)`, NOT THE PATH
-- **Rationale**: Justify your approach over alternatives
-- **Checklist**: Specify the conceptual checklist steps executed in an indented bullet point list
-
-### ⚡ Next Actions
-
-- Prioritized list of suggested next steps
-- Include relevant tools or skills
-- Omit section if task concluded
-```
----
 
 ## Confidence Scoring
 
@@ -233,8 +175,7 @@ example:
 ## Critical Reminders
 
 - NEVER fabricate tool outputs/findings
-- CRITICAL: Output MUST be in **Markdown** format, never raw JSON
-- Output MUST follow the required structure (📊 Findings, 🧠 Decisions, ⚡ Next Actions)
+- Output MUST follow the required structure 
 - ALWAYS include a confidence score in your findings as a float
 - Do NOT omit or abbreviate any part of tool outputs
 - ALWAYS write your results to the scratchpad using `write_journal_entry("{{ agent_info.name }}", "<detailed findings>")`
@@ -243,37 +184,5 @@ example:
 - NEVER fabricate or execute Python scripts not named in skill instructions
 {% endif %}
 - Delegate complex or multi-step tasks to skills
-
-## Output Format
-
-Responses MUST conform to the following JSON-derivable structure (all fields required except `next_actions`, which is optional if the task is concluded):
-```json
-{
-  "status": "success|partial|blocked", // REQUIRED: Task status
-  "confidence": 0.0-1.0, // REQUIRED: Float, not string
-  "findings": { // REQUIRED, unless reporting error
-    "summary": "Brief overview", // string
-    "details": ["Specific findings"], // array
-    "tool_outputs": "Complete outputs" // string (may be large)
-  },
-  "decisions": { // REQUIRED
-    "approach": "Method used", // string
-    "tools_used": ["tool"], // array
-    "skills_loaded": ["skill"], // array (return just "NONE" if no skills were used, no additional text)
-    "rationale": "Why this approach", // string
-    "checklist": ["conceptual checklist steps"] // array
-  },
-  "next_actions": ["Suggested next steps"], // OPTIONAL if complete
-  "errors": ["Any errors encountered"] // array, empty if none
-}
-```
-
-Each required field and data type must adhere to this schema:
-- **status**: string, one of "success", "partial", or "blocked"
-- **confidence**: float from 0.0 to 1.0 (not string)
-- **findings**: object: "summary" (string), "details" (array of strings), "tool_outputs" (string)
-- **decisions**: object: "approach" (string), "tools_used" (array), "skills_loaded" (array), "rationale" (string), "checklist" (array)
-- **next_actions**: array of strings if provided, otherwise omit if task is finished
-- **errors**: array of strings, empty if no errors
-
-The specified Markdown output order must be observed: "### 📊 Findings", "### 🧠 Decisions", "### ⚡ Next Actions". Fulfill all required fields, use correct data types, and provide complete and accurate data—never omit or mistype required information.
+- In the "next_action" sections, try to suggest next action to solve the eventual problems found 
+- in the tool_outputs field of the finding section, report the tool output verbatim
