@@ -121,7 +121,7 @@ class BaseAgent(ABC):
             _tools.append(skillloader.get_skill_instructions)
             _tools.append(docker_plugin.sandbox_run)
 
-        client = LLMClient()
+        client = LLMClient(agent_name=self.name)            
 
         # loading custom instructions
         custom_instructions = self.load_custom_instructions()
@@ -151,7 +151,7 @@ class BaseAgent(ABC):
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
             middleware=[logging_agent_middleware, logging_function_middleware],
-            temperature=0.2
+            temperature=config.llm_temperature if config else 0.0
         )
 
     async def cleanup(self):

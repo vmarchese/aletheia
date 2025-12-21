@@ -87,6 +87,10 @@ class Config(BaseSettings):
         default="", description="Code analyzer to use (claude, copilot)"
     )
 
+    llm_temperature: float = Field(
+        default=0.2, ge=0.0, le=1.0, description="Default temperature for LLM responses"
+    )
+
     # =================================================================
     # Data Sources Configuration (flat)
     # =================================================================
