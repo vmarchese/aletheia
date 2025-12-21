@@ -5,6 +5,7 @@ import os
 from agent_framework.openai import OpenAIChatClient
 from agent_framework.azure import AzureOpenAIChatClient
 from azure.identity import AzureCliCredential
+from aletheia.utils.logging import log_debug
 try:
     import boto3
     BEDROCK_AVAILABLE = True
@@ -14,12 +15,26 @@ except ImportError:
 
 class LLMClient:
     """Selects and initializes the appropriate LLM client based on environment variables."""
-    def __init__(self):
+    def __init__(self, agent_name: str = None):
         self._client = None
         self.model = None
         self.provider = None
+        self.agent_name = agent_name
+
+        # First check for model override for agent
+        if self.agent_name:
+            if os.environ.get(f"ALETHEIA_{self.agent_name.upper()}_OPENAI_MODEL"):
+                self.model = os.environ.get(f"ALETHEIA_{self.agent_name.upper()}_OPENAI_MODEL")
+                self._client = OpenAIChatClient(
+                    api_key=os.environ.get(f"ALETHEIA_{self.agent_name.upper()}_OPENAI_API_KEY", "none"),
+                    base_url=os.environ.get(f"ALETHEIA_{self.agent_name.upper()}_OPENAI_ENDPOINT"),
+                    model_id=self.model,
+                )
+                log_debug(f"LLMClient: Using model override for agent {self.agent_name}: {self.model}")
+                self.provider = "openai"
+                return
         
-        # Check for Bedrock configuration first
+        # Then check for Bedrock
         endpoint = os.environ.get("ALETHEIA_OPENAI_ENDPOINT", "")
         if "bedrock" in endpoint and BEDROCK_AVAILABLE:
             from .bedrock_client import BedrockChatClient
@@ -27,6 +42,7 @@ class LLMClient:
             region = endpoint.split(".")[1] if "." in endpoint else "us-east-1"
             self._client = BedrockChatClient(model_id=self.model, region=region)
             self.provider = "bedrock"
+        # Then check for missing Azure OpenAI configuration and default to OpenAI
         elif os.environ.get("AZURE_OPENAI_ENDPOINT") is None:
             if os.environ.get("ALETHEIA_OPENAI_ENDPOINT") is not None:
                 api_key = os.environ.get("ALETHEIA_OPENAI_API_KEY", "none")
@@ -37,6 +53,7 @@ class LLMClient:
                     model_id=self.model,
                 )
                 self.provider = "openai"
+        # Finally, check for Azure OpenAI configuration
         else:
             self.model = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
             self._client = AzureOpenAIChatClient(credential=AzureCliCredential())
