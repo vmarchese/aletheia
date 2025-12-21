@@ -22,7 +22,6 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markdown import Markdown
-import yaml
 from rich.live import Live
 from rich.rule import Rule
 from rich.panel import Panel
@@ -318,10 +317,10 @@ async def _start_investigation(session: Session) -> None:
                     console.print(f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold cyan]🤖 Aletheia[/bold cyan]")
                     console.print("[cyan]" + "─" * 80 + "[/cyan]")
 
-                    buf = ""
+                    json_buffer = ""
                     current_agent_name = "Orchestrator" # Default
-                    header_printed = False
-                    
+                    parsed_response = None
+
                     with Live("", console=console, refresh_per_second=5) as live:
                         _ = asyncio.create_task(show_thinking_animation(live, stop_event))
 
@@ -334,42 +333,82 @@ async def _start_investigation(session: Session) -> None:
                                 if not stop_event.is_set():
                                     stop_event.set()
                                     await asyncio.sleep(0.1)  # Give animation time to stop
-                                    # Clear the live display
 
                                 full_response += str(response.text)
-                                buf += response.text
-                                
-                                # Try to parse frontmatter if not yet printed header with agent info
-                                display_text = buf
-                                if not header_printed:
-                                    if buf.startswith("---"):
-                                        parts = buf.split("---", 2)
-                                        if len(parts) >= 3:
-                                            # Frontmatter complete
-                                            try:
-                                                frontmatter = yaml.safe_load(parts[1])
-                                                if frontmatter and "agent" in frontmatter:
-                                                    current_agent_name = frontmatter["agent"]
-                                                    # Update live with a nice header
-                                                    agent_info = f"🤖 Aletheia (Agent: {current_agent_name})"
-                                                    if "timestamp" in frontmatter:
-                                                        agent_info += f" @ {frontmatter['timestamp']}"
-                                                    # We don't print here to avoid breaking live, we just update what we renders
-                                                    # Actually, let's treat frontmatter as metadata and only show content
-                                                    display_text = parts[2]
-                                                    # But we want to show the agent info. 
-                                                    # Let's prepend it as a Rule or similar in the Markdown
-                                                    display_text = f"**Agent:** {current_agent_name}\n\n" + display_text.lstrip()
-                                                    
-                                                    # Append usage info at the bottom - BUT frontmatter usage is removed.
-                                                    # We print real usage at the end of stream now.
-                                                    pass
-                                            except yaml.YAMLError:
-                                                pass
-                                    elif "AGENT:" in buf[:50]: # Fallback for old/partial
-                                         pass 
+                                json_buffer += response.text
 
-                                live.update(Markdown(safe_md(display_text)))
+                                # Try to parse as structured JSON
+                                try:
+                                    parsed_response = json.loads(json_buffer)
+                                    # Successfully parsed structured response
+                                    display_parts = []
+
+                                    # Agent and confidence
+                                    if "agent" in parsed_response:
+                                        current_agent_name = parsed_response["agent"]
+                                    if "confidence" in parsed_response:
+                                        confidence_pct = int(parsed_response["confidence"] * 100)
+                                        display_parts.append(f"**Agent:** {current_agent_name} | **Confidence:** {confidence_pct}%\n")
+                                    else:
+                                        display_parts.append(f"**Agent:** {current_agent_name}\n")
+
+                                    # Findings
+                                    if "findings" in parsed_response:
+                                        findings = parsed_response["findings"]
+                                        display_parts.append("\n## 🔍 Findings\n")
+                                        if "summary" in findings and findings["summary"]:
+                                            display_parts.append(f"**Summary:** {findings['summary']}\n\n")
+                                        if "details" in findings and findings["details"]:
+                                            display_parts.append(f"{findings['details']}\n\n")
+                                        if "tool_outputs" in findings and findings["tool_outputs"]:
+                                            display_parts.append(f"**Tool Outputs:**\n```\n{findings['tool_outputs']}\n```\n\n")
+                                        if "additional_output" in findings and findings["additional_output"]:
+                                            display_parts.append(f"**Additional Output:**\n{findings['additional_output']}\n\n")
+
+                                    # Decisions
+                                    if "decisions" in parsed_response:
+                                        decisions = parsed_response["decisions"]
+                                        display_parts.append("\n## 🎯 Decisions\n")
+                                        if "approach" in decisions and decisions["approach"]:
+                                            display_parts.append(f"**Approach:** {decisions['approach']}\n\n")
+                                        if "tools_used" in decisions and decisions["tools_used"]:
+                                            display_parts.append(f"**Tools Used:** {', '.join(decisions['tools_used'])}\n\n")
+                                        if "skills_loaded" in decisions and decisions["skills_loaded"]:
+                                            display_parts.append(f"**Skills Loaded:** {', '.join(decisions['skills_loaded'])}\n\n")
+                                        if "rationale" in decisions and decisions["rationale"]:
+                                            display_parts.append(f"**Rationale:** {decisions['rationale']}\n\n")
+                                        if "checklist" in decisions and decisions["checklist"]:
+                                            display_parts.append("**Checklist:**\n")
+                                            for item in decisions["checklist"]:
+                                                display_parts.append(f"- {item}\n")
+                                            display_parts.append("\n")
+                                        if "additional_output" in decisions and decisions["additional_output"]:
+                                            display_parts.append(f"**Additional Output:**\n{decisions['additional_output']}\n\n")
+
+                                    # Next Actions
+                                    if "next_actions" in parsed_response:
+                                        next_actions = parsed_response["next_actions"]
+                                        display_parts.append("\n## 📋 Next Actions\n")
+                                        if "steps" in next_actions and next_actions["steps"]:
+                                            for i, step in enumerate(next_actions["steps"], 1):
+                                                display_parts.append(f"{i}. {step}\n")
+                                            display_parts.append("\n")
+                                        if "additional_output" in next_actions and next_actions["additional_output"]:
+                                            display_parts.append(f"**Additional Output:**\n{next_actions['additional_output']}\n\n")
+
+                                    # Errors
+                                    if "errors" in parsed_response and parsed_response["errors"]:
+                                        display_parts.append("\n## ⚠️ Errors\n")
+                                        for error in parsed_response["errors"]:
+                                            display_parts.append(f"- {error}\n")
+                                        display_parts.append("\n")
+
+                                    display_text = "".join(display_parts)
+                                    live.update(Markdown(display_text))
+
+                                except json.JSONDecodeError:
+                                    # Not yet complete JSON, continue buffering
+                                    pass
 
                             if response and response.contents:
                                 for content in response.contents:
