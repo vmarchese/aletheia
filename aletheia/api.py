@@ -16,6 +16,7 @@ from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.cli import _build_plugins
+from aletheia.agents.model import AgentResponse
 from agent_framework import ChatMessage, TextContent, Role, UsageDetails, UsageContent
 
 from fastapi.staticfiles import StaticFiles
@@ -289,15 +290,55 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
         # For simplicity, let's assume single thread per session for now or store it on orchestrator.
         if not hasattr(orchestrator, 'current_thread'):
             orchestrator.current_thread = orchestrator.agent.get_new_thread()
-        
+
+        # Buffer for accumulating JSON text
+        json_buffer = ""
+        last_sent_data = {}
+
         async for response in orchestrator.agent.run_stream(
             messages=[ChatMessage(role="user", contents=[TextContent(text=message)])],
             thread=orchestrator.current_thread,
+            response_format=AgentResponse
         ):
             if response and str(response.text) != "":
-                await queue.put({"type": "text", "content": str(response.text)})
-            
-            
+                json_buffer += str(response.text)
+
+                # Try to parse complete or partial JSON object and send incremental structured events
+                try:
+                    # Attempt to parse the accumulated buffer as JSON
+                    parsed = json.loads(json_buffer)
+
+                    # Send incremental structured events only for fields that changed
+                    if "confidence" in parsed and parsed.get("confidence") != last_sent_data.get("confidence"):
+                        await queue.put({"type": "confidence", "content": parsed["confidence"]})
+                        last_sent_data["confidence"] = parsed["confidence"]
+
+                    if "agent" in parsed and parsed.get("agent") != last_sent_data.get("agent"):
+                        await queue.put({"type": "agent", "content": parsed["agent"]})
+                        last_sent_data["agent"] = parsed["agent"]
+
+                    if "findings" in parsed and parsed.get("findings") != last_sent_data.get("findings"):
+                        await queue.put({"type": "findings", "content": parsed["findings"]})
+                        last_sent_data["findings"] = parsed["findings"]
+
+                    if "decisions" in parsed and parsed.get("decisions") != last_sent_data.get("decisions"):
+                        await queue.put({"type": "decisions", "content": parsed["decisions"]})
+                        last_sent_data["decisions"] = parsed["decisions"]
+
+                    if "next_actions" in parsed and parsed.get("next_actions") != last_sent_data.get("next_actions"):
+                        await queue.put({"type": "next_actions", "content": parsed["next_actions"]})
+                        last_sent_data["next_actions"] = parsed["next_actions"]
+
+                    if "errors" in parsed and parsed.get("errors") and parsed.get("errors") != last_sent_data.get("errors"):
+                        await queue.put({"type": "errors", "content": parsed["errors"]})
+                        last_sent_data["errors"] = parsed["errors"]
+
+                except json.JSONDecodeError:
+                    # Not yet a complete JSON object, continue accumulating silently
+                    # Don't send text events to avoid showing raw JSON chunks
+                    pass
+
+
             if response and response.contents:
                 for content in response.contents:
                     if isinstance(content, UsageContent):
@@ -307,10 +348,10 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
                             input_tokens=orchestrator.completion_usage.input_token_count,
                             output_tokens=orchestrator.completion_usage.output_token_count
                         )
-            
+
         # Send final usage stats
         await queue.put({
-            "type": "usage", 
+            "type": "usage",
             "content": {
                 "input_tokens": orchestrator.completion_usage.input_token_count,
                 "output_tokens": orchestrator.completion_usage.output_token_count,

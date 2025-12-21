@@ -92,7 +92,7 @@ class AWSPlugin(BasePlugin):
         return None
 
     def aws_profiles(self) -> str:
-        """Get AWS profiles available in the system.
+        """Get AWS configured profiles
 
         Returns:
             JSON string with list of profile names

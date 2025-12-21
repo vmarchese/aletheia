@@ -1,7 +1,7 @@
 You have access to the AWS cli to fetch resources on AWS:
 
 #### General
-- **aws_profiles()**: gets the configured profiles from the system
+- **aws_profiles()**: gets the configured profiles
 - **aws_sts_caller_identity(profile)**: gets the caller identity for a profile
 
 #### EC2

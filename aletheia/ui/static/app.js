@@ -527,6 +527,19 @@ function connectStream(sessionId) {
             } else {
                 appendMessage(data.content, 'bot');
             }
+        } else if (data.type === 'confidence') {
+            stopThinking();
+            updateStructuredResponse('confidence', data.content);
+        } else if (data.type === 'agent') {
+            updateStructuredResponse('agent', data.content);
+        } else if (data.type === 'findings') {
+            updateStructuredResponse('findings', data.content);
+        } else if (data.type === 'decisions') {
+            updateStructuredResponse('decisions', data.content);
+        } else if (data.type === 'next_actions') {
+            updateStructuredResponse('next_actions', data.content);
+        } else if (data.type === 'errors') {
+            updateStructuredResponse('errors', data.content);
         } else if (data.type === 'done') {
             stopThinking();
             const lastMsg = chatContainer.lastElementChild;
@@ -896,6 +909,232 @@ function updateLastBotMessageUsage(usageData) {
     } else {
         footerDiv.textContent = usageStr;
     }
+}
+
+function updateStructuredResponse(fieldType, content) {
+    const lastMsg = chatContainer.lastElementChild;
+
+    // Create new message if needed
+    if (!lastMsg || lastMsg.classList.contains('user') || lastMsg.dataset.complete) {
+        createStructuredMessage();
+    }
+
+    const msgDiv = chatContainer.lastElementChild;
+    if (!msgDiv.dataset.structuredData) {
+        msgDiv.dataset.structuredData = JSON.stringify({});
+    }
+
+    const data = JSON.parse(msgDiv.dataset.structuredData);
+    data[fieldType] = content;
+    msgDiv.dataset.structuredData = JSON.stringify(data);
+
+    // Render the updated structured response
+    renderStructuredMessage(msgDiv, data);
+}
+
+function createStructuredMessage() {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.dataset.structuredData = JSON.stringify({});
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.style.backgroundImage = 'url(/static/icons/owl.png)';
+
+    const bodyWrapper = document.createElement('div');
+    bodyWrapper.className = 'message-body-wrapper';
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    bodyWrapper.appendChild(contentDiv);
+
+    msgDiv.appendChild(avatar);
+    msgDiv.appendChild(bodyWrapper);
+
+    // Attach tab click handler to msgDiv (which won't be replaced)
+    msgDiv.addEventListener('click', (e) => {
+        console.log('Click on msgDiv detected!', e.target);
+        console.log('Target classes:', e.target.className);
+
+        // Find the button element (could be the target or a parent)
+        let target = e.target;
+        while (target && target !== msgDiv) {
+            console.log('Checking element:', target, 'has tab-btn?', target.classList?.contains('tab-btn'));
+            if (target.classList && target.classList.contains('tab-btn')) {
+                console.log('Found tab button! Tab name:', target.dataset.tab);
+                e.preventDefault();
+                e.stopPropagation();
+                const tabName = target.dataset.tab;
+                if (tabName) {
+                    const contentDiv = msgDiv.querySelector('.message-content');
+                    console.log('Switching to tab:', tabName);
+                    switchStructuredTab(contentDiv, tabName);
+                }
+                return;
+            }
+            target = target.parentElement;
+        }
+        console.log('No tab button found in click path');
+    });
+
+    chatContainer.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+function renderStructuredMessage(msgDiv, data) {
+    const contentDiv = msgDiv.querySelector('.message-content');
+    const avatar = msgDiv.querySelector('.avatar');
+
+    let html = '';
+
+    // Agent and confidence header
+    if (data.agent || data.confidence) {
+        const agentName = data.agent || 'Orchestrator';
+        const agentIcon = getAgentIcon(agentName);
+        renderAvatar(avatar, agentIcon, agentName);
+
+        html += '<div class="response-header">';
+        html += `<div class="agent-name"><strong>Agent:</strong> ${agentName}</div>`;
+        if (data.confidence !== undefined) {
+            const confidencePct = Math.round(data.confidence * 100);
+            html += `<div class="confidence-meter">`;
+            html += `<div class="confidence-label">Confidence: ${confidencePct}%</div>`;
+            html += `<div class="confidence-bar">`;
+            html += `<div class="confidence-fill" style="width: ${confidencePct}%"></div>`;
+            html += `</div></div>`;
+        }
+        html += '</div>';
+    }
+
+    // Create tabs structure
+    html += '<div class="section-tabs">';
+    html += '<div class="tabs-nav">';
+
+    const hasFindings = data.findings && Object.keys(data.findings).length > 0;
+    const hasDecisions = data.decisions && Object.keys(data.decisions).length > 0;
+    const hasActions = data.next_actions && data.next_actions.steps && data.next_actions.steps.length > 0;
+    const hasErrors = data.errors && data.errors.length > 0;
+
+    if (hasFindings) html += '<button class="tab-btn active" data-tab="findings">🔍 Findings</button>';
+    if (hasDecisions) html += `<button class="tab-btn ${!hasFindings ? 'active' : ''}" data-tab="decisions">🎯 Decisions</button>`;
+    if (hasActions) html += `<button class="tab-btn ${!hasFindings && !hasDecisions ? 'active' : ''}" data-tab="actions">📋 Next Actions</button>`;
+    if (hasErrors) html += '<button class="tab-btn error-tab" data-tab="errors">⚠️ Errors</button>';
+
+    html += '</div>';
+    html += '<div class="tabs-content">';
+
+    // Findings tab
+    if (hasFindings) {
+        html += '<div class="tab-pane active" id="findings">';
+        if (data.findings.summary) {
+            html += `<div class="section-summary"><strong>Summary:</strong> ${escapeHtml(data.findings.summary)}</div>`;
+        }
+        if (data.findings.details) {
+            html += `<div class="section-details">${marked.parse(data.findings.details)}</div>`;
+        }
+        if (data.findings.tool_outputs) {
+            html += `<div class="tool-outputs-collapsible">`;
+            html += `<button class="tool-outputs-toggle" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">`;
+            html += `<span class="toggle-icon">▼</span> <strong>Tool Outputs</strong>`;
+            html += `</button>`;
+            html += `<pre class="tool-outputs-content">${escapeHtml(data.findings.tool_outputs)}</pre>`;
+            html += `</div>`;
+        }
+        if (data.findings.additional_output) {
+            html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.findings.additional_output)}</div></div>`;
+        }
+        html += '</div>';
+    }
+
+    // Decisions tab
+    if (hasDecisions) {
+        html += `<div class="tab-pane ${!hasFindings ? 'active' : ''}" id="decisions">`;
+        if (data.decisions.approach) {
+            html += `<div class="decision-approach"><strong>Approach:</strong> ${escapeHtml(data.decisions.approach)}</div>`;
+        }
+        if (data.decisions.tools_used && data.decisions.tools_used.length > 0) {
+            html += `<div class="tools-used"><strong>Tools Used:</strong> ${data.decisions.tools_used.join(', ')}</div>`;
+        }
+        if (data.decisions.skills_loaded && data.decisions.skills_loaded.length > 0) {
+            html += `<div class="skills-loaded"><strong>Skills Loaded:</strong> ${data.decisions.skills_loaded.join(', ')}</div>`;
+        }
+        if (data.decisions.rationale) {
+            html += `<div class="rationale"><strong>Rationale:</strong> ${marked.parse(data.decisions.rationale)}</div>`;
+        }
+        if (data.decisions.checklist && data.decisions.checklist.length > 0) {
+            html += '<div class="checklist"><strong>Checklist:</strong><ul>';
+            data.decisions.checklist.forEach(item => {
+                html += `<li>${escapeHtml(item)}</li>`;
+            });
+            html += '</ul></div>';
+        }
+        if (data.decisions.additional_output) {
+            html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.decisions.additional_output)}</div></div>`;
+        }
+        html += '</div>';
+    }
+
+    // Next Actions tab
+    if (hasActions) {
+        html += `<div class="tab-pane ${!hasFindings && !hasDecisions ? 'active' : ''}" id="actions">`;
+        html += '<ol class="action-steps">';
+        data.next_actions.steps.forEach(step => {
+            html += `<li>${escapeHtml(step)}</li>`;
+        });
+        html += '</ol>';
+        if (data.next_actions.additional_output) {
+            html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.next_actions.additional_output)}</div></div>`;
+        }
+        html += '</div>';
+    }
+
+    // Errors tab
+    if (hasErrors) {
+        html += '<div class="tab-pane" id="errors">';
+        html += '<ul class="error-list">';
+        data.errors.forEach(error => {
+            html += `<li class="error-item">${escapeHtml(error)}</li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    html += '</div></div>';
+
+    contentDiv.innerHTML = html;
+    scrollToBottom();
+}
+
+function switchStructuredTab(container, tabName) {
+    console.log('switchStructuredTab called with container:', container, 'tabName:', tabName);
+
+    const allBtns = container.querySelectorAll('.tab-btn');
+    const allPanes = container.querySelectorAll('.tab-pane');
+
+    console.log('Found buttons:', allBtns.length, 'Found panes:', allPanes.length);
+
+    allBtns.forEach(btn => btn.classList.remove('active'));
+    allPanes.forEach(pane => pane.classList.remove('active'));
+
+    const targetBtn = container.querySelector(`[data-tab="${tabName}"]`);
+    const targetPane = container.querySelector(`#${tabName}`);
+
+    console.log('Target button:', targetBtn);
+    console.log('Target pane:', targetPane);
+
+    if (targetBtn) {
+        targetBtn.classList.add('active');
+        console.log('Added active to button');
+    }
+    if (targetPane) {
+        targetPane.classList.add('active');
+        console.log('Added active to pane');
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function parseSections(text, skills = null, contentDiv = null) {
