@@ -16,7 +16,7 @@ from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.cli import _build_plugins
-from aletheia.agents.model import AgentResponse
+from aletheia.agents.model import AgentResponse, Timeline
 from agent_framework import ChatMessage, TextContent, Role, UsageDetails, UsageContent
 
 from fastapi.staticfiles import StaticFiles
@@ -215,16 +215,20 @@ async def get_session_timeline(session_id: str, password: Optional[str] = None, 
         message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        """)])
-        response = await timeline_agent.agent.run(message)
-        
+        response = await timeline_agent.agent.run(message, response_format=Timeline)
+
         # Parse JSON from response
         try:
             timeline_data = json.loads(str(response.text))
+            # If response is Timeline model format with 'entries' key, return that
+            # Otherwise assume it's a list of entries and wrap it
+            if isinstance(timeline_data, dict) and "entries" in timeline_data:
+                return {"timeline": timeline_data}
+            else:
+                return {"timeline": {"entries": timeline_data}}
         except json.JSONDecodeError:
             # Fallback if LLM returns text/markdown
-             timeline_data = [{"timestamp": "", "type": "INFO", "description": str(response.text)}]
-
-        return {"timeline": timeline_data}
+            return {"timeline": {"entries": [{"timestamp": "", "entry_type": "INFO", "content": str(response.text)}]}}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

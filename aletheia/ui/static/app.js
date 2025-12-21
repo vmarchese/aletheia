@@ -1469,23 +1469,34 @@ function extractSkillUsage(text) {
 }
 
 function renderTimeline(timelineData, container) {
-    if (!Array.isArray(timelineData) || timelineData.length === 0) {
+    // Handle Timeline model format (with 'entries' field) or legacy array format
+    let entries = timelineData;
+    if (timelineData && typeof timelineData === 'object' && timelineData.entries) {
+        entries = timelineData.entries;
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
         container.innerHTML = '<div class="loading-state">No timeline events found.</div>';
         return;
     }
 
     let html = '';
-    timelineData.forEach(event => {
-        const typeClass = `type-${event.type.toLowerCase()}`;
+    entries.forEach(event => {
+        // Support both 'entry_type' (TimelineEntry model) and 'type' (legacy)
+        const eventType = event.entry_type || event.type || 'INFO';
+        const typeClass = `type-${eventType.toLowerCase()}`;
+        // Support both 'content' (TimelineEntry model) and 'description' (legacy)
+        const content = event.content || event.description || '';
+
         html += `
             <div class="timeline-item ${typeClass}">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
                     <div class="timeline-header">
-                        <span class="timeline-type">${event.type}</span>
-                        <span class="timeline-timestamp">${event.timestamp}</span>
+                        <span class="timeline-type">${eventType}</span>
+                        <span class="timeline-timestamp">${event.timestamp || ''}</span>
                     </div>
-                    <div class="timeline-body">${marked.parse(event.description)}</div>
+                    <div class="timeline-body">${marked.parse(content)}</div>
                 </div>
             </div>
         `;

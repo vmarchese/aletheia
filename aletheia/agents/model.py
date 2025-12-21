@@ -31,3 +31,13 @@ class AgentResponse(BaseModel):
     decisions: Decisions  # Holds the decisions made by the agent
     next_actions: NextActions  # Holds the next actions to be taken by the agent
     errors: List[str] | None = None # Optional list of errors encountered
+
+class TimelineEntry(BaseModel):
+    """Holds a timeline entry for the troubleshooting session."""
+    timestamp: str # Timestamp of the entry
+    entry_type: str # Type of the entry (e.g., "observation", "action", "decision")
+    content: str # Content of the timeline entry
+
+class Timeline(BaseModel):
+    """Holds the timeline of the troubleshooting session."""
+    entries: List[TimelineEntry] # List of timeline entries
