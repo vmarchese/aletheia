@@ -322,8 +322,13 @@ async def run_agent_step(orchestrator: Orchestrator, message: str, queue: asynci
                         last_sent_data["agent"] = parsed["agent"]
 
                     if "findings" in parsed and parsed.get("findings") != last_sent_data.get("findings"):
-                        await queue.put({"type": "findings", "content": parsed["findings"]})
-                        last_sent_data["findings"] = parsed["findings"]
+                        # Ensure tool_outputs is properly serialized as a list of dicts
+                        findings_data = parsed["findings"]
+                        if isinstance(findings_data, dict) and "tool_outputs" in findings_data:
+                            # Already a dict from JSON parsing, should be fine
+                            pass
+                        await queue.put({"type": "findings", "content": findings_data})
+                        last_sent_data["findings"] = findings_data
 
                     if "decisions" in parsed and parsed.get("decisions") != last_sent_data.get("decisions"):
                         await queue.put({"type": "decisions", "content": parsed["decisions"]})

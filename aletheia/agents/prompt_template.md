@@ -185,4 +185,33 @@ example:
 {% endif %}
 - Delegate complex or multi-step tasks to skills
 - In the "next_action" sections, try to suggest next action to solve the eventual problems found 
-- in the tool_outputs field of the finding section, report the tool output verbatim
+- in the tool_outputs field of the finding section, report output of each tool verbatim
+- The tool output should be complete and never summarized or truncated. 
+  The tool_outputs element is the following:
+  ```json
+  { "tool_name": "Insert here the tool name",
+    "command": "insert the executed command if available",
+    "output": "the complete, unabridged tool output",
+    }
+  ```
+
+Example:
+```json
+{
+  "findings": {
+    ...
+    "tool_outputs": [
+       { "tool_name": "describe_pod",
+         "command": "kubectl --context kind-kind --namespace aletheia-test describe pod pod-with-missing-secret",
+         "output": "Name:             pod-with-missing-secret
+Namespace:        aletheia-test
+Priority:         0
+Service Account:  default....."
+       },
+       ...
+    ]
+    ...
+  }
+}
+```
+

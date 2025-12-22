@@ -1032,12 +1032,25 @@ function renderStructuredMessage(msgDiv, data) {
         if (data.findings.details) {
             html += `<div class="section-details">${marked.parse(data.findings.details)}</div>`;
         }
-        if (data.findings.tool_outputs) {
-            html += `<div class="tool-outputs-collapsible">`;
-            html += `<button class="tool-outputs-toggle" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">`;
-            html += `<span class="toggle-icon">▼</span> <strong>Tool Outputs</strong>`;
-            html += `</button>`;
-            html += `<pre class="tool-outputs-content">${escapeHtml(data.findings.tool_outputs)}</pre>`;
+        if (data.findings.tool_outputs && Array.isArray(data.findings.tool_outputs) && data.findings.tool_outputs.length > 0) {
+            html += `<div class="tool-outputs-container">`;
+            html += `<h4 class="tool-outputs-title">Tool Outputs (${data.findings.tool_outputs.length})</h4>`;
+            data.findings.tool_outputs.forEach((toolOutput, index) => {
+                const toolName = typeof toolOutput.tool_name === 'string' ? toolOutput.tool_name : String(toolOutput.tool_name || 'Unknown');
+                const command = typeof toolOutput.command === 'string' ? toolOutput.command : String(toolOutput.command || '');
+                const output = typeof toolOutput.output === 'string' ? toolOutput.output : String(toolOutput.output || '');
+
+                html += `<div class="tool-output-item">`;
+                html += `<button class="tool-output-toggle" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">`;
+                html += `<span class="toggle-icon">▼</span>`;
+                html += `<div class="tool-output-header-content">`;
+                html += `<strong>${index + 1}. ${escapeHtml(toolName)}</strong>`;
+                html += `<code class="tool-command">${escapeHtml(command)}</code>`;
+                html += `</div>`;
+                html += `</button>`;
+                html += `<pre class="tool-output-body collapsed">${escapeHtml(output)}</pre>`;
+                html += `</div>`;
+            });
             html += `</div>`;
         }
         if (data.findings.additional_output) {
@@ -1100,6 +1113,8 @@ function renderStructuredMessage(msgDiv, data) {
 
     html += '</div></div>';
 
+    // Clear existing content before setting new HTML to prevent duplication
+    contentDiv.innerHTML = '';
     contentDiv.innerHTML = html;
     scrollToBottom();
 }

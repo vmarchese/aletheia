@@ -23,9 +23,6 @@ from rich.table import Table
 from rich.prompt import Prompt
 from rich.markdown import Markdown
 from rich.live import Live
-from rich.rule import Rule
-from rich.panel import Panel
-from rich.text import Text
 
 
 from agent_framework import (
@@ -36,7 +33,7 @@ from agent_framework import (
     UsageDetails,
     Role,
 )
-from agent_framework.observability import setup_observability
+# from agent_framework.observability import setup_observability
 
 from aletheia import __version__
 from aletheia.agents.base import BaseAgent
@@ -56,11 +53,13 @@ from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.agents.code_analyzer.code_analyzer import CodeAnalyzer
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.utils import set_verbose_commands, enable_trace_logging
+from aletheia.utils.logging import log_debug
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.config import Config
 from aletheia.commands import COMMANDS, AgentsInfo
 from aletheia.agents.model import AgentResponse, Timeline
+
 
 THINKING_MESSAGES = [
     "🕺 Galavanting...",
@@ -132,7 +131,7 @@ def _build_plugins(config: Config,
                    session: Session,
                    scratchpad: Scratchpad) -> Tuple[List[BaseAgent], List[BaseAgent]]:
     """Build and return the list of available agent plugins.
-    
+
     Returns:
         Tuple of (tool_list, agent_instances) where tool_list contains the tools for orchestrator
         and agent_instances contains actual agent objects for cleanup.
@@ -175,15 +174,6 @@ def _build_plugins(config: Config,
     agent_instances.append(pcap_file_fetcher)
     plugins.append(pcap_file_fetcher.agent.as_tool())
 
-    """
-    prometheus_fetcher = PrometheusDataFetcher(name="prometheus_data_fetcher",
-                                               config=config,
-                                               description="Prometheus Data Fetcher Agent for collecting Prometheus metrics.",
-                                               session=session,
-                                               scratchpad=scratchpad)
-    agent_instances.append(prometheus_fetcher)
-    plugins.append(prometheus_fetcher.agent.as_tool())
-    """
     aws_amp_agent = AWSAMPAgent(name="aws_amp",
                                 config=config,
                                 description="AWS Managed Prometheus Agent for fetching AWS Managed Prometheus related data.",
@@ -276,7 +266,7 @@ async def _start_investigation(session: Session) -> None:
                                                 prompt_loader=prompt_loader,
                                                 session=session,
                                                 scratchpad=scratchpad)
-        
+
         entry = Orchestrator(
             name="orchestrator",
             description="Orchestrator agent managing the investigation workflow",
@@ -318,7 +308,7 @@ async def _start_investigation(session: Session) -> None:
                     console.print("[cyan]" + "─" * 80 + "[/cyan]")
 
                     json_buffer = ""
-                    current_agent_name = "Orchestrator" # Default
+                    current_agent_name = "Orchestrator"  # Default
                     parsed_response = None
 
                     with Live("", console=console, refresh_per_second=5) as live:
@@ -361,7 +351,11 @@ async def _start_investigation(session: Session) -> None:
                                         if "details" in findings and findings["details"]:
                                             display_parts.append(f"{findings['details']}\n\n")
                                         if "tool_outputs" in findings and findings["tool_outputs"]:
-                                            display_parts.append(f"**Tool Outputs:**\n```\n{findings['tool_outputs']}\n```\n\n")
+                                            display_parts.append("**Tool Outputs:**\n")
+                                            for tool_output in findings["tool_outputs"]:
+                                                display_parts.append(f"\n*{tool_output['tool_name']}*\n")
+                                                display_parts.append(f"Command: `{tool_output['command']}`\n")
+                                                display_parts.append(f"```\n{tool_output['output']}\n```\n")
                                         if "additional_output" in findings and findings["additional_output"]:
                                             display_parts.append(f"**Additional Output:**\n{findings['additional_output']}\n\n")
 
@@ -414,10 +408,11 @@ async def _start_investigation(session: Session) -> None:
                                 for content in response.contents:
                                     if isinstance(content, UsageContent):
                                         completion_usage += content.details
-                                        
+
+                    log_debug(f"complete response:{json_buffer}")
                     # Print final usage for this turn
                     if completion_usage:
-                         console.print(f"_[dim]Usage: {completion_usage.total_token_count} (In: {completion_usage.input_token_count}, Out: {completion_usage.output_token_count})[/dim]_", style="dim")
+                        console.print(f"_[dim]Usage: {completion_usage.total_token_count} (In: {completion_usage.input_token_count}, Out: {completion_usage.output_token_count})[/dim]_", style="dim")
 
                 finally:
                     if stop_event and not stop_event.is_set():
@@ -428,7 +423,7 @@ async def _start_investigation(session: Session) -> None:
                 await entry.cleanup()
             except Exception:
                 pass  # Ignore cleanup errors
-            
+
             # Clean up all sub-agents
             for agent in agent_instances:
                 try:
@@ -688,12 +683,12 @@ def session_timeline(
         message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        """)])
-        response = asyncio.run(timeline_agent.agent.run(message,response_format=Timeline))
-        
+        response = asyncio.run(timeline_agent.agent.run(message, response_format=Timeline))
+
         if response:
             try:
                 timeline_data = json.loads(str(response.text))
-                
+
                 table = Table(title=f"Session Timeline: {session_id}")
                 table.add_column("Time", style="cyan", no_wrap=True)
                 table.add_column("Type", style="magenta")
@@ -717,7 +712,7 @@ def session_timeline(
                     table.add_row(timestamp, f"[{type_style}]{event_type}[/{type_style}]", content)
 
                 console.print(table)
-                
+
             except json.JSONDecodeError:
                 console.print(f"\n{response.text}\n")
 
