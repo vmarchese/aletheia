@@ -184,16 +184,15 @@ example:
 - NEVER fabricate or execute Python scripts not named in skill instructions
 {% endif %}
 - Delegate complex or multi-step tasks to skills
-- In the "next_action" sections, try to suggest next action to solve the eventual problems found 
-- in the tool_outputs field of the finding section, report output of each tool verbatim
-- The tool output should be complete and never summarized or truncated. 
-  The tool_outputs element is the following:
-  ```json
-  { "tool_name": "Insert here the tool name",
-    "command": "insert the executed command if available",
-    "output": "the complete, unabridged tool output",
-    }
-  ```
+- In the "next_action" sections, try to suggest next actions to solve the eventual problems found 
+- In the tool_outputs section of findings, provide an array of entries in the following format **for every tool call, consistently include all three fields: tool_name, command (if available, otherwise empty string), and output (always complete and unabridged)**:
+```json
+{
+"tool_name": "Insert here the tool name",
+"command": "insert the executed command if available, else leave as an empty string",
+"output": "the complete, unabridged tool output"
+}
+```
 
 Example:
 ```json

@@ -1027,7 +1027,7 @@ function renderStructuredMessage(msgDiv, data) {
     if (hasFindings) {
         html += '<div class="tab-pane active" id="findings">';
         if (data.findings.summary) {
-            html += `<div class="section-summary"><strong>Summary:</strong> ${escapeHtml(data.findings.summary)}</div>`;
+            html += `<div class="section-summary"><strong>Summary:</strong> ${marked.parse(data.findings.summary)}</div>`;
         }
         if (data.findings.details) {
             html += `<div class="section-details">${marked.parse(data.findings.details)}</div>`;
@@ -1042,7 +1042,7 @@ function renderStructuredMessage(msgDiv, data) {
 
                 html += `<div class="tool-output-item">`;
                 html += `<button class="tool-output-toggle" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">`;
-                html += `<span class="toggle-icon">▼</span>`;
+                html += `<span class="toggle-icon">&#x25B6</span>`;
                 html += `<div class="tool-output-header-content">`;
                 html += `<strong>${index + 1}. ${escapeHtml(toolName)}</strong>`;
                 html += `<code class="tool-command">${escapeHtml(command)}</code>`;

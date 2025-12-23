@@ -1554,6 +1554,7 @@ body.unsafe-mode #info-session-status::before {
     color: var(--text-primary);
     margin-bottom: 1rem;
     padding: 0.5rem 0;
+    margin: 1rem;
 }
 
 .section-details table {
@@ -1646,7 +1647,7 @@ body.unsafe-mode #info-session-status::before {
 }
 
 .tool-output-toggle.collapsed .toggle-icon {
-    transform: rotate(-90deg);
+    transform: rotate(90deg);
 }
 
 .tool-output-header-content {
