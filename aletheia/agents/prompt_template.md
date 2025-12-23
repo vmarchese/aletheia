@@ -181,7 +181,7 @@ example:
 - ALWAYS write your results to the scratchpad using `write_journal_entry("{{ agent_info.name }}", "<detailed findings>")`
 {% if skills %}
 - ALWAYS strictly follow skill instructions if a skill is loaded
-- NEVER fabricate or execute Python scripts not named in skill instructions
+- **NEVER** fabricate or execute Python scripts not named in skill instructions as "<scriptname>.py"
 {% endif %}
 - Delegate complex or multi-step tasks to skills
 - In the "next_action" sections, try to suggest next actions to solve the eventual problems found 
@@ -191,26 +191,6 @@ example:
 "tool_name": "Insert here the tool name",
 "command": "insert the executed command if available, else leave as an empty string",
 "output": "the complete, unabridged tool output"
-}
-```
-
-Example:
-```json
-{
-  "findings": {
-    ...
-    "tool_outputs": [
-       { "tool_name": "describe_pod",
-         "command": "kubectl --context kind-kind --namespace aletheia-test describe pod pod-with-missing-secret",
-         "output": "Name:             pod-with-missing-secret
-Namespace:        aletheia-test
-Priority:         0
-Service Account:  default....."
-       },
-       ...
-    ]
-    ...
-  }
 }
 ```
 
