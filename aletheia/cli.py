@@ -17,6 +17,7 @@ import zipfile
 import tempfile
 import shutil
 
+from tomlkit import document
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -117,7 +118,13 @@ session_app = typer.Typer(
     help="Manage troubleshooting sessions",
 )
 
+knowledge_app = typer.Typer(
+    name="knowledge",
+    help="Manage knowledge base",
+)
+
 app.add_typer(session_app, name="session")
+app.add_typer(knowledge_app, name="knowledge")
 
 console = Console()
 
@@ -918,6 +925,78 @@ def serve(
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error starting server: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@knowledge_app.command("add")
+def knowledge_add(
+    id: str = typer.Argument(..., help="Document ID"),
+    path: str = typer.Argument(..., help="Markdown document path"),
+    metadata: Optional[str] = typer.Option(None, "--metadata", "-m", help="Metadata as JSON string"),
+) -> None:
+    """Add a document to the knowledge base."""
+    try:
+        from aletheia.knowledge import ChromaKnowledge
+        knowledge = ChromaKnowledge()
+
+        meta_dict = {}
+        if metadata:
+            try:
+                meta_dict = json.loads(metadata)
+            except json.JSONDecodeError as jde:
+                console.print(f"[red]Error parsing metadata JSON: {jde}[/red]")
+                raise typer.Exit(1)
+        meta_dict["source_path"] = path
+
+        log_debug(f"Adding document ID '{id}' from path '{path}' with metadata: {meta_dict}")
+        knowledge.add_document_from_markdown_file(id=id, file_path=path, metadata=meta_dict)
+        console.print(f"[green]Document '{id}' added to knowledge base successfully![/green]")
+    except Exception as e:
+        console.print(f"[red]Error adding document: {e}[/red]")
+        raise typer.Exit(1)
+
+@knowledge_app.command("delete")
+def knowledge_delete(
+    id: str = typer.Argument(..., help="Document ID to delete"),
+) -> None:
+    """Delete a document from the knowledge base."""
+    try:
+        from aletheia.knowledge import ChromaKnowledge
+        knowledge = ChromaKnowledge()
+
+        log_debug(f"Deleting document ID '{id}' from knowledge base")
+        knowledge.delete_document(id=id)
+        console.print(f"[green]Document '{id}' deleted from knowledge base successfully![/green]")
+    except Exception as e:
+        console.print(f"[red]Error deleting document: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@knowledge_app.command("list")
+def knowledge_list() -> None:
+    """List all documents in the knowledge base."""
+    try:
+        from aletheia.knowledge import ChromaKnowledge
+        knowledge = ChromaKnowledge()
+
+        ids, documents = knowledge.list_documents()
+        if not documents:
+            console.print("[yellow]No documents found in the knowledge base[/yellow]")
+            return
+
+        console.print()
+        table = Table(title="Knowledge Base Documents")
+        table.add_column("Document ID", style="magenta")
+        table.add_column("Content Preview", style="green")
+
+        for i, doc in enumerate(documents):
+            id = ids[i]
+            preview = (doc[:75] + "...") if len(doc) > 75 else doc
+            table.add_row(id, preview)
+
+        console.print(table)
+    except Exception as e:
+        console.print(f"[red]Error listing documents: {e}[/red]")
         raise typer.Exit(1)
 
 

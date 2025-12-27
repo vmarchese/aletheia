@@ -19,6 +19,7 @@ from aletheia.agents.skills import SkillLoader
 from aletheia.agents.client import LLMClient
 from aletheia.mcp.mcp import load_mcp_tools
 from aletheia.utils.logging import log_error
+from aletheia.knowledge import KnowledgePlugin, ChromaKnowledge
 
 
 class AgentInfo(ABC):
@@ -142,6 +143,10 @@ class BaseAgent(ABC):
 
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()
+
+        ## Adding knowledge
+        knowledge_plugin = KnowledgePlugin(ChromaKnowledge())
+        _tools.append(knowledge_plugin.query)
 
         self.agent = ChatAgent(
             name=self.name,
