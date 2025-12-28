@@ -19,7 +19,6 @@ import shutil
 
 from tomlkit import document
 import typer
-from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markdown import Markdown
@@ -60,6 +59,7 @@ from aletheia.agents.entrypoint import Orchestrator
 from aletheia.config import Config
 from aletheia.commands import COMMANDS, AgentsInfo
 from aletheia.agents.model import AgentResponse, Timeline
+from aletheia.console import get_console_wrapper
 
 
 THINKING_MESSAGES = [
@@ -126,7 +126,8 @@ knowledge_app = typer.Typer(
 app.add_typer(session_app, name="session")
 app.add_typer(knowledge_app, name="knowledge")
 
-console = Console()
+
+console = get_console_wrapper().get_console()
 
 THINKING_INTERVAL = 2.0  # seconds
 
@@ -918,6 +919,9 @@ def serve(
     """Start the Aletheia REST API server."""
     try:
         import uvicorn
+        get_console_wrapper().disable_output_functions()
+        console = get_console_wrapper().get_console()
+
         console.print(f"[green]Starting Aletheia API server on http://{host}:{port}[/green]")
         uvicorn.run("aletheia.api:app", host=host, port=port, reload=reload)
     except ImportError:

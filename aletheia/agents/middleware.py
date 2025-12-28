@@ -1,10 +1,45 @@
 """Middleware implementations for logging agent activities."""
+import json
 from typing import Awaitable, Callable
+from rich.syntax import Syntax
+
 from agent_framework import FunctionMiddleware, FunctionInvocationContext
 from agent_framework import AgentMiddleware, AgentRunContext
 from agent_framework import ChatMiddleware, ChatContext
 
 from aletheia.utils.logging import log_debug
+from aletheia.console import get_console_wrapper
+from aletheia.commands import COMMANDS
+
+
+class ConsoleFunctionMiddleware(FunctionMiddleware):
+    """Function middleware that logs function execution."""
+
+    async def process(
+        self,
+        context: FunctionInvocationContext,
+        next: Callable[[FunctionInvocationContext], Awaitable[None]],
+    ) -> None:
+        if get_console_wrapper().get_output_functions() is False:
+            await next(context)
+            return
+        console = get_console_wrapper().get_console()
+
+        # Pre-processing: Log before function execution
+        skipped_functions = ["write_journal_entry", 
+                             "read_scratchpad"]
+        for agent in COMMANDS["agents"].agents:
+            skipped_functions.append(agent.name)
+
+        if context.function.name not in skipped_functions:
+            arguments = ""
+            for arg_key, arg_value in context.arguments.model_dump().items():
+                arguments += f"{arg_key}=\"{arg_value}\" "
+
+            console.print(f" • [cyan][bold]{context.function.name}[/bold][/cyan]({arguments})")
+
+        # Continue to next middleware or function execution
+        await next(context)
 
 
 class LoggingFunctionMiddleware(FunctionMiddleware):

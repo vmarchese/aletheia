@@ -11,7 +11,7 @@ from agent_framework import ChatAgent, ToolProtocol
 
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session
-from aletheia.agents.middleware import LoggingAgentMiddleware, LoggingFunctionMiddleware
+from aletheia.agents.middleware import LoggingAgentMiddleware, LoggingFunctionMiddleware, ConsoleFunctionMiddleware
 from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
 from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
@@ -141,6 +141,7 @@ class BaseAgent(ABC):
                 template = Template(prompt_template)
                 rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client, custom_instructions=custom_instructions)
 
+        console_function_middleware = ConsoleFunctionMiddleware()
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()
 
@@ -155,7 +156,7 @@ class BaseAgent(ABC):
             chat_client=client.get_client(),
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
-            middleware=[logging_agent_middleware, logging_function_middleware],
+            middleware=[logging_agent_middleware, logging_function_middleware, console_function_middleware],
             temperature=config.llm_temperature if config else 0.0
         )
 
