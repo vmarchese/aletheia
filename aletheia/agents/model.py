@@ -16,6 +16,8 @@ class Findings(BaseModel):
     details: str  # Detailed information about the findings
     tool_outputs: List[ToolOutput]  # verbatim outputs from tools used during analysis
     additional_output: str | None = None  # Any additional output or observations
+    skill_used: str | None = None  # Skill used to derive the findings
+    knowledge_searched: bool = False  # Whether external knowledge was searched
 
 
 class Decisions(BaseModel):

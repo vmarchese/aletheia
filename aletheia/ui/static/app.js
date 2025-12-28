@@ -1053,6 +1053,20 @@ function renderStructuredMessage(msgDiv, data) {
             });
             html += `</div>`;
         }
+        if (data.findings.skill_used) {
+            html += `<div class="skill-used-container">`;
+            html += `<h4 class="skill-used-title">🎯 Skill Used</h4>`;
+            html += `<div class="skill-used-badge">${escapeHtml(data.findings.skill_used)}</div>`;
+            html += `</div>`;
+        }
+        if (data.findings.knowledge_searched) {
+            const searchedText = data.findings.knowledge_searched ? 'Yes' : 'No';
+            const searchedClass = data.findings.knowledge_searched ? 'knowledge-searched-yes' : 'knowledge-searched-no';
+            html += `<div class="knowledge-searched-container">`;
+            html += `<h4 class="knowledge-searched-title">📚 External Knowledge Searched</h4>`;
+            html += `<div class="knowledge-searched-badge ${searchedClass}">${searchedText}</div>`;
+            html += `</div>`;
+        }
         if (data.findings.additional_output) {
             html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.findings.additional_output)}</div></div>`;
         }
