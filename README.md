@@ -200,10 +200,124 @@ in which `instructions.md` could be:
 
 ```markdown
 - ALWAYS answer in rhymes
-- ALWAYS add a funny kubernetes koke at the end
+- ALWAYS add a funny kubernetes joke at the end
 ```
 
+## Knowledge
 
+Aletheia provides a knowledge base management system using ChromaDB for storing and retrieving troubleshooting documentation, runbooks, and other reference materials. The knowledge base uses vector embeddings for semantic search, allowing agents to find relevant information during investigations.
+
+### Knowledge Base Commands
+
+The `aletheia knowledge` command group provides tools to manage the knowledge base:
+
+#### Add a Document
+
+Add a Markdown document to the knowledge base:
+
+```bash
+aletheia knowledge add <document_id> <path_to_markdown_file> [--metadata <json>]
+```
+
+**Arguments:**
+- `document_id`: Unique identifier for the document
+- `path_to_markdown_file`: Path to the Markdown file to add
+
+**Options:**
+- `--metadata, -m`: Metadata as JSON string (e.g., `'{"category": "kubernetes", "priority": "high"}'`)
+
+**Example:**
+```bash
+aletheia knowledge add k8s-troubleshooting /path/to/k8s-guide.md --metadata '{"category":"kubernetes"}'
+```
+
+#### Delete a Document
+
+Remove a document from the knowledge base:
+
+```bash
+aletheia knowledge delete <document_id>
+```
+
+**Arguments:**
+- `document_id`: ID of the document to delete
+
+**Example:**
+```bash
+aletheia knowledge delete k8s-troubleshooting
+```
+
+#### List Documents
+
+View all documents stored in the knowledge base:
+
+```bash
+aletheia knowledge list
+```
+
+This displays a table with:
+- Document ID
+- Content preview (first 75 characters)
+
+**Example output:**
+```
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Document ID          ┃ Content Preview                      ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ k8s-troubleshooting  │ # Kubernetes Troubleshooting Guide... │
+└──────────────────────┴──────────────────────────────────────┘
+```
+
+### How Agents Use Knowledge
+
+During investigations, agents can query the knowledge base to:
+1. Find relevant troubleshooting procedures
+2. Retrieve reference documentation
+3. Look up best practices and common solutions
+4. Access runbooks and playbooks
+
+The knowledge base uses semantic search, so agents can find relevant documents even when exact keywords don't match.
+
+## In-Session Commands
+
+While in an active troubleshooting session, you can use these slash commands:
+
+#### /help
+Display all available in-session commands:
+```
+/help
+```
+
+#### /version
+Show the current version of Aletheia:
+```
+/version
+```
+
+#### /info
+Display information about the current Aletheia configuration, including:
+- LLM provider being used
+- LLM model being used
+```
+/info
+```
+
+#### /agents
+List all loaded agents with their descriptions:
+```
+/agents
+```
+
+#### /cost
+Display token usage and cost information for the current session:
+```
+/cost
+```
+
+This shows a detailed breakdown of:
+- Total tokens used (input and output)
+- Cost per token type (based on configuration)
+- Total estimated cost
 
 ## Skills (experimental)
 Aletheia's skills are complex orchestration of the Aletheia's agents' tools that can be defined in external yaml files.
