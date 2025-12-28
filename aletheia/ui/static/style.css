@@ -1542,7 +1542,7 @@ body.unsafe-mode #info-session-status::before {
 }
 
 .section-summary {
-    padding: 1rem;
+    padding: 1.5rem;
     background: var(--findings-bg);
     border-left: 4px solid var(--findings-border);
     border-radius: 4px;
@@ -1593,6 +1593,68 @@ body.unsafe-mode #info-session-status::before {
 }
 
 /* Container for all tool outputs */
+/* Skill Used Container */
+.skill-used-container {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--section-header-bg);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-color);
+}
+
+.skill-used-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.skill-used-badge {
+    display: inline-block;
+    padding: 0.4rem 0.8rem;
+    background: var(--primary-color);
+    color: var(--text-primary);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Knowledge Searched Container */
+.knowledge-searched-container {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--section-header-bg);
+    border-radius: 6px;
+    border-left: 3px solid var(--border-color);
+}
+
+.knowledge-searched-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.knowledge-searched-badge {
+    display: inline-block;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.knowledge-searched-yes {
+    background: #10b981;
+    color: white;
+}
+
+.knowledge-searched-no {
+    background: #6b7280;
+    color: white;
+}
+
 .tool-outputs-container {
     margin-top: 1rem;
     margin-bottom: 1rem;
@@ -1710,7 +1772,7 @@ body.unsafe-mode #info-session-status::before {
 
 .additional-output {
     margin-top: 1.5rem;
-    padding: 1rem;
+    padding: 1.5rem;
     background: var(--section-bg);
     border-left: 4px solid var(--accent-color);
     border-radius: 4px;
