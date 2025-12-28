@@ -1542,7 +1542,7 @@ body.unsafe-mode #info-session-status::before {
 }
 
 .section-summary {
-    padding: 1rem;
+    padding: 1.5rem;
     background: var(--findings-bg);
     border-left: 4px solid var(--findings-border);
     border-radius: 4px;
@@ -1614,7 +1614,7 @@ body.unsafe-mode #info-session-status::before {
     display: inline-block;
     padding: 0.4rem 0.8rem;
     background: var(--primary-color);
-    color: white;
+    color: var(--text-primary);
     border-radius: 4px;
     font-size: 0.85rem;
     font-weight: 500;
@@ -1772,7 +1772,7 @@ body.unsafe-mode #info-session-status::before {
 
 .additional-output {
     margin-top: 1.5rem;
-    padding: 1rem;
+    padding: 1.5rem;
     background: var(--section-bg);
     border-left: 4px solid var(--accent-color);
     border-radius: 4px;
