@@ -26,7 +26,8 @@ class LogFileDataFetcher(BaseAgent):
                  config: Config,
                  description: str,
                  session: Session,
-                 scratchpad: Scratchpad):
+                 scratchpad: Scratchpad,
+                 **kwargs):
 
         log_debug("LogFileDataFetcher::__init__:: called")
 
@@ -38,4 +39,5 @@ class LogFileDataFetcher(BaseAgent):
         super().__init__(name=name,
                          description=description,
                          session=session,
-                         plugins=plugins)
+                         plugins=plugins,
+                         **kwargs)

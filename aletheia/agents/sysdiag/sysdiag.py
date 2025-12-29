@@ -18,7 +18,8 @@ class SysDiagAgent(BaseAgent):
                  config: Config,
                  description: str,
                  session: Session,
-                 scratchpad: Scratchpad):
+                 scratchpad: Scratchpad,
+                 **kwargs):
 
         log_debug("SysDiagAgent::__init__:: called")
 
@@ -32,4 +33,5 @@ class SysDiagAgent(BaseAgent):
                          config=config,
                          description=description,
                          session=session,
-                         plugins=plugins)
+                         plugins=plugins,
+                         **kwargs)

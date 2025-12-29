@@ -17,7 +17,8 @@ class SecurityAgent(BaseAgent):
                  config: Config,
                  description: str,
                  session: Session,
-                 scratchpad: Scratchpad):
+                 scratchpad: Scratchpad,
+                 **kwargs):
 
         log_debug("SecurityAgent::__init__:: called")
         log_debug("SecurityAgent::__init__:: setup plugins")
@@ -29,4 +30,5 @@ class SecurityAgent(BaseAgent):
                          config=config,
                          description=description,
                          session=session,
-                         plugins=plugins)
+                         plugins=plugins,
+                         **kwargs)

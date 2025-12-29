@@ -17,7 +17,8 @@ class CodeAnalyzer(BaseAgent):
                  instructions: str,
                  description: str,
                  session: Session,
-                 scratchpad: Scratchpad):
+                 scratchpad: Scratchpad,
+                 **kwargs):
 
         log_debug("CodeAnalyzer::__init__:: called")
 
@@ -38,4 +39,5 @@ class CodeAnalyzer(BaseAgent):
                          description=description,
                          instructions=instructions,
                          session=session,
-                         plugins=plugins)
+                         plugins=plugins,
+                         **kwargs)

@@ -17,7 +17,8 @@ class AWSAgent(BaseAgent):
                  config: Config,
                  description: str,
                  session: Session,
-                 scratchpad: Scratchpad):
+                 scratchpad: Scratchpad,
+                 **kwargs):
 
         log_debug("AWSAgent::__init__:: called")
 
@@ -31,4 +32,5 @@ class AWSAgent(BaseAgent):
                          config=config,
                          description=description,
                          session=session,
-                         plugins=plugins)
+                         plugins=plugins,
+                         **kwargs)

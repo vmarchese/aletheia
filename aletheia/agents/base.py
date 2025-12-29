@@ -18,7 +18,7 @@ from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
 from aletheia.agents.skills import SkillLoader
 from aletheia.agents.client import LLMClient
 from aletheia.mcp.mcp import load_mcp_tools
-from aletheia.utils.logging import log_error
+from aletheia.utils.logging import log_error, log_debug
 from aletheia.knowledge import KnowledgePlugin, ChromaKnowledge
 
 
@@ -68,6 +68,7 @@ class BaseAgent(ABC):
         tools: Sequence[ToolProtocol] = None,
         render_instructions: bool = True,
         config=None,
+        additional_middleware: Sequence = None,
     ):
         """Initialize the base agent.
 
@@ -149,6 +150,20 @@ class BaseAgent(ABC):
         knowledge_plugin = KnowledgePlugin(ChromaKnowledge())
         _tools.append(knowledge_plugin.query)
 
+        # Build middleware list
+        middleware_list = [
+            logging_agent_middleware,
+            logging_function_middleware,
+            console_function_middleware
+        ]
+
+        # Add any additional middleware passed by caller
+        if additional_middleware:
+            log_debug(f"[BaseAgent::{self.name}] Adding additional middleware: {additional_middleware}")
+            middleware_list.extend(additional_middleware)
+
+        log_debug(f"[BaseAgent::{self.name}] Final middleware list: {middleware_list}")
+
         self.agent = ChatAgent(
             name=self.name,
             description=description,
@@ -156,7 +171,7 @@ class BaseAgent(ABC):
             chat_client=client.get_client(),
             tools=_tools,
             chat_store=ChatMessageStoreSingleton.get_instance,
-            middleware=[logging_agent_middleware, logging_function_middleware, console_function_middleware],
+            middleware=middleware_list,
             temperature=config.llm_temperature if config else 0.0
         )
 

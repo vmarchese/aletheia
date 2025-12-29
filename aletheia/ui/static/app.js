@@ -514,10 +514,20 @@ function connectStream(sessionId) {
 
     eventSource = new EventSource(url);
 
+    // Track function calls and timing
+    let functionCalls = [];
+    let streamStartTime = Date.now();
+
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        console.log('[SSE] Received event:', data);
 
-        if (data.type === 'text') {
+        if (data.type === 'function_call') {
+            // Add function call in real-time to the thinking bubble
+            console.log('[SSE] Function call event received:', data.content);
+            functionCalls.push(data.content);
+            addFunctionCallToThinking(data.content);
+        } else if (data.type === 'text') {
             stopThinking(); // Stop thinking on first token
 
             // Check if last message is bot, if so append, else create new
@@ -542,6 +552,16 @@ function connectStream(sessionId) {
             updateStructuredResponse('errors', data.content);
         } else if (data.type === 'done') {
             stopThinking();
+
+            // Calculate elapsed time and finalize the thinking bubble
+            const elapsedMs = Date.now() - streamStartTime;
+            const elapsedSeconds = (elapsedMs / 1000).toFixed(0);
+
+            finalizeThinkingBubble(elapsedSeconds);
+
+            // Reset for next interaction
+            functionCalls = [];
+
             const lastMsg = chatContainer.lastElementChild;
             if (lastMsg && lastMsg.classList.contains('bot')) {
                 lastMsg.dataset.complete = "true";
@@ -593,7 +613,7 @@ function updateSessionSidebar(session) {
 
 
 function showThinking() {
-    // Create a temporary thinking message
+    // Create a temporary thinking message with collapsible function calls container
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot thinking';
     msgDiv.id = 'thinking-bubble';
@@ -603,22 +623,50 @@ function showThinking() {
     avatar.textContent = '';
     avatar.style.backgroundImage = 'url(/static/icons/owl.png)';
 
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'message-content';
-    contentDiv.textContent = THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
+    // Create the collapsible container structure
+    const bodyWrapper = document.createElement('div');
+    bodyWrapper.className = 'message-body-wrapper';
+
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'function-calls-summary';
+    summaryDiv.id = 'function-calls-container';
+
+    const header = document.createElement('div');
+    header.className = 'function-calls-header';
+    header.innerHTML = `
+        <span class="collapse-icon">▼</span>
+        <span class="summary-text">${THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)]}</span>
+    `;
+
+    const content = document.createElement('div');
+    content.className = 'function-calls-content';
+    content.id = 'function-calls-list';
+
+    // Toggle collapse on header click
+    header.addEventListener('click', () => {
+        const isCollapsed = content.classList.contains('collapsed');
+        content.classList.toggle('collapsed');
+        header.querySelector('.collapse-icon').textContent = isCollapsed ? '▼' : '▶';
+    });
+
+    summaryDiv.appendChild(header);
+    summaryDiv.appendChild(content);
+    bodyWrapper.appendChild(summaryDiv);
 
     msgDiv.appendChild(avatar);
-    msgDiv.appendChild(contentDiv);
+    msgDiv.appendChild(bodyWrapper);
     chatContainer.appendChild(msgDiv);
     scrollToBottom();
 
-    // Cycle messages
+    // Cycle thinking messages
     if (thinkingInterval) clearInterval(thinkingInterval);
     thinkingInterval = setInterval(() => {
         const bubble = document.getElementById('thinking-bubble');
         if (bubble) {
-            const content = bubble.querySelector('.message-content');
-            content.textContent = THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
+            const summaryText = bubble.querySelector('.summary-text');
+            if (summaryText && !bubble.dataset.finalized) {
+                summaryText.textContent = THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
+            }
         }
     }, 2000);
 }
@@ -628,9 +676,49 @@ function stopThinking() {
         clearInterval(thinkingInterval);
         thinkingInterval = null;
     }
+    // Don't remove the bubble anymore - it will be converted to the function calls summary
+}
+
+function addFunctionCallToThinking(callData) {
+    const functionCallsList = document.getElementById('function-calls-list');
+    if (!functionCallsList) return;
+
+    const { function_name, arguments: args } = callData;
+    const argsFormatted = Object.entries(args || {})
+        .map(([key, value]) => `${key}="${value}"`)
+        .join(' ');
+
+    const callDiv = document.createElement('div');
+    callDiv.className = 'function-call-item';
+    callDiv.textContent = `- ${function_name}(${argsFormatted})`;
+    functionCallsList.appendChild(callDiv);
+
+    scrollToBottom();
+}
+
+function finalizeThinkingBubble(elapsedSeconds) {
     const bubble = document.getElementById('thinking-bubble');
-    if (bubble) {
-        bubble.remove();
+    if (!bubble) return;
+
+    // Mark as finalized so the thinking message doesn't change anymore
+    bubble.dataset.finalized = 'true';
+    bubble.classList.remove('thinking');
+
+    // Update the summary text to show elapsed time
+    const summaryText = bubble.querySelector('.summary-text');
+    if (summaryText) {
+        summaryText.textContent = `elaborated for ${elapsedSeconds}s`;
+    }
+
+    // Remove both IDs so they won't be found again in subsequent interactions
+    bubble.removeAttribute('id');
+    const functionCallsList = bubble.querySelector('#function-calls-list');
+    if (functionCallsList) {
+        functionCallsList.removeAttribute('id');
+    }
+    const container = bubble.querySelector('#function-calls-container');
+    if (container) {
+        container.removeAttribute('id');
     }
 }
 
@@ -912,15 +1000,33 @@ function updateLastBotMessageUsage(usageData) {
 }
 
 function updateStructuredResponse(fieldType, content) {
+    console.log('[updateStructuredResponse] Called with fieldType:', fieldType, 'content:', content);
     const lastMsg = chatContainer.lastElementChild;
 
-    // Create new message if needed
-    if (!lastMsg || lastMsg.classList.contains('user') || lastMsg.dataset.complete) {
+    // Create new message if needed - check if last message is a proper bot message with structured data
+    // Also exclude thinking bubble which has ID 'thinking-bubble'
+    const needsNewMessage = !lastMsg ||
+                            lastMsg.classList.contains('user') ||
+                            lastMsg.dataset.complete ||
+                            !lastMsg.classList.contains('bot') ||
+                            lastMsg.classList.contains('function-call-notification') ||
+                            lastMsg.id === 'thinking-bubble';
+
+    if (needsNewMessage) {
+        console.log('[updateStructuredResponse] Creating new structured message, reason:', {
+            noLastMsg: !lastMsg,
+            isUser: lastMsg?.classList.contains('user'),
+            isComplete: lastMsg?.dataset.complete,
+            notBot: lastMsg && !lastMsg.classList.contains('bot'),
+            isFunctionCall: lastMsg?.classList.contains('function-call-notification'),
+            isThinking: lastMsg?.id === 'thinking-bubble'
+        });
         createStructuredMessage();
     }
 
     const msgDiv = chatContainer.lastElementChild;
     if (!msgDiv.dataset.structuredData) {
+        console.log('[updateStructuredResponse] Message has no structuredData, initializing');
         msgDiv.dataset.structuredData = JSON.stringify({});
     }
 
@@ -928,8 +1034,11 @@ function updateStructuredResponse(fieldType, content) {
     data[fieldType] = content;
     msgDiv.dataset.structuredData = JSON.stringify(data);
 
+    console.log('[updateStructuredResponse] Updated data:', data);
+
     // Render the updated structured response
     renderStructuredMessage(msgDiv, data);
+    console.log('[updateStructuredResponse] Rendered structured message');
 }
 
 function createStructuredMessage() {
@@ -982,8 +1091,14 @@ function createStructuredMessage() {
 }
 
 function renderStructuredMessage(msgDiv, data) {
+    console.log('[renderStructuredMessage] Called with data:', data);
     const contentDiv = msgDiv.querySelector('.message-content');
     const avatar = msgDiv.querySelector('.avatar');
+
+    if (!contentDiv) {
+        console.error('[renderStructuredMessage] No .message-content found in msgDiv:', msgDiv);
+        return;
+    }
 
     let html = '';
 
@@ -991,7 +1106,11 @@ function renderStructuredMessage(msgDiv, data) {
     if (data.agent || data.confidence) {
         const agentName = data.agent || 'Orchestrator';
         const agentIcon = getAgentIcon(agentName);
-        renderAvatar(avatar, agentIcon, agentName);
+        if (avatar) {
+            renderAvatar(avatar, agentIcon, agentName);
+        } else {
+            console.warn('[renderStructuredMessage] No avatar element found, skipping avatar render');
+        }
 
         html += '<div class="response-header">';
         html += `<div class="agent-name"><strong>Agent:</strong> ${agentName}</div>`;
@@ -1129,7 +1248,10 @@ function renderStructuredMessage(msgDiv, data) {
 
     // Clear existing content before setting new HTML to prevent duplication
     contentDiv.innerHTML = '';
+    console.log('[renderStructuredMessage] Setting HTML, length:', html.length);
+    console.log('[renderStructuredMessage] HTML preview:', html.substring(0, 200));
     contentDiv.innerHTML = html;
+    console.log('[renderStructuredMessage] HTML set successfully, contentDiv.innerHTML length:', contentDiv.innerHTML.length);
     scrollToBottom();
 }
 
@@ -1569,6 +1691,10 @@ function scrollToBottom() {
 
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
+
+/**
+ * Display a collapsible summary of function calls
+ */
 
 /**
  * Switch between tabs in a tabbed section
