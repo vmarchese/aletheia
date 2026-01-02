@@ -25,7 +25,8 @@ class KubernetesDataFetcher(BaseAgent):
                  config: Config,
                  description: str,
                  session: Session,
-                 scratchpad: Scratchpad):
+                 scratchpad: Scratchpad,
+                 **kwargs):
 
         log_debug("KubernetesDataFetcher::__init__:: called")
 
@@ -38,4 +39,5 @@ class KubernetesDataFetcher(BaseAgent):
                          config=config,
                          description=description,
                          session=session,
-                         plugins=plugins)
+                         plugins=plugins,
+                         **kwargs)

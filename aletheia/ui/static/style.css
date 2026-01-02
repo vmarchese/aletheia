@@ -1820,3 +1820,55 @@ body.unsafe-mode #info-session-status::before {
     border-radius: 4px;
     color: var(--text-primary);
 }
+
+/* ============================================
+   Function Calls Summary (Collapsible)
+   ============================================ */
+
+.function-calls-summary {
+    margin: 0.75rem 0;
+    font-family: var(--font-mono);
+}
+
+.function-calls-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.function-calls-header:hover {
+    color: var(--text-primary);
+}
+
+.collapse-icon {
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.summary-text {
+    color: var(--text-secondary);
+}
+
+.function-calls-content {
+    max-height: 500px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    padding-left: 1.25rem;
+}
+
+.function-calls-content.collapsed {
+    max-height: 0;
+}
+
+.function-call-item {
+    padding: 0.25rem 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.4;
+}

@@ -19,7 +19,6 @@ import shutil
 
 from tomlkit import document
 import typer
-from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markdown import Markdown
@@ -60,6 +59,7 @@ from aletheia.agents.entrypoint import Orchestrator
 from aletheia.config import Config
 from aletheia.commands import COMMANDS, AgentsInfo
 from aletheia.agents.model import AgentResponse, Timeline
+from aletheia.console import get_console_wrapper
 
 
 THINKING_MESSAGES = [
@@ -126,7 +126,8 @@ knowledge_app = typer.Typer(
 app.add_typer(session_app, name="session")
 app.add_typer(knowledge_app, name="knowledge")
 
-console = Console()
+
+console = get_console_wrapper().get_console()
 
 THINKING_INTERVAL = 2.0  # seconds
 
@@ -136,8 +137,12 @@ THINKING_INTERVAL = 2.0  # seconds
 def _build_plugins(config: Config,
                    prompt_loader: Loader,
                    session: Session,
-                   scratchpad: Scratchpad) -> Tuple[List[BaseAgent], List[BaseAgent]]:
+                   scratchpad: Scratchpad,
+                   additional_middleware=None) -> Tuple[List[BaseAgent], List[BaseAgent]]:
     """Build and return the list of available agent plugins.
+
+    Args:
+        additional_middleware: Optional middleware to add to all agents
 
     Returns:
         Tuple of (tool_list, agent_instances) where tool_list contains the tools for orchestrator
@@ -153,7 +158,8 @@ def _build_plugins(config: Config,
                                                config=config,
                                                description="Kubernetes Data Fetcher Agent for collecting Kubernetes logs and pod information.",
                                                session=session,
-                                               scratchpad=scratchpad)
+                                               scratchpad=scratchpad,
+                                               additional_middleware=additional_middleware)
     agent_instances.append(kubernetes_fetcher)
     plugins.append(kubernetes_fetcher.agent.as_tool())
 
@@ -161,7 +167,8 @@ def _build_plugins(config: Config,
                                           config=config,
                                           description="Log File Data Fetcher Agent for collecting logs from log files.",
                                           session=session,
-                                          scratchpad=scratchpad)
+                                          scratchpad=scratchpad,
+                                          additional_middleware=additional_middleware)
     agent_instances.append(log_file_fetcher)
     plugins.append(log_file_fetcher.agent.as_tool())
 
@@ -169,7 +176,8 @@ def _build_plugins(config: Config,
                                  config=config,
                                  description="SysDiag Agent for system diagnostics and troubleshooting.",
                                  session=session,
-                                 scratchpad=scratchpad)
+                                 scratchpad=scratchpad,
+                                 additional_middleware=additional_middleware)
     agent_instances.append(sysdiag_agent)
     plugins.append(sysdiag_agent.agent.as_tool())
 
@@ -177,7 +185,8 @@ def _build_plugins(config: Config,
                                             config=config,
                                             description="PCAP File Data Fetcher Agent for collecting packets from PCAP files.",
                                             session=session,
-                                            scratchpad=scratchpad)
+                                            scratchpad=scratchpad,
+                                            additional_middleware=additional_middleware)
     agent_instances.append(pcap_file_fetcher)
     plugins.append(pcap_file_fetcher.agent.as_tool())
 
@@ -185,7 +194,8 @@ def _build_plugins(config: Config,
                                 config=config,
                                 description="AWS Managed Prometheus Agent for fetching AWS Managed Prometheus related data.",
                                 session=session,
-                                scratchpad=scratchpad)
+                                scratchpad=scratchpad,
+                                additional_middleware=additional_middleware)
     agent_instances.append(aws_amp_agent)
     plugins.append(aws_amp_agent.agent.as_tool())
 
@@ -193,7 +203,8 @@ def _build_plugins(config: Config,
                          config=config,
                          description="AWS Agent for fetching AWS related data using AWS CLI.",
                          session=session,
-                         scratchpad=scratchpad)
+                         scratchpad=scratchpad,
+                         additional_middleware=additional_middleware)
     agent_instances.append(aws_agent)
     plugins.append(aws_agent.agent.as_tool())
 
@@ -201,7 +212,8 @@ def _build_plugins(config: Config,
                              config=config,
                              description="Azure Agent for fetching Azure related data using Azure CLI.",
                              session=session,
-                             scratchpad=scratchpad)
+                             scratchpad=scratchpad,
+                             additional_middleware=additional_middleware)
     agent_instances.append(azure_agent)
     plugins.append(azure_agent.agent.as_tool())
 
@@ -209,7 +221,8 @@ def _build_plugins(config: Config,
                                  config=config,
                                  description="Network Agent for fetching TCP Network related data.",
                                  session=session,
-                                 scratchpad=scratchpad)
+                                 scratchpad=scratchpad,
+                                 additional_middleware=additional_middleware)
     agent_instances.append(network_agent)
     plugins.append(network_agent.agent.as_tool())
 
@@ -217,7 +230,8 @@ def _build_plugins(config: Config,
                                    config=config,
                                    description="Security Agent for performing security testing and analysis.",
                                    session=session,
-                                   scratchpad=scratchpad)
+                                   scratchpad=scratchpad,
+                                   additional_middleware=additional_middleware)
     plugins.append(security_agent.agent.as_tool())
 
     if config.code_analyzer is not None and config.code_analyzer.strip() != "":
@@ -226,7 +240,8 @@ def _build_plugins(config: Config,
                                      description="Claude Code Analyzer Agent for analyzing code repositories using Claude.",
                                      instructions=prompt_loader.load("code_analyzer", "instructions", prefix=config.code_analyzer.lower()),
                                      session=session,
-                                     scratchpad=scratchpad)
+                                     scratchpad=scratchpad,
+                                     additional_middleware=additional_middleware)
         agent_instances.append(code_analyzer)
         plugins.append(code_analyzer.agent.as_tool())
 
@@ -918,6 +933,9 @@ def serve(
     """Start the Aletheia REST API server."""
     try:
         import uvicorn
+        get_console_wrapper().disable_output_functions()
+        console = get_console_wrapper().get_console()
+
         console.print(f"[green]Starting Aletheia API server on http://{host}:{port}[/green]")
         uvicorn.run("aletheia.api:app", host=host, port=port, reload=reload)
     except ImportError:

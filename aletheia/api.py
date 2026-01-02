@@ -172,7 +172,13 @@ async def get_session_metadata(session_id: str, password: Optional[str] = None, 
 async def delete_session(session_id: str):
     """Delete a session."""
     try:
-        # We don't need password to delete the folder? 
+        # Clear from active investigations cache
+        if session_id in active_investigations:
+            del active_investigations[session_id]
+        if session_id in investigation_queues:
+            del investigation_queues[session_id]
+
+        # We don't need password to delete the folder?
         # Session.delete() just removes the folder.
         # But we should probably verify it exists.
         session = Session(session_id=session_id) # Don't need resume/password to delete path
@@ -180,6 +186,17 @@ async def delete_session(session_id: str):
         return {"status": "success", "message": f"Session {session_id} deleted"}
     except SessionNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/sessions/{session_id}/reset")
+async def reset_session_cache(session_id: str):
+    """Reset the cached orchestrator for a session (for testing)."""
+    try:
+        if session_id in active_investigations:
+            del active_investigations[session_id]
+            print(f"[DEBUG API] Cleared cached orchestrator for session {session_id}")
+        return {"status": "success", "message": f"Session {session_id} cache cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -248,21 +265,35 @@ async def get_session_scratchpad(session_id: str, password: Optional[str] = None
 
 # --- Investigation / Chat ---
 
-async def get_or_create_orchestrator(session_id: str, password: Optional[str], unsafe: bool) -> Orchestrator:
+async def get_or_create_orchestrator(session_id: str, password: Optional[str], unsafe: bool, event_queue: Optional[asyncio.Queue] = None) -> Orchestrator:
     if session_id in active_investigations:
+        print(f"[DEBUG API] Returning cached orchestrator for session {session_id}")
         return active_investigations[session_id]
-    
-    if session_id in active_investigations:
-        return active_investigations[session_id]
-    
+
+    print(f"[DEBUG API] Creating new orchestrator for session {session_id}")
     session = get_session_auto(session_id, password, unsafe)
     config = load_config()
     prompt_loader = Loader()
     scratchpad = Scratchpad(session_dir=session.session_path, encryption_key=session.get_key())
     session.scratchpad = scratchpad
-    
-    tools, agent_instances = _build_plugins(config=config, prompt_loader=prompt_loader, session=session, scratchpad=scratchpad)
-    
+
+    # Create WebUI middleware if queue provided
+    webui_middlewares = []
+    if event_queue is not None:
+        from aletheia.agents.middleware import WebUIFunctionMiddleware
+        print(f"[DEBUG API] Creating WebUIFunctionMiddleware with event_queue: {event_queue}")
+        webui_middlewares.append(WebUIFunctionMiddleware(event_queue=event_queue))
+        print(f"[DEBUG API] WebUI middleware list: {webui_middlewares}")
+
+    # Build plugins with middleware so all sub-agents get it too
+    tools, agent_instances = _build_plugins(
+        config=config,
+        prompt_loader=prompt_loader,
+        session=session,
+        scratchpad=scratchpad,
+        additional_middleware=webui_middlewares if webui_middlewares else None
+    )
+
     orchestrator = Orchestrator(
         name="orchestrator",
         description="Orchestrator agent",
@@ -270,8 +301,10 @@ async def get_or_create_orchestrator(session_id: str, password: Optional[str], u
         session=session,
         sub_agents=tools,
         scratchpad=scratchpad,
-        config=config
+        config=config,
+        additional_middleware=webui_middlewares if webui_middlewares else None
     )
+    print(f"[DEBUG API] Orchestrator created with additional_middleware: {webui_middlewares if webui_middlewares else None}")
     # Store agent instances to cleanup later? 
     # For now we attach them to orchestrator or keep global ref if needed.
     # The CLI keeps them to call cleanup().
@@ -446,14 +479,14 @@ async def chat_session(session_id: str, request: ChatRequest, background_tasks: 
             background_tasks.add_task(run_command_step, command_name, args, queue, session_id)
             return {"status": "processing_command"}
 
-        orchestrator = await get_or_create_orchestrator(session_id, request.password, unsafe)
-        
-        # We need a way to stream results back. 
+        # We need a way to stream results back.
         # We'll use a queue for this session.
         if session_id not in investigation_queues:
             investigation_queues[session_id] = asyncio.Queue()
-            
+
         queue = investigation_queues[session_id]
+
+        orchestrator = await get_or_create_orchestrator(session_id, request.password, unsafe, event_queue=queue)
         
         # Run the agent in background and push updates to queue
         background_tasks.add_task(run_agent_step, orchestrator, request.message, queue)

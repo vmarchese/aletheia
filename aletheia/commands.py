@@ -81,6 +81,13 @@ class AgentsInfo(Command):
         super().__init__("agents", "Show information about loaded agents")
         self.agents = agents
 
+    def get_agents_names(self):
+        """
+        Returns the names of the loaded agents.
+        :return: List of agent names
+        """
+        return [agent.name for agent in self.agents]
+
     def execute(self, console, *args, **kwargs):
         """
         Help command to display available commands.
