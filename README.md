@@ -124,8 +124,141 @@ aletheia version
 
 ## Configuration
 
+Aletheia uses a simple, prioritized configuration system with platformdirs for standard config locations.
+
+### Configuration Hierarchy
+
+Configuration is loaded in the following order (highest to lowest priority):
+
+1. **Explicit values** - Passed directly to the Config class
+2. **Environment variables** - Prefixed with `ALETHEIA_`
+3. **YAML config file** - Located at:
+   - Linux: `~/.config/aletheia/config.yaml`
+   - macOS: `~/Library/Application Support/aletheia/config.yaml`
+   - Windows: `%LOCALAPPDATA%\aletheia\config.yaml`
+4. **Default values** - Built-in defaults
+
+### Configuration Directory Structure
+
+```
+{user_config_path}/aletheia/
+├── config.yaml              # Main configuration file
+├── skills/                  # Skills directory
+│   ├── aws/                # Agent-specific skills
+│   │   └── ec2_route_tables/
+│   │       └── SKILL.md
+│   └── kubernetes_data_fetcher/
+│       └── examine_thread_dump/
+│           └── SKILL.md
+└── instructions/           # Custom agent instructions
+    ├── agent1.txt
+    └── agent2.txt
+```
+
+### Environment Variables
+
+All configuration can be set via environment variables with the `ALETHEIA_` prefix:
+
+```bash
+# LLM Configuration
+export ALETHEIA_LLM_DEFAULT_MODEL=gpt-4o
+export ALETHEIA_LLM_TEMPERATURE=0.2
+export ALETHEIA_CODE_ANALYZER=claude
+
+# Cost Configuration
+export ALETHEIA_COST_PER_INPUT_TOKEN=0.0025
+export ALETHEIA_COST_PER_OUTPUT_TOKEN=0.01
+
+# Prometheus Configuration
+export ALETHEIA_PROMETHEUS_ENDPOINT=https://prometheus.example.com
+export ALETHEIA_PROMETHEUS_TIMEOUT_SECONDS=30
+export ALETHEIA_PROMETHEUS_CREDENTIALS_TYPE=env
+
+# Directory Configuration
+export ALETHEIA_SKILLS_DIRECTORY=/custom/path/to/skills
+export ALETHEIA_CUSTOM_INSTRUCTIONS_DIR=/custom/path/to/instructions
+export ALETHEIA_MCP_SERVERS_YAML=/path/to/mcp-servers.yaml
+```
+
+### YAML Configuration
+
+Create a `config.yaml` file in your config directory. You can use the provided example as a starting point:
+
+```bash
+# Copy the example config to your config directory
+cp config.yaml.example ~/.config/aletheia/config.yaml
+# (or ~/Library/Application Support/aletheia/config.yaml on macOS)
+```
+
+Example configuration:
+
+```yaml
+# LLM Configuration
+llm_default_model: gpt-4o
+llm_temperature: 0.2
+code_analyzer: claude
+
+# Cost Configuration
+cost_per_input_token: 0.0025
+cost_per_output_token: 0.01
+
+# Prometheus Configuration
+prometheus_endpoint: https://prometheus.example.com
+prometheus_timeout_seconds: 30
+prometheus_credentials_type: env
+
+# Directory Configuration (optional, defaults shown)
+# skills_directory: /path/to/skills
+# custom_instructions_dir: /path/to/instructions
+# mcp_servers_yaml: /path/to/mcp-servers.yaml
+```
+
+See [config.yaml.example](config.yaml.example) for a complete configuration template with detailed comments.
+
+### Active Configuration Options
+
+| Configuration Key | Description | Default Value |
+|------------------|-------------|---------------|
+| `llm_default_model` | Default LLM model for agents | `gpt-4o` |
+| `llm_temperature` | Temperature for LLM responses (0.0-1.0) | `0.2` |
+| `code_analyzer` | Code analyzer to use (claude, copilot) | `""` |
+| `cost_per_input_token` | Cost per input token | `0.0` |
+| `cost_per_output_token` | Cost per output token | `0.0` |
+| `prometheus_endpoint` | Prometheus server URL | `None` |
+| `prometheus_timeout_seconds` | Request timeout for Prometheus | `10` |
+| `prometheus_credentials_type` | Credential type (env, keychain, encrypted_file) | `env` |
+| `skills_directory` | Path to skills directory | `{config_dir}/skills` |
+| `custom_instructions_dir` | Path to custom instructions | `{config_dir}/instructions` |
+| `mcp_servers_yaml` | Path to MCP servers config | `None` |
+| `temp_folder` | Temporary file storage | `/tmp/aletheia` |
+
+### Custom Agent Instructions
+
+Custom instructions for specific agents can be added to the `instructions/` directory:
+
+```bash
+# Example: Create custom instructions for the AWS agent
+echo "Always use us-west-2 region" > ~/.config/aletheia/instructions/aws.txt
+```
+
+### Skills Configuration
+
+Skills are organized by agent name in subdirectories. Each skill is a folder containing a `SKILL.md` file:
+
+```
+skills/
+├── aws/
+│   └── ec2_route_tables/
+│       └── SKILL.md
+└── kubernetes_data_fetcher/
+    └── examine_thread_dump/
+        └── SKILL.md
+```
+
+See `aletheia/config.py` for the complete configuration schema and advanced usage.
+
 ### Azure OpenAI
-Aletheia needs three environment variables to be set to work:
+Aletheia needs three environment variables to be set to work with Azure OpenAI:
 
 ```bash
 AZURE_OPENAI_API_KEY=<azure openai api key >
@@ -133,8 +266,8 @@ AZURE_OPENAI_ENDPOINT=<azure openai endpoint >
 AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=<azure deployment name>
 ```
 
-### OpenaI (or Ollama)
-To use Aletheia with ollama the following environment variables must be set:
+### OpenAI (or Ollama)
+To use Aletheia with Ollama the following environment variables must be set:
 
 ```bash
 ALETHEIA_OPENAI_API_KEY=<openai api key>
@@ -142,59 +275,14 @@ ALETHEIA_OPENAI_ENDPOINT=<openai endpoint>
 ALETHEIA_OPENAI_MODEL=<openai model>
 ```
 
-For instance, to use ollama on the local machine:
+For instance, to use Ollama on the local machine:
 
 ```bash
-ALETHEIA_OPENAI_API_KEY=none 
+ALETHEIA_OPENAI_API_KEY=none
 ALETHEIA_OPENAI_ENDPOINT=http://127.0.0.1:11434/v1
 ALETHEIA_OPENAI_MODEL=gpt-oss:20b
 ```
-
-
-### Additional configuration 
-
-Aletheia supports flexible configuration via environment variables, YAML files, and .env files. The following table summarizes the main configuration parameters available in `aletheia/config.py`:
-
-| Configuration Key | Description | Default Value |
-|-------------------|-------------|---------------|
-| `cost_per_input_token` | Cost per input token | `0.0` |
-| `cost_per_output_token` | Cost per output token | `0.0` |
-| `code_analyzer` | Code analyzer to use (claude, copilot) | `""` |
-| `kubernetes_context` | Kubernetes context to use | `None` |
-| `kubernetes_namespace` | Default Kubernetes namespace | `default` |
-| `prometheus_endpoint` | Prometheus endpoint URL | `None` |
-| `prometheus_credentials_type` | Prometheus credentials type | `env` |
-| `prometheus_username_env` | Environment variable for Prometheus username | `None` |
-| `prometheus_password_env` | Environment variable for Prometheus password | `None` |
-| `prometheus_credentials_file` | Path to Prometheus credentials file | `None` |
-| `prometheus_timeout_seconds` | Timeout for Prometheus requests in seconds | `10` |
-
-**How to configure:**
-
-- Set environment variables 
-- Edit YAML config files (`./.aletheia/config.yaml`, `~/.aletheia/config.yaml`, `/etc/aletheia/config.yaml`)
-- Use `.env` files for local overrides
-
-See `aletheia/config.py` for advanced usage and helper methods.
-
-
-## Custom Instructions
-Custom instructions for the specific agents can be set by configuring the environment variable `ALETHEIA_CUSTOM_INSTRUCTIONS_DIR` to a folder in which the instructions can be written as:
-
-```
-<custom instructions dir>
-   |-- <agent name>
-          |-- instructions.md
-```          
-
-For instance, for the Kubernetes agent.
-
-
-```
-<custom instructions dir>
-   |-- kubernetes_data_fetcher
-          |-- instructions.md
-```          
+          
 
 in which `instructions.md` could be:
 

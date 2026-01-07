@@ -1,0 +1,105 @@
+# Aletheia Configuration Example
+#
+# Copy this file to your user config directory and rename to config.yaml:
+#   - Linux: ~/.config/aletheia/config.yaml
+#   - macOS: ~/Library/Application Support/aletheia/config.yaml
+#   - Windows: %LOCALAPPDATA%\aletheia\config.yaml
+#
+# All settings can also be overridden with environment variables using the ALETHEIA_ prefix.
+# For example: ALETHEIA_LLM_DEFAULT_MODEL=gpt-4o
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
+
+# Default LLM model to use for all agents
+llm_default_model: gpt-4o
+
+# Temperature for LLM responses (0.0-1.0)
+# Lower values make output more focused and deterministic
+llm_temperature: 0.2
+
+# Code analyzer to use: "claude" or "copilot"
+code_analyzer: claude
+
+# =============================================================================
+# Cost Tracking Configuration
+# =============================================================================
+
+# Cost per input token (for tracking usage costs)
+cost_per_input_token: .000002
+
+# Cost per output token (for tracking usage costs)
+cost_per_output_token: .000008
+
+# =============================================================================
+# Data Source Configuration
+# =============================================================================
+
+# Prometheus endpoint URL
+# Example: https://prometheus.example.com
+prometheus_endpoint: null
+
+# Prometheus request timeout in seconds
+prometheus_timeout_seconds: 30
+
+# Prometheus credentials type: "env", "keychain", or "encrypted_file"
+prometheus_credentials_type: env
+
+# =============================================================================
+# Directory Configuration
+# =============================================================================
+
+# Directory containing skill YAML files
+# Default: {config_dir}/skills
+# Uncomment to override:
+# skills_directory: /custom/path/to/skills
+
+# Directory containing custom agent instructions
+# Default: {config_dir}/instructions
+# Uncomment to override:
+# custom_instructions_dir: /custom/path/to/instructions
+
+# Path to MCP servers YAML configuration file
+# Uncomment to specify:
+# mcp_servers_yaml: /path/to/mcp-servers.yaml
+
+# Temporary folder for storing intermediate files
+temp_folder: /tmp/aletheia
+
+# =============================================================================
+# Directory Structure
+# =============================================================================
+#
+# Your config directory should have this structure:
+#
+# {config_dir}/aletheia/
+# ├── config.yaml              # This file
+# ├── skills/                  # Skills directory
+# │   ├── aws/                # Agent-specific skills
+# │   │   └── ec2_route_tables/
+# │   │       └── SKILL.md
+# │   └── kubernetes_data_fetcher/
+# │       └── examine_thread_dump/
+# │           └── SKILL.md
+# └── instructions/           # Custom agent instructions
+#     ├── aws.txt
+#     └── kubernetes_data_fetcher.txt
+#
+# =============================================================================
+# Environment Variables (Alternative Configuration Method)
+# =============================================================================
+#
+# You can also configure Aletheia using environment variables:
+#
+# export ALETHEIA_LLM_DEFAULT_MODEL=gpt-4o
+# export ALETHEIA_LLM_TEMPERATURE=0.2
+# export ALETHEIA_CODE_ANALYZER=claude
+# export ALETHEIA_COST_PER_INPUT_TOKEN=0.0025
+# export ALETHEIA_COST_PER_OUTPUT_TOKEN=0.01
+# export ALETHEIA_PROMETHEUS_ENDPOINT=https://prometheus.example.com
+# export ALETHEIA_PROMETHEUS_TIMEOUT_SECONDS=30
+# export ALETHEIA_SKILLS_DIRECTORY=/custom/path/to/skills
+# export ALETHEIA_CUSTOM_INSTRUCTIONS_DIR=/custom/path/to/instructions
+#
+# =============================================================================
