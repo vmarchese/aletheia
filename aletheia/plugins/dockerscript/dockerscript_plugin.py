@@ -81,13 +81,21 @@ class DockerScriptPlugin(BasePlugin):
         client = docker.from_env()
         try:
             # Create temp dir and write script to file
-            tmpfolder = tempfile.TemporaryDirectory(dir=self.config.temp_folder)
+            log_debug(f"DockerScriptPlugin::sandbox_run:: Creating base temporary directory in {self.config.temp_folder}")
+            tmp = tempfile.mkdtemp(dir=self.config.temp_folder)
+            log_debug(f"DockerScriptPlugin::sandbox_run:: Created base temporary directory at {tmp}")
+            tmpfolder = tempfile.TemporaryDirectory(dir=tmp)
+            log_debug(f"DockerScriptPlugin::sandbox_run:: Creating temporary folder at {tmpfolder.name}")
             os.makedirs(tmpfolder.name, exist_ok=True)
+            log_debug(f"DockerScriptPlugin::sandbox_run:: Created temporary folder at {tmpfolder.name}")
 
-            with open(f"{script_folder}/scripts/{script}", 'r', encoding='utf-8') as script_file:
+            script_path = os.path.join(script_folder, "scripts", script)
+            temp_script_path = os.path.join(tmpfolder.name, "script.py")
+            with open(script_path, 'r', encoding='utf-8') as script_file:
                 script_content = script_file.read()
-                with open(f"{tmpfolder.name}/script.py", 'w', encoding='utf-8') as temp_script_file:
+                with open(temp_script_path, 'w', encoding='utf-8') as temp_script_file:
                     temp_script_file.write(script_content)
+            log_debug(f"DockerScriptPlugin::sandbox_run:: Wrote script to {temp_script_path}")
 
             # Prepare environment variables for simple args
             env_vars = {}
@@ -101,11 +109,13 @@ class DockerScriptPlugin(BasePlugin):
             # Write complex data to JSON file
             if data:
                 data_path = f"{tmpfolder.name}/data.json"
+                os.makedirs(os.path.dirname(data_path), exist_ok=True)
                 with open(data_path, 'w', encoding='utf-8') as data_file:
                     json.dump(data, data_file, indent=2)
                 log_debug(f"DockerScriptPlugin::sandbox_run:: Wrote data to {data_path}")
 
             # Execute container with both mechanisms
+            log_debug("DockerScriptPlugin::sandbox_run:: Executing Docker container for script.")
             output = client.containers.run(
                 image="aletheia-script-executor:latest",
                 command=["python", "/scripts/script.py"],
@@ -116,6 +126,7 @@ class DockerScriptPlugin(BasePlugin):
                 stderr=True,
                 remove=True
             )
+            log_debug("DockerScriptPlugin::sandbox_run:: Script executed successfully.")
             return output.decode("utf-8") if isinstance(output, bytes) else str(output)
         except (docker.errors.DockerException, OSError, IOError) as e:
             log_error(f"DockerScriptPlugin::sandbox_run:: Error executing script: {e}")

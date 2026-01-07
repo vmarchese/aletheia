@@ -175,7 +175,7 @@ class Config(BaseSettings):
     # Temp folder
     # =================================================================
     temp_folder: str = Field(
-        default="/tmp/aletheia",
+        default="./.aletheia",
         description="Temporary folder for storing intermediate files",
     )
 
