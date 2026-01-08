@@ -18,6 +18,10 @@ gitpython==3.1.45
     # via aletheia (pyproject.toml)
 jinja2==3.1.6
     # via aletheia (pyproject.toml)
+platformdirs==4.5.1
+    # via aletheia (pyproject.toml)
+prompt-toolkit==3.0.52
+    # via aletheia (pyproject.toml)
 pycryptodome==3.23.0
     # via aletheia (pyproject.toml)
 pydantic-settings==2.12.0
