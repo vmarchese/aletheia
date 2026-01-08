@@ -27,6 +27,9 @@ const sessionPasswords = {}; // Cache for session passwords
 let currentSessionId = null;
 let eventSource = null;
 let thinkingInterval = null;
+let availableCommands = []; // Cache for available commands
+let commandCompletionVisible = false;
+let selectedCommandIndex = -1;
 
 // DOM Elements
 const sessionsList = document.getElementById('sessions-list');
@@ -98,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     fetchSessions();
     setupEventListeners();
+    loadCommands(); // Load available commands for autocomplete
 });
 
 // Event Listeners
@@ -198,6 +202,9 @@ function setupEventListeners() {
         const message = messageInput.value.trim();
         if (!message || !currentSessionId) return;
 
+        // Hide autocomplete if visible
+        hideCommandCompletion();
+
         // Add user message
         appendMessage(message, 'user');
         messageInput.value = '';
@@ -223,6 +230,38 @@ function setupEventListeners() {
         } catch (error) {
             stopThinking();
             appendMessage(`Error: ${error.message}`, 'bot'); // Show error as bot message
+        }
+    });
+
+    // Command Autocomplete
+    messageInput.addEventListener('input', (e) => {
+        const value = messageInput.value;
+
+        // Check if input starts with "/"
+        if (value.startsWith('/')) {
+            const commandPart = value.substring(1).toLowerCase();
+            showCommandCompletion(commandPart);
+        } else {
+            hideCommandCompletion();
+        }
+    });
+
+    messageInput.addEventListener('keydown', (e) => {
+        // Handle autocomplete navigation when visible
+        if (commandCompletionVisible) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                navigateCommandCompletion('down');
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                navigateCommandCompletion('up');
+            } else if (e.key === 'Tab' || (e.key === 'Enter' && selectedCommandIndex >= 0)) {
+                e.preventDefault();
+                selectCommand();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                hideCommandCompletion();
+            }
         }
     });
 
@@ -1950,4 +1989,148 @@ function updateTabsContent(tabsContainer, fullText, findingsMatch, decisionsMatc
         panel.innerHTML = marked.parse(actionsMatch[1].trim());
         makeCodeBlocksCollapsible(panel);
     }
+}
+
+// ===================================
+// Command Autocomplete Functions
+// ===================================
+
+async function loadCommands() {
+    try {
+        const response = await fetch('/commands');
+        if (response.ok) {
+            availableCommands = await response.json();
+        }
+    } catch (error) {
+        console.error('Failed to load commands:', error);
+        availableCommands = [];
+    }
+}
+
+function createCommandCompletionElement() {
+    const existingDropdown = document.getElementById('command-completion-dropdown');
+    if (existingDropdown) {
+        return existingDropdown;
+    }
+
+    const dropdown = document.createElement('div');
+    dropdown.id = 'command-completion-dropdown';
+    dropdown.className = 'command-completion-dropdown';
+    document.body.appendChild(dropdown);
+    return dropdown;
+}
+
+function showCommandCompletion(commandPart) {
+    if (availableCommands.length === 0) {
+        return; // Commands not loaded yet
+    }
+
+    // Filter commands based on typed text
+    const filtered = availableCommands.filter(cmd =>
+        cmd.name.toLowerCase().startsWith(commandPart)
+    );
+
+    if (filtered.length === 0) {
+        hideCommandCompletion();
+        return;
+    }
+
+    const dropdown = createCommandCompletionElement();
+    dropdown.innerHTML = '';
+
+    filtered.forEach((cmd, index) => {
+        const item = document.createElement('div');
+        item.className = 'command-completion-item';
+        item.dataset.index = index;
+        item.dataset.commandName = cmd.name;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'command-name';
+        nameSpan.textContent = `/${cmd.name}`;
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'command-description';
+        descSpan.textContent = cmd.description;
+
+        item.appendChild(nameSpan);
+        item.appendChild(descSpan);
+
+        // Click handler
+        item.addEventListener('click', () => {
+            selectedCommandIndex = index;
+            selectCommand();
+        });
+
+        dropdown.appendChild(item);
+    });
+
+    // Position the dropdown relative to the textarea
+    positionCommandCompletion();
+
+    commandCompletionVisible = true;
+    selectedCommandIndex = -1;
+    dropdown.style.display = 'block';
+}
+
+function hideCommandCompletion() {
+    const dropdown = document.getElementById('command-completion-dropdown');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    commandCompletionVisible = false;
+    selectedCommandIndex = -1;
+}
+
+function navigateCommandCompletion(direction) {
+    const dropdown = document.getElementById('command-completion-dropdown');
+    if (!dropdown) return;
+
+    const items = dropdown.querySelectorAll('.command-completion-item');
+    if (items.length === 0) return;
+
+    // Remove previous selection
+    items.forEach(item => item.classList.remove('selected'));
+
+    // Update index
+    if (direction === 'down') {
+        selectedCommandIndex = (selectedCommandIndex + 1) % items.length;
+    } else if (direction === 'up') {
+        selectedCommandIndex = selectedCommandIndex <= 0 ? items.length - 1 : selectedCommandIndex - 1;
+    }
+
+    // Add selection to new item
+    items[selectedCommandIndex].classList.add('selected');
+    items[selectedCommandIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function selectCommand() {
+    const dropdown = document.getElementById('command-completion-dropdown');
+    if (!dropdown) return;
+
+    const items = dropdown.querySelectorAll('.command-completion-item');
+    if (selectedCommandIndex < 0 || selectedCommandIndex >= items.length) return;
+
+    const selectedItem = items[selectedCommandIndex];
+    const commandName = selectedItem.dataset.commandName;
+
+    // Replace input with selected command
+    messageInput.value = `/${commandName} `;
+    messageInput.focus();
+
+    // Trigger input event to update send button state
+    messageInput.dispatchEvent(new Event('input'));
+
+    hideCommandCompletion();
+}
+
+function positionCommandCompletion() {
+    const dropdown = document.getElementById('command-completion-dropdown');
+    if (!dropdown) return;
+
+    const inputRect = messageInput.getBoundingClientRect();
+
+    // Position above the input
+    dropdown.style.left = `${inputRect.left}px`;
+    dropdown.style.bottom = `${window.innerHeight - inputRect.top + 10}px`;
+    dropdown.style.width = `${inputRect.width}px`;
 }

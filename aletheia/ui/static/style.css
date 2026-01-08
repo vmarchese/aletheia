@@ -1872,3 +1872,80 @@ body.unsafe-mode #info-session-status::before {
     font-size: 0.85rem;
     line-height: 1.4;
 }
+/* ============================================
+   Command Completion Dropdown
+   ============================================ */
+
+.command-completion-dropdown {
+    position: fixed;
+    display: none;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.command-completion-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.15s ease;
+}
+
+.command-completion-item:last-child {
+    border-bottom: none;
+}
+
+.command-completion-item:hover,
+.command-completion-item.selected {
+    background-color: var(--primary-color);
+    color: var(--bg-primary);
+}
+
+.command-completion-item:hover .command-name,
+.command-completion-item.selected .command-name {
+    color: var(--bg-primary);
+}
+
+.command-completion-item:hover .command-description,
+.command-completion-item.selected .command-description {
+    color: var(--bg-primary);
+    opacity: 0.9;
+}
+
+.command-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--primary-color);
+}
+
+.command-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Scrollbar styling for completion dropdown */
+.command-completion-dropdown::-webkit-scrollbar {
+    width: 8px;
+}
+
+.command-completion-dropdown::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+    border-radius: 4px;
+}
+
+.command-completion-dropdown::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.command-completion-dropdown::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}

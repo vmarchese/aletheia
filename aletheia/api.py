@@ -15,7 +15,7 @@ from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.model import AgentResponse, Timeline
 from aletheia.cli import _build_plugins
-from aletheia.commands import expand_custom_command
+from aletheia.commands import COMMANDS, expand_custom_command, get_custom_commands
 from aletheia.config import load_config
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import (
@@ -117,6 +117,44 @@ def get_session_auto(
 async def list_sessions():
     """List all available sessions."""
     return Session.list_sessions()
+
+
+@app.get("/commands", response_model=list[dict[str, str]])
+async def list_commands():
+    """
+    List all available commands (built-in and custom).
+
+    Returns:
+        List of command objects with name and description
+    """
+    config = load_config()
+    commands_list = []
+
+    # Add built-in commands
+    for name, cmd_obj in COMMANDS.items():
+        commands_list.append({
+            "name": name,
+            "description": cmd_obj.description,
+            "type": "built-in"
+        })
+
+    # Add custom commands
+    try:
+        custom_cmds = get_custom_commands(config)
+        for command_name, custom_cmd in custom_cmds.items():
+            commands_list.append({
+                "name": command_name,
+                "description": f"{custom_cmd.name}: {custom_cmd.description}",
+                "type": "custom"
+            })
+    except Exception:
+        # If custom commands fail to load, just return built-in ones
+        pass
+
+    # Sort alphabetically by name
+    commands_list.sort(key=lambda x: x["name"])
+
+    return commands_list
 
 
 @app.post("/sessions", response_model=dict[str, Any])
