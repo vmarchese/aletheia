@@ -64,6 +64,14 @@ class Config(BaseSettings):
         default_factory=lambda: str(get_config_dir() / "skills"),
         description="Directory containing skill YAML files",
     )
+
+    # =================================================================
+    # Commands configuration
+    # =================================================================
+    commands_directory: str = Field(
+        default_factory=lambda: str(get_config_dir() / "commands"),
+        description="Directory containing custom command markdown files",
+    )
     # =================================================================
     # LLM Configuration (flat)
     # =================================================================

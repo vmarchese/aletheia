@@ -84,6 +84,16 @@ console.log('Sidebar Elements:', { infoSessionName, infoSessionId, infoSessionCo
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
+    // Configure marked for better markdown rendering
+    marked.setOptions({
+        breaks: true,      // Convert \n to <br>
+        gfm: true,         // GitHub Flavored Markdown (includes tables)
+        tables: true,      // Enable table support
+        sanitize: false,   // Don't sanitize HTML (we trust our content)
+        smartLists: true,  // Better list parsing
+        smartypants: false // Don't convert quotes/dashes
+    });
+
     initTheme();
     initSidebar();
     fetchSessions();
@@ -516,7 +526,8 @@ function connectStream(sessionId) {
 
     // Track function calls and timing
     let functionCalls = [];
-    let streamStartTime = Date.now();
+    let sessionStartTime = Date.now();
+    let messageStartTime = null;
 
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -527,6 +538,11 @@ function connectStream(sessionId) {
             console.log('[SSE] Function call event received:', data.content);
             functionCalls.push(data.content);
             addFunctionCallToThinking(data.content);
+
+            // Start message timing on first function call
+            if (!messageStartTime) {
+                messageStartTime = Date.now();
+            }
         } else if (data.type === 'text') {
             stopThinking(); // Stop thinking on first token
 
@@ -553,14 +569,20 @@ function connectStream(sessionId) {
         } else if (data.type === 'done') {
             stopThinking();
 
-            // Calculate elapsed time and finalize the thinking bubble
-            const elapsedMs = Date.now() - streamStartTime;
-            const elapsedSeconds = (elapsedMs / 1000).toFixed(0);
+            // Calculate elapsed times
+            const messageElapsedMs = messageStartTime ? Date.now() - messageStartTime : 0;
+            const messageElapsedSeconds = (messageElapsedMs / 1000).toFixed(0);
 
-            finalizeThinkingBubble(elapsedSeconds);
+            const totalElapsedMs = Date.now() - sessionStartTime;
+            const totalMinutes = Math.floor(totalElapsedMs / 60000);
+            const totalSeconds = Math.floor((totalElapsedMs % 60000) / 1000);
+            const totalTimeStr = `${totalMinutes}m ${totalSeconds}s`;
+
+            finalizeThinkingBubble(messageElapsedSeconds, totalTimeStr);
 
             // Reset for next interaction
             functionCalls = [];
+            messageStartTime = null;
 
             const lastMsg = chatContainer.lastElementChild;
             if (lastMsg && lastMsg.classList.contains('bot')) {
@@ -696,7 +718,7 @@ function addFunctionCallToThinking(callData) {
     scrollToBottom();
 }
 
-function finalizeThinkingBubble(elapsedSeconds) {
+function finalizeThinkingBubble(elapsedSeconds, totalTimeStr) {
     const bubble = document.getElementById('thinking-bubble');
     if (!bubble) return;
 
@@ -704,10 +726,10 @@ function finalizeThinkingBubble(elapsedSeconds) {
     bubble.dataset.finalized = 'true';
     bubble.classList.remove('thinking');
 
-    // Update the summary text to show elapsed time
+    // Update the summary text to show both elapsed times
     const summaryText = bubble.querySelector('.summary-text');
     if (summaryText) {
-        summaryText.textContent = `elaborated for ${elapsedSeconds}s`;
+        summaryText.textContent = `processed for ${elapsedSeconds}s (total time: ${totalTimeStr})`;
     }
 
     // Remove both IDs so they won't be found again in subsequent interactions
@@ -878,7 +900,17 @@ function renderAvatar(container, iconSource, title) {
 function updateLastBotMessage(content) {
     const lastMsg = chatContainer.lastElementChild;
     const avatar = lastMsg.querySelector('.avatar');
-    const contentDiv = lastMsg.querySelector('.message-content');
+    let contentDiv = lastMsg.querySelector('.message-content');
+
+    // If contentDiv doesn't exist (e.g., converting thinking bubble), create it
+    if (!contentDiv) {
+        contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        const bodyWrapper = lastMsg.querySelector('.message-body-wrapper');
+        if (bodyWrapper) {
+            bodyWrapper.appendChild(contentDiv);
+        }
+    }
 
     let currentText = lastMsg.dataset.raw || "";
     currentText += content;
@@ -959,6 +991,15 @@ function updateLastBotMessage(content) {
                 footerDiv.textContent = footerText;
             }
 
+            scrollToBottom();
+        } else {
+            // No agent metadata or AGENT: prefix - handle plain content (e.g., command output)
+            const skills = extractSkillUsage(displayContent);
+            const result = parseSections(displayContent, skills, contentDiv);
+            if (result !== undefined) {
+                contentDiv.innerHTML = result;
+                makeCodeBlocksCollapsible(contentDiv);
+            }
             scrollToBottom();
         }
     }
@@ -1416,6 +1457,7 @@ function parseSections(text, skills = null, contentDiv = null) {
         return html;
     } else {
         console.log('Returning marked.parse(text)');
+        // Parse markdown content directly - marked will handle tables, lists, etc.
         return marked.parse(text);
     }
 }
