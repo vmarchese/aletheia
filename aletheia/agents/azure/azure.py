@@ -24,6 +24,7 @@ class AzureAgent(BaseAgent):
         plugins = [azure_plugin, scratchpad]
 
         super().__init__(name=name,
+                         config=config,
                          description=description,
                          session=session,
                          plugins=plugins,
