@@ -705,7 +705,7 @@ def session_timeline(
         message = ChatMessage(role=Role.USER, contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        """)])
-        response = asyncio.run(timeline_agent.agent.run(message, response_format=Timeline))
+        response = asyncio.run(timeline_agent.agent.run(message, response_format=Timeline, tools=timeline_agent.agent.chat_options.tools))
 
         if response:
             try:

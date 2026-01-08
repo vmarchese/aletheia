@@ -87,12 +87,17 @@ class BaseAgent(ABC):
         _tools = []
         if plugins:
             for plugin in plugins:
-                _tools.extend(plugin.get_tools())
+                plugin_tools = plugin.get_tools()
+                print(f"[DEBUG BaseAgent] Plugin {plugin.__class__.__name__} provides {len(plugin_tools)} tools: {[getattr(tool, '__name__', str(tool)) for tool in plugin_tools]}")
+                _tools.extend(plugin_tools)
 
         if scratchpad:
-            _tools.append(scratchpad.get_tools())
+            scratchpad_tools = scratchpad.get_tools()
+            print(f"[DEBUG BaseAgent] Scratchpad provides {len(scratchpad_tools)} tools")
+            _tools.append(scratchpad_tools)
 
         _tools.extend(tools or [])
+        print(f"[DEBUG BaseAgent] Total tools collected: {len(_tools)}")
 
         # mcp tools
         self.mcp_tools = []
@@ -163,6 +168,8 @@ class BaseAgent(ABC):
             middleware_list.extend(additional_middleware)
 
         log_debug(f"[BaseAgent::{self.name}] Final middleware list: {middleware_list}")
+
+        print(f"[DEBUG BaseAgent] Creating ChatAgent with {len(_tools)} tools: {[getattr(tool, '__name__', str(tool)) for tool in _tools]}")
 
         self.agent = ChatAgent(
             name=self.name,
