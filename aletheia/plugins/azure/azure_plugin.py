@@ -12,6 +12,7 @@ from azure.mgmt.storage import StorageManagementClient
 from azure.mgmt.keyvault import KeyVaultManagementClient
 from azure.keyvault.keys import KeyClient
 from azure.keyvault.secrets import SecretClient
+from azure.mgmt.cdn import CdnManagementClient
 
 from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
@@ -221,6 +222,222 @@ class AzurePlugin(BasePlugin):
             "expires_on": secret.properties.expires_on.isoformat() if secret.properties.expires_on else None
         }
 
+    def azure_fd_custom_domains(self,
+                                profile: Annotated[str, "The Front Door profile name"] = "",
+                                resource_group: Annotated[str, "The resource group name"] = "",
+                                subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves the Custom Domains in the specified resource group using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        custom_domains = cdn_client.afd_custom_domains.list_by_profile(
+            resource_group_name=resource_group,
+            profile_name=profile,
+        )
+        cd_list = [cd.as_dict() for cd in custom_domains]
+        return json.dumps(cd_list)
+    
+    def azure_fd_custom_domain_show(self,
+                                    domain_name: Annotated[str, "The Custom Domain name"],
+                                    profile: Annotated[str, "The Front Door profile name"] = "",
+                                    resource_group: Annotated[str, "The resource group name"] = "",
+                                    subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves details of a specific Custom Domain using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        cd = cdn_client.afd_custom_domains.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            custom_domain_name=domain_name,
+        )
+        return json.dumps(cd.as_dict())
+
+    def azure_fd_endpoints(self,
+                           profile: Annotated[str, "The Front Door profile name"] = "",
+                           resource_group: Annotated[str, "The resource group name"] = "",
+                           subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves the Endpoints of a Front Door profile using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        endpoints = cdn_client.afd_endpoints.list_by_profile(
+            resource_group_name=resource_group,
+            profile_name=profile,
+        )
+        ep_list = [ep.as_dict() for ep in endpoints]
+        return json.dumps(ep_list)
+
+    def azure_fd_endpoint_show(self,
+                               endpoint_name: Annotated[str, "The Endpoint name"],
+                               profile: Annotated[str, "The Front Door profile name"] = "",
+                               resource_group: Annotated[str, "The resource group name"] = "",
+                               subscription_id: Annotated[str, "The subscription ID"] = "") -> str: 
+        """Retrieves details of a specific Endpoint of a Front Door profile using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        ep = cdn_client.afd_endpoints.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            endpoint_name=endpoint_name,
+        )
+        return json.dumps(ep.as_dict()) 
+
+    def azure_fd_origin_group_list(self,
+                                   profile: Annotated[str, "The Front Door profile name"] = "",
+                                   resource_group: Annotated[str, "The resource group name"] = "",
+                                   subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        
+        """Retrieves the Origin Groups of a Front Door profile using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        origins = cdn_client.afd_origin_groups.list_by_profile(
+            resource_group_name=resource_group,
+            profile_name=profile,
+        )
+        og_list = [origin.as_dict() for origin in origins]
+        return json.dumps(og_list)
+
+    def azure_fd_origin_group_show(self,
+                                   origin_group_name: Annotated[str, "The Origin Group name"],
+                                   profile: Annotated[str, "The Front Door profile name"] = "",
+                                   resource_group: Annotated[str, "The resource group name"] = "",
+                                   subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves details of a specific Origin Group of a Front Door profile using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        origin_group = cdn_client.afd_origin_groups.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            origin_group_name=origin_group_name,
+        )
+        return json.dumps(origin_group.as_dict())
+
+    def azure_fd_origin_list(self,
+                             profile: Annotated[str, "The Front Door profile name"] = "",
+                             origin_group_name: Annotated[str, "The Origin Group name"] = "",
+                             resource_group: Annotated[str, "The resource group name"] = "",
+                             subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves the Origins of a Front Door Origin Group using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        origins = cdn_client.afd_origins.list_by_origin_group(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            origin_group_name=origin_group_name,
+        )
+        origin_list = [origin.as_dict() for origin in origins]
+        return json.dumps(origin_list)
+
+    def azure_fd_origin_show(self,
+                             origin_name: Annotated[str, "The Origin name"],
+                             profile: Annotated[str, "The Front Door profile name"] = "",
+                             origin_group_name: Annotated[str, "The Origin Group name"] = "",
+                             resource_group: Annotated[str, "The resource group name"] = "",
+                             subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves details of a specific Origin of a Front Door Origin Group using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        origin = cdn_client.afd_origins.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            origin_group_name=origin_group_name,
+            origin_name=origin_name,
+        )
+        return json.dumps(origin.as_dict())
+
+    def azure_fd_route_list(self,
+                            endpoint_name: Annotated[str, "The Endpoint name"],
+                            profile: Annotated[str, "The Front Door profile name"] = "",
+                            resource_group: Annotated[str, "The resource group name"] = "",
+                            subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves the Routes of a Front Door Endpoint using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        routes = cdn_client.routes.list_by_endpoint(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            endpoint_name=endpoint_name,
+        )
+        route_list = [route.as_dict() for route in routes]
+        return json.dumps(route_list)
+    
+    def azure_fd_route_show(self,
+                            route_name: Annotated[str, "The Route name"],
+                            endpoint_name: Annotated[str, "The Endpoint name"],
+                            profile: Annotated[str, "The Front Door profile name"] = "",
+                            resource_group: Annotated[str, "The resource group name"] = "",
+                            subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves details of a specific Route of a Front Door Endpoint using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        route = cdn_client.routes.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            endpoint_name=endpoint_name,
+            route_name=route_name,
+        )
+        return json.dumps(route.as_dict())
+
+    def azure_fd_ruleset_list(self,
+                              profile: Annotated[str, "The Front Door profile name"] = "",
+                              resource_group: Annotated[str, "The resource group name"] = "",
+                              subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves the Rulesets of a Front Door profile using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        rulesets = cdn_client.rule_sets.list_by_profile(
+            resource_group_name=resource_group,
+            profile_name=profile,
+        )
+        rs_list = [rs.as_dict() for rs in rulesets]
+        return json.dumps(rs_list)
+
+    def azure_fd_ruleset_show(self,
+                              ruleset_name: Annotated[str, "The Ruleset name"],
+                              profile: Annotated[str, "The Front Door profile name"] = "",
+                              resource_group: Annotated[str, "The resource group name"] = "",
+                              subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves details of a specific Ruleset of a Front Door profile using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        rs = cdn_client.rule_sets.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            rule_set_name=ruleset_name,
+        )
+        return json.dumps(rs.as_dict()) 
+
+    def azure_fd_rule_list(self,
+                           ruleset_name: Annotated[str, "The Ruleset name"],
+                           profile: Annotated[str, "The Front Door profile name"] = "",
+                           resource_group: Annotated[str, "The resource group name"] = "",
+                           subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves the Rules of a Front Door Ruleset using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        rules = cdn_client.rules.list_by_rule_set(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            rule_set_name=ruleset_name,
+        )
+        rule_list = [rule.as_dict() for rule in rules]
+        return json.dumps(rule_list)
+
+    def azure_fd_rule_show(self,
+                           rule_name: Annotated[str, "The Rule name"],
+                           ruleset_name: Annotated[str, "The Ruleset name"],
+                            profile: Annotated[str, "The Front Door profile name"] = "",
+                            resource_group: Annotated[str, "The resource group name"] = "",
+                            subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+        """Retrieves details of a specific Rule of a Front Door Ruleset using Azure SDK."""
+        credential = DefaultAzureCredential()
+        cdn_client = CdnManagementClient(credential, subscription_id)
+        rule = cdn_client.rules.get(
+            resource_group_name=resource_group,
+            profile_name=profile,
+            rule_set_name=ruleset_name,
+            rule_name=rule_name,
+        )
+        return json.dumps(rule.as_dict())
+
     def get_tools(self) -> List[ToolProtocol]:
         """Returns the list of tools provided by this plugin."""
         return [
@@ -236,4 +453,18 @@ class AzurePlugin(BasePlugin):
             self.azure_keyvault_key_show,
             self.azure_keyvault_secrets,
             self.azure_keyvault_secret_show,
+            self.azure_fd_custom_domains,
+            self.azure_fd_custom_domain_show,
+            self.azure_fd_endpoints,
+            self.azure_fd_endpoint_show,
+            self.azure_fd_origin_group_list,
+            self.azure_fd_origin_group_show,
+            self.azure_fd_origin_list,
+            self.azure_fd_origin_show,
+            self.azure_fd_route_list,
+            self.azure_fd_route_show,
+            self.azure_fd_ruleset_list,
+            self.azure_fd_ruleset_show,
+            self.azure_fd_rule_list,
+            self.azure_fd_rule_show,
         ]

@@ -61,6 +61,7 @@ dependencies = [
     { name = "azure-identity" },
     { name = "azure-keyvault-keys" },
     { name = "azure-keyvault-secrets" },
+    { name = "azure-mgmt-cdn" },
     { name = "azure-mgmt-compute" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-resource" },
@@ -110,6 +111,7 @@ requires-dist = [
     { name = "azure-identity", specifier = ">=1.25.1" },
     { name = "azure-keyvault-keys", specifier = ">=4.11.0" },
     { name = "azure-keyvault-secrets", specifier = ">=4.10.0" },
+    { name = "azure-mgmt-cdn", specifier = ">=13.1.1" },
     { name = "azure-mgmt-compute", specifier = ">=37.1.0" },
     { name = "azure-mgmt-keyvault", specifier = ">=13.0.0" },
     { name = "azure-mgmt-resource", specifier = ">=24.0.0" },
@@ -291,6 +293,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/97/e5/3074e581b6e8923c4a1f2e42192ea6f390bb52de3600c68baaaed529ef05/azure_keyvault_secrets-4.10.0.tar.gz", hash = "sha256:666fa42892f9cee749563e551a90f060435ab878977c95265173a8246d546a36", size = 129695 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/26/94/7c902e966b28e7cb5080a8e0dd6bffc22ba44bc907f09c4c633d2b7c4f6a/azure_keyvault_secrets-4.10.0-py3-none-any.whl", hash = "sha256:9dbde256077a4ee1a847646671580692e3f9bea36bcfc189c3cf2b9a94eb38b9", size = 125237 },
+]
+
+[[package]]
+name = "azure-mgmt-cdn"
+version = "13.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-common" },
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2b/58/5b1bfb49e7bda2aa1b19c3cb334d3427ad2c6fa3a59e53ffd754597ef628/azure-mgmt-cdn-13.1.1.tar.gz", hash = "sha256:4663304f31b6672dec320c7ce7ba9715c2b99e7d8b684b375f0b4effda90210c", size = 223461 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/43/6cf4165ddd6c6ed44ed46a5fc3cba3e9ff275c0d96bfcc1fd6b442b2c3aa/azure_mgmt_cdn-13.1.1-py3-none-any.whl", hash = "sha256:6d2fae58baa9d7f60cc0894d7c8a3e068b4bdc510c640248f35e0dc6079e6aca", size = 288739 },
 ]
 
 [[package]]
