@@ -24,9 +24,10 @@ from agent_framework import (
     UsageContent,
     UsageDetails,
 )
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import FormattedText
 from rich.live import Live
 from rich.markdown import Markdown
-from rich.prompt import Prompt
 from rich.table import Table
 
 # from agent_framework.observability import setup_observability
@@ -53,6 +54,7 @@ from aletheia.agents.security.security import SecurityAgent
 from aletheia.agents.sysdiag.sysdiag import SysDiagAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.commands import COMMANDS, AgentsInfo, expand_custom_command
+from aletheia.completion import CommandCompleter
 from aletheia.config import Config, load_config
 from aletheia.console import get_console_wrapper
 from aletheia.encryption import DecryptionError, decrypt_file
@@ -326,15 +328,33 @@ async def _start_investigation(session: Session) -> None:
 
         thread: AgentThread = entry.agent.get_new_thread()
 
+        # Initialize prompt_toolkit session with command completion
+        completer = CommandCompleter(config)
+        prompt_session: PromptSession[str] = PromptSession(
+            completer=completer,
+            complete_while_typing=True,
+        )
+
         try:
             while chatting:
                 console.print("[cyan]" + "─" * console.width + "[/cyan]")
                 console.print(
                     "[i cyan]You can ask questions about the investigation or type 'exit' to end the session. Type '/help' for help.[/i cyan]\n"
                 )
-                user_input = Prompt.ask(
-                    f"\n[[bold yellow]{session.session_id}[/bold yellow]] [bold green]👤 YOU[/bold green]"
+
+                # Use prompt_toolkit for input with command completion
+                # Use formatted text for colored prompt
+                prompt_formatted = FormattedText(
+                    [
+                        ("", "\n["),
+                        ("bold ansiyellow", session.session_id),
+                        ("", "] "),
+                        ("bold ansigreen", "👤 YOU"),
+                        ("", " "),
+                    ]
                 )
+
+                user_input = await prompt_session.prompt_async(prompt_formatted)
                 if user_input.lower() in ["exit", "quit"]:
                     chatting = False
                     console.print("\n[cyan]Ending the investigation session.[/cyan]\n")

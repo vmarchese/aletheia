@@ -45,6 +45,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "sse-starlette>=2.0.0",
     "chromadb>=1.4.0",
+    "prompt-toolkit>=3.0.43",
 ]
 
 [project.optional-dependencies]

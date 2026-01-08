@@ -5,8 +5,10 @@ Docstring for aletheia.commands
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import yaml
+from pydantic import BaseModel, Field
 from rich.markdown import Markdown
 
 from aletheia import __version__
@@ -36,6 +38,15 @@ class Command:
         """
 
 
+class CustomCommand(BaseModel):
+    """Custom command loaded from markdown file with frontmatter."""
+
+    name: str = Field(..., description="Display name of the command")
+    description: str = Field(..., description="Brief description of what the command does")
+    instructions: str = Field(..., description="The actual command instructions/prompt")
+    file_path: Path = Field(..., description="Path to the command file")
+
+
 class Help(Command):
     """
     Help command to display available commands.
@@ -60,8 +71,8 @@ class Help(Command):
             custom_commands = get_custom_commands(config)
             if custom_commands:
                 console.print("\n[bold cyan]Custom Commands:[/bold cyan]")
-                for command_name, command_path in sorted(custom_commands.items()):
-                    console.print(f"  /{command_name} - (from {command_path.name})")
+                for command_name, command in sorted(custom_commands.items()):
+                    console.print(f"  /{command_name} - {command.name}: {command.description}")
             else:
                 console.print(
                     f"\n[dim]No custom commands found in {config.commands_directory}[/dim]"
@@ -199,11 +210,46 @@ def ensure_commands_directory(config: "Config") -> Path:
     return commands_dir
 
 
-def get_custom_commands(config: "Config") -> dict[str, Path]:
+def parse_command_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     """
-    Discover custom command files in config directory.
+    Parse YAML frontmatter from command markdown content.
 
-    Returns dict mapping command name to file path.
+    Args:
+        content: Full markdown file content
+
+    Returns:
+        Tuple of (frontmatter dict, instructions content)
+
+    Example:
+        >>> content = "---\\nname: Test\\n---\\nInstructions"
+        >>> meta, instructions = parse_command_frontmatter(content)
+        >>> meta
+        {'name': 'Test'}
+        >>> instructions
+        'Instructions'
+    """
+    # Match YAML frontmatter pattern: ---\n...yaml...\n---\n
+    pattern = r"^---\s*\n(.*?)\n---\s*\n(.*)$"
+    match = re.match(pattern, content, re.DOTALL)
+
+    if not match:
+        # No frontmatter found - backward compatibility
+        return {}, content
+
+    try:
+        frontmatter = yaml.safe_load(match.group(1))
+        instructions = match.group(2).strip()
+        return frontmatter if frontmatter else {}, instructions
+    except yaml.YAMLError as e:
+        logger.warning(f"Failed to parse YAML frontmatter: {e}")
+        return {}, content  # Fallback to treating entire content as instructions
+
+
+def get_custom_commands(config: "Config") -> dict[str, CustomCommand]:
+    """
+    Discover and load custom command files in config directory.
+
+    Returns dict mapping command name to CustomCommand object.
     """
     commands_dir = ensure_commands_directory(config)
     custom_commands = {}
@@ -212,19 +258,22 @@ def get_custom_commands(config: "Config") -> dict[str, Path]:
         logger.debug(f"Commands directory does not exist: {commands_dir}")
         return custom_commands
 
-    # Find all .md files in the commands directory
+    # Find and load all .md files
     for md_file in commands_dir.glob("*.md"):
-        # Extract command name from filename (without .md extension)
         command_name = md_file.stem
 
         # Validate command name (alphanumeric, hyphens, underscores only)
-        if re.match(r"^[a-zA-Z0-9_-]+$", command_name):
-            custom_commands[command_name] = md_file
-        else:
+        if not re.match(r"^[a-zA-Z0-9_-]+$", command_name):
             logger.warning(
                 f"Skipping invalid command filename: {md_file.name} "
                 f"(command names must be alphanumeric with hyphens/underscores only)"
             )
+            continue
+
+        # Load command
+        command = load_custom_command(command_name, md_file)
+        if command:
+            custom_commands[command_name] = command
 
     logger.debug(
         f"Discovered {len(custom_commands)} custom commands: {list(custom_commands.keys())}"
@@ -232,23 +281,43 @@ def get_custom_commands(config: "Config") -> dict[str, Path]:
     return custom_commands
 
 
-def load_command_content(command_path: Path) -> str:
+def load_custom_command(command_name: str, command_path: Path) -> CustomCommand | None:
     """
-    Load content from a command markdown file.
+    Load a custom command from a markdown file with frontmatter support.
 
     Args:
-        command_path: Path to the command file
+        command_name: The command name (from filename)
+        command_path: Path to the command markdown file
 
     Returns:
-        Content of the file, or empty string if error occurs
+        CustomCommand object if successful, None if error occurs
+
+    Backward Compatibility:
+        - Files with frontmatter: Use frontmatter name/description
+        - Plain markdown files: Use filename as name, empty description
     """
     try:
-        content = command_path.read_text(encoding="utf-8")
-        logger.debug(f"Loaded command content from: {command_path}")
-        return content.strip()
+        content = command_path.read_text(encoding="utf-8").strip()
+        frontmatter, instructions = parse_command_frontmatter(content)
+
+        # Extract metadata with fallbacks for backward compatibility
+        name = frontmatter.get("name", command_name.replace("_", " ").title())
+        description = frontmatter.get("description", f"(from {command_path.name})")
+
+        if not instructions:
+            logger.warning(f"Command {command_name} has no instructions content")
+            return None
+
+        return CustomCommand(
+            name=name,
+            description=description,
+            instructions=instructions,
+            file_path=command_path,
+        )
+
     except Exception as e:
-        logger.error(f"Failed to read command file {command_path}: {e}")
-        return ""
+        logger.error(f"Failed to load command from {command_path}: {e}")
+        return None
 
 
 def expand_custom_command(message: str, config: "Config") -> tuple[str, bool]:
@@ -278,21 +347,23 @@ def expand_custom_command(message: str, config: "Config") -> tuple[str, bool]:
         logger.debug(f"Command '{command_name}' is a built-in command, not expanding")
         return message, False
 
-    # Try to find and load custom command
+    # Try to find custom command
     custom_commands = get_custom_commands(config)
     if command_name not in custom_commands:
         logger.debug(f"No custom command found for: {command_name}")
         return message, False
 
-    # Load command content
-    command_path = custom_commands[command_name]
-    command_content = load_command_content(command_path)
+    # Get command instructions (not full content!)
+    command = custom_commands[command_name]
+    instructions = command.instructions
 
     # Expand the message
     if additional_text:
-        expanded_message = f"{command_content} {additional_text}"
+        expanded_message = f"{instructions} {additional_text}"
     else:
-        expanded_message = command_content
+        expanded_message = instructions
 
-    logger.info(f"Expanded custom command '/{command_name}' from {command_path}")
+    logger.info(
+        f"Expanded custom command '/{command_name}' ({command.name}) from {command.file_path}"
+    )
     return expanded_message, True
