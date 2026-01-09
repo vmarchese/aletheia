@@ -66,6 +66,7 @@ dependencies = [
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-resource" },
     { name = "azure-mgmt-storage" },
+    { name = "azure-monitor-query" },
     { name = "boto3" },
     { name = "chromadb" },
     { name = "cryptography" },
@@ -116,6 +117,7 @@ requires-dist = [
     { name = "azure-mgmt-keyvault", specifier = ">=13.0.0" },
     { name = "azure-mgmt-resource", specifier = ">=24.0.0" },
     { name = "azure-mgmt-storage", specifier = ">=24.0.0" },
+    { name = "azure-monitor-query", specifier = ">=2.0.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.7.0" },
     { name = "boto3", specifier = ">=1.26.0" },
     { name = "chromadb", specifier = ">=1.4.0" },
@@ -416,6 +418,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/02/a4f6d50ee43a25680b46f82d985c0920c5f8422b0fb9b408efc484b498f8/azure_monitor_opentelemetry_exporter-1.0.0b45.tar.gz", hash = "sha256:b2d495b318710c521d6611cfb9cb4b36d990e3d613cf10ebdaa957099ddbe351", size = 277588 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/05/4007d55d7fa88992bf70cdfdf9e7c4ec0734fd853c4c548da9fd36623892/azure_monitor_opentelemetry_exporter-1.0.0b45-py2.py3-none-any.whl", hash = "sha256:10d6363ac971fb4530511df464898fe69c0499e85841febad800572d1e8e8ec6", size = 200419 },
+]
+
+[[package]]
+name = "azure-monitor-query"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/c0/e5c760f38224575f1eba35c319842f2be30fab599854ba9bd0b19d39c261/azure_monitor_query-2.0.0.tar.gz", hash = "sha256:7b05f2fcac4fb67fc9f77a7d4c5d98a0f3099fb73b57c69ec1b080773994671b", size = 86658 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/0c/6b08a5a1e5f0bd97cefa13c53bf47f281a9a11732d19a94a86709acbc6bd/azure_monitor_query-2.0.0-py3-none-any.whl", hash = "sha256:8f52d581271d785e12f49cd5aaa144b8910fb843db2373855a7ef94c7fc462ea", size = 71102 },
 ]
 
 [[package]]

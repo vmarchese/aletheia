@@ -54,6 +54,7 @@ dependencies = [
     "azure-keyvault-keys>=4.11.0",
     "azure-keyvault-secrets>=4.10.0",
     "azure-mgmt-cdn>=13.1.1",
+    "azure-monitor-query>=2.0.0",
 ]
 
 [project.optional-dependencies]
