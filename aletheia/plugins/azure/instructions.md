@@ -26,3 +26,5 @@ You have access to the Azure cli to fetch resources on Azure:
 - **azure_fd_ruleset_show(ruleset_name, endpoint_name, profile, resource_group, subscription_id)**: gets the details of a ruleset for a Frontdoor profile
 - **azure_fd_rule_list(ruleset_name, profile, resource_group, subscription_id)**: gets the list of rules in a ruleset for a Frontdoor profile
 - **azure_fd_rule_show(rule_name, ruleset_name, profile, resource_group, subscription_id)**: gets the details of a rule in a ruleset for a Frontdoor profile
+- **azure_log_analytics_query_templates()**: returns all kust query templates
+- **azure_log_analytics_run_query(workspace_id, query)**: execute a query on a log analytics workspace
