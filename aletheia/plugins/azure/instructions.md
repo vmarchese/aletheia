@@ -1,14 +1,28 @@
 You have access to the Azure cli to fetch resources on Azure:
 
 - **azure_accounts()**: gets the accounts on Azure for the current user
-- **azure_resource_groups(region)**: gets the resource groups for a region (if present)
-- **azure_vms(resource_group)**: gets the azure virtual machines in a resource group (if present)
-- **azure_vm_show(vm_name,resource_group)**: gets the azure virtual machine details in a resource group (if present)
-- **azure_storage_accounts(resource_group)**: gets the azure storage account in a resource group (if present)
-- **azure_storage_account_show(name,resource_group)**: gets the azure storage account details in a resource group (if present)
-- **azure_keyvaults(resource_group)**: gets the azure Keyvaults list in a resource group (if present)
-- **azure_keyvault_show(keyvault_name, resource_group)**: gets the azure Keyvault details in a resource group (if present)
-- **azure_keyvault_keys(keyvault_name, resource_group)**: gets the azure Keyvaults Keys list for a Keyvault in a resource group (if present)
-- **azure_keyvault_key_show(keyvault_name, key_name, resource_group)**: gets the azure Keyvault Key details for a Keyvault in a resource group (if present)
-- **azure_keyvault_secrets(keyvault_name, resource_group)**: list the secrets in an Azure KeyVault in a  resource group (if present)
-- **azure_keyvault_secret_show(keyvault_name, secret_name, resource_group)**: shows a secret in an Azure KeyVault in a  resource group (if present)
+- **azure_resource_groups(region, subscription_id)**: gets the resource groups for a region (if present)
+- **azure_vms(resource_group, subscription_id)**: gets the azure virtual machines in a resource group (if present)
+- **azure_vm_show(vm_name,resource_group, subscription_id)**: gets the azure virtual machine details in a resource group (if present)
+- **azure_storage_accounts(resource_group, subscription_id)**: gets the azure storage account in a resource group (if present)
+- **azure_storage_account_show(name,resource_group, subscription_id)**: gets the azure storage account details in a resource group (if present)
+- **azure_keyvaults(resource_group, subscription_id)**: gets the azure Keyvaults list in a resource group (if present)
+- **azure_keyvault_show(keyvault_name, resource_group, subscription_id)**: gets the azure Keyvault details in a resource group (if present)
+- **azure_keyvault_keys(keyvault_name)**: gets the azure Keyvaults Keys list for a Keyvault in a resource group (if present)
+- **azure_keyvault_key_show(keyvault_name, key_name)**: gets the azure Keyvault Key details for a Keyvault in a resource group (if present)
+- **azure_keyvault_secrets(keyvault_name)**: list the secrets in an Azure KeyVault in a  resource group (if present)
+- **azure_keyvault_secret_show(keyvault_name, secret_name)**: shows  details of a secret in an Azure KeyVault in a  resource group (if present)
+- **azure_fd_custom_domains(profile, resource_group, subscription_id)**: gets the custom domains list for a frontdoor profile
+- **azure_fd_custom_domain_show(domain_name, profile, resource_group, subscription_id)**: gets the details of a custom domain for a frontdoor profile
+- **azure_fd_endpoints(profile, resource_group, subscription_id)**: gets the endpoints for a Frontdoor profile
+- **azure_fd_endpoint_show(endpoint_name, profile, resource_group, subscription_id)**: gets the detail of and endpoint of a Frontdoor profile
+- **azure_fd_origin_group_list(profile, resource_group, subscription_id)**: gets the list of origin groups for a Frontdoor profile
+- **azure_fd_origin_group_show(origin_name, profile, resource_group, subscription_id)**: gets the details of an origin group of a Frontdoor profile
+- **azure_fd_origin_list(profile, origin_group_name, resource_group, subscription_id)**: gets the list of origins for a Frontdoor profile
+- **azure_fd_origin_show(origin_name, profile, origin_group_name, resource_group, subscription_id)**: gets the details of an origin of a Frontdoor profile
+- **azure_fd_route_list(endpoint_name, profile, resource_group, subscription_id)**: gets the list of routes for an endpoint for a Frontdoor profile
+- **azure_fd_route_show(route_name, endpoint_name, profile, resource_group, subscription_id)**: gets the details of a route for an endpoint for a Frontdoor profile
+- **azure_fd_ruleset_list(endpoint_name, profile, resource_group, subscription_id)**: gets the rule sets for a Frontdoor profile
+- **azure_fd_ruleset_show(ruleset_name, endpoint_name, profile, resource_group, subscription_id)**: gets the details of a ruleset for a Frontdoor profile
+- **azure_fd_rule_list(ruleset_name, profile, resource_group, subscription_id)**: gets the list of rules in a ruleset for a Frontdoor profile
+- **azure_fd_rule_show(rule_name, ruleset_name, profile, resource_group, subscription_id)**: gets the details of a rule in a ruleset for a Frontdoor profile

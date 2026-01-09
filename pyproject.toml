@@ -46,6 +46,14 @@ dependencies = [
     "sse-starlette>=2.0.0",
     "chromadb>=1.4.0",
     "prompt-toolkit>=3.0.43",
+    "azure-identity>=1.25.1",
+    "azure-mgmt-resource>=24.0.0",
+    "azure-mgmt-compute>=37.1.0",
+    "azure-mgmt-storage>=24.0.0",
+    "azure-mgmt-keyvault>=13.0.0",
+    "azure-keyvault-keys>=4.11.0",
+    "azure-keyvault-secrets>=4.10.0",
+    "azure-mgmt-cdn>=13.1.1",
 ]
 
 [project.optional-dependencies]
