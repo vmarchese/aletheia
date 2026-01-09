@@ -66,7 +66,7 @@ class AzurePlugin(BasePlugin):
 
         return json.dumps(subscriptions)
 
-    def azure_resource_groups(self, 
+    def azure_resource_groups(self,
                               region: Annotated[str, "The default region"] = "",
                               subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
         """Retrieves the list of resource groups in the specified region using Azure SDK."""
@@ -76,10 +76,10 @@ class AzurePlugin(BasePlugin):
             rg for rg in client.resource_groups.list()
             if rg.location.lower() == region.lower()
         ]
-        group_list = [g.as_dict() for g in groups] 
+        group_list = [g.as_dict() for g in groups]
         return json.dumps(group_list)
 
-    def azure_vms(self, 
+    def azure_vms(self,
                   resource_group: Annotated[str, "The resource group name"] = "",
                   subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
         """" Retrieves the list of VMs in the specified resource group using Azure SDK."""
@@ -96,7 +96,7 @@ class AzurePlugin(BasePlugin):
                       subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
         """Retrieves details of a specific VM using Azure SDK."""
         credential = DefaultAzureCredential()
-        compute = ComputeManagementClient(credential, subscription_id)  
+        compute = ComputeManagementClient(credential, subscription_id)
         vm = compute.virtual_machines.get(resource_group, vm_name)
         return json.dumps(vm.as_dict())
 
@@ -153,7 +153,7 @@ class AzurePlugin(BasePlugin):
         credential = DefaultAzureCredential()
         vault_url = f"https://{keyvault_name}.vault.azure.net/"
         key_client = KeyClient(vault_url=vault_url, credential=credential)
-        keys = key_client.list_properties_of_keys()        
+        keys = key_client.list_properties_of_keys()
         key_list = []
         for key in keys:
             key_list.append({
@@ -235,7 +235,7 @@ class AzurePlugin(BasePlugin):
         )
         cd_list = [cd.as_dict() for cd in custom_domains]
         return json.dumps(cd_list)
-    
+
     def azure_fd_custom_domain_show(self,
                                     domain_name: Annotated[str, "The Custom Domain name"],
                                     profile: Annotated[str, "The Front Door profile name"] = "",
@@ -269,7 +269,7 @@ class AzurePlugin(BasePlugin):
                                endpoint_name: Annotated[str, "The Endpoint name"],
                                profile: Annotated[str, "The Front Door profile name"] = "",
                                resource_group: Annotated[str, "The resource group name"] = "",
-                               subscription_id: Annotated[str, "The subscription ID"] = "") -> str: 
+                               subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
         """Retrieves details of a specific Endpoint of a Front Door profile using Azure SDK."""
         credential = DefaultAzureCredential()
         cdn_client = CdnManagementClient(credential, subscription_id)
@@ -278,13 +278,13 @@ class AzurePlugin(BasePlugin):
             profile_name=profile,
             endpoint_name=endpoint_name,
         )
-        return json.dumps(ep.as_dict()) 
+        return json.dumps(ep.as_dict())
 
     def azure_fd_origin_group_list(self,
                                    profile: Annotated[str, "The Front Door profile name"] = "",
                                    resource_group: Annotated[str, "The resource group name"] = "",
                                    subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
-        
+
         """Retrieves the Origin Groups of a Front Door profile using Azure SDK."""
         credential = DefaultAzureCredential()
         cdn_client = CdnManagementClient(credential, subscription_id)
@@ -358,7 +358,7 @@ class AzurePlugin(BasePlugin):
         )
         route_list = [route.as_dict() for route in routes]
         return json.dumps(route_list)
-    
+
     def azure_fd_route_show(self,
                             route_name: Annotated[str, "The Route name"],
                             endpoint_name: Annotated[str, "The Endpoint name"],
@@ -403,7 +403,7 @@ class AzurePlugin(BasePlugin):
             profile_name=profile,
             rule_set_name=ruleset_name,
         )
-        return json.dumps(rs.as_dict()) 
+        return json.dumps(rs.as_dict())
 
     def azure_fd_rule_list(self,
                            ruleset_name: Annotated[str, "The Ruleset name"],
@@ -424,9 +424,9 @@ class AzurePlugin(BasePlugin):
     def azure_fd_rule_show(self,
                            rule_name: Annotated[str, "The Rule name"],
                            ruleset_name: Annotated[str, "The Ruleset name"],
-                            profile: Annotated[str, "The Front Door profile name"] = "",
-                            resource_group: Annotated[str, "The resource group name"] = "",
-                            subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
+                           profile: Annotated[str, "The Front Door profile name"] = "",
+                           resource_group: Annotated[str, "The resource group name"] = "",
+                           subscription_id: Annotated[str, "The subscription ID"] = "") -> str:
         """Retrieves details of a specific Rule of a Front Door Ruleset using Azure SDK."""
         credential = DefaultAzureCredential()
         cdn_client = CdnManagementClient(credential, subscription_id)
