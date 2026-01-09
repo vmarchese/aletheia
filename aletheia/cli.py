@@ -393,6 +393,7 @@ async def _start_investigation(session: Session) -> None:
                     json_buffer = ""
                     current_agent_name = "Orchestrator"  # Default
                     parsed_response = None
+                    parsed_successfully = False  # Track if JSON parsing ever succeeded
 
                     with Live("", console=console, refresh_per_second=5) as live:
                         _ = asyncio.create_task(
@@ -421,6 +422,7 @@ async def _start_investigation(session: Session) -> None:
                                 # Try to parse as structured JSON
                                 try:
                                     parsed_response = json.loads(json_buffer)
+                                    parsed_successfully = True  # Mark successful parse
                                     # Successfully parsed structured response
                                     display_parts = []
 
@@ -570,6 +572,24 @@ async def _start_investigation(session: Session) -> None:
                                 for content in response.contents:
                                     if isinstance(content, UsageContent):
                                         completion_usage += content.details
+
+                    # Fallback: If JSON parsing never succeeded, render raw buffer
+                    if not parsed_successfully and json_buffer and json_buffer.strip():
+                        console.print("\n[yellow]⚠️ Structured parsing failed, showing raw response:[/yellow]\n")
+                        # Try to extract text content from partial JSON or render as-is
+                        fallback_text = json_buffer
+                        # If it looks like JSON, try to extract string values
+                        if json_buffer.strip().startswith('{'):
+                            try:
+                                # Attempt to extract readable text from partial JSON
+                                import re
+                                # Extract text from string fields
+                                text_matches = re.findall(r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"', json_buffer)
+                                if text_matches:
+                                    fallback_text = "\n\n".join(text_matches)
+                            except Exception:
+                                pass  # Use raw buffer if extraction fails
+                        console.print(Markdown(fallback_text))
 
                     log_debug(f"complete response:{json_buffer}")
                     # Print final usage for this turn

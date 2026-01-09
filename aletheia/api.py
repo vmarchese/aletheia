@@ -455,6 +455,7 @@ async def run_agent_step(
         # Buffer for accumulating JSON text
         json_buffer = ""
         last_sent_data = {}
+        parsed_successfully = False  # Track if JSON parsing ever succeeded
 
         async for response in orchestrator.agent.run_stream(
             messages=[ChatMessage(role="user", contents=[TextContent(text=message)])],
@@ -468,6 +469,7 @@ async def run_agent_step(
                 try:
                     # Attempt to parse the accumulated buffer as JSON
                     parsed = json.loads(json_buffer)
+                    parsed_successfully = True  # Mark successful parse
 
                     # Send incremental structured events only for fields that changed
                     if "confidence" in parsed and parsed.get(
@@ -536,6 +538,22 @@ async def run_agent_step(
                             input_tokens=orchestrator.completion_usage.input_token_count,
                             output_tokens=orchestrator.completion_usage.output_token_count,
                         )
+
+        # Fallback: If JSON parsing never succeeded, send raw buffer as text_fallback
+        if not parsed_successfully and json_buffer and json_buffer.strip():
+            # Try to extract text content from partial JSON
+            fallback_text = json_buffer
+            if json_buffer.strip().startswith('{'):
+                try:
+                    import re
+                    # Extract text from string fields
+                    text_matches = re.findall(r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"', json_buffer)
+                    if text_matches:
+                        fallback_text = "\n\n".join(text_matches)
+                except Exception:
+                    pass  # Use raw buffer if extraction fails
+
+            await queue.put({"type": "text_fallback", "content": fallback_text})
 
         # Send final usage stats
         await queue.put(
