@@ -5,7 +5,7 @@ Debug script to test tool passing to Bedrock client directly.
 import os
 import asyncio
 from agent_framework import ChatMessage, TextContent, Role, ChatOptions
-from aletheia.agents.bedrock_client import BedrockChatClient
+from agent_framework_bedrock import BedrockChatClient
 
 class MockTool:
     """Mock tool for testing."""
