@@ -423,8 +423,6 @@ async def _start_investigation(session: Session) -> None:
                                     live.update(Markdown(display_text))
 
                                 except json.JSONDecodeError:
-                                    print ("[DEBUG] Not yet complete json")
-                                    #print (json_buffer)
                                     # Not yet complete JSON, continue buffering
                                     pass
 
