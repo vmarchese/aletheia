@@ -65,7 +65,7 @@ class BedrockResponseFormatWrapper:
         # Override max_tokens for Bedrock to avoid the 1024 token default limit
         # Claude models support up to 64K output tokens
         if 'max_tokens' not in kwargs:
-            kwargs['max_tokens'] = 32768  # Set to 32K tokens (half of max to be safe)
+            kwargs['max_tokens'] = 8192  # Set to 32K tokens (half of max to be safe)
             log_debug(f"BedrockWrapper: Setting max_tokens to {kwargs['max_tokens']}")
         
         if response_format is None:
@@ -93,11 +93,15 @@ Please format your response as valid JSON that matches this exact schema:
 {schema_str}
 ```
 
-Important:
+IMPORTANT INSTRUCTIONS:
 - Your response must be valid JSON only
-- Do not include any text before or after the JSON
+- Do NOT include any text before or after the JSON
+- Do NOT use <thinking> tags or any XML-style tags
+- Do NOT include explanations or reasoning outside the JSON
 - Follow the schema exactly
 - Use proper JSON formatting with quotes around strings
+- Start your response directly with the opening curly brace {{
+- If you need to call tools, do so first, then format the final response as JSON
 """
         
         if modified_messages and modified_messages[-1].role == Role.USER:
