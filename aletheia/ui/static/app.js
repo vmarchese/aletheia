@@ -605,6 +605,59 @@ function connectStream(sessionId) {
             updateStructuredResponse('next_actions', data.content);
         } else if (data.type === 'errors') {
             updateStructuredResponse('errors', data.content);
+        } else if (data.type === 'text_fallback') {
+            // Fallback: JSON parsing failed, render raw content as markdown
+            stopThinking();
+            console.log('[SSE] Fallback text received, attempting to parse sections');
+
+            // Try to parse sections from the text
+            const fallbackHtml = parseSections(data.content);
+
+            // If parseSections returned HTML with sections, use it
+            if (fallbackHtml && fallbackHtml.includes('section-tabs')) {
+                // Render as structured content with warning
+                const lastMsg = chatContainer.lastElementChild;
+                if (lastMsg && lastMsg.classList.contains('bot') && !lastMsg.dataset.complete) {
+                    const contentDiv = lastMsg.querySelector('.message-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = `
+                            <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                                ⚠️ Displaying unstructured response
+                            </div>
+                            ${fallbackHtml}
+                        `;
+                    }
+                } else {
+                    appendMessage(`
+                        <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                            ⚠️ Displaying unstructured response
+                        </div>
+                        ${fallbackHtml}
+                    `, 'bot');
+                }
+            } else {
+                // Fallback to plain markdown if no sections found
+                const markdownHtml = marked.parse(data.content);
+                const lastMsg = chatContainer.lastElementChild;
+                if (lastMsg && lastMsg.classList.contains('bot') && !lastMsg.dataset.complete) {
+                    const contentDiv = lastMsg.querySelector('.message-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = `
+                            <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                                ⚠️ Displaying unstructured response
+                            </div>
+                            ${markdownHtml}
+                        `;
+                    }
+                } else {
+                    appendMessage(`
+                        <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                            ⚠️ Displaying unstructured response
+                        </div>
+                        ${markdownHtml}
+                    `, 'bot');
+                }
+            }
         } else if (data.type === 'done') {
             stopThinking();
 
