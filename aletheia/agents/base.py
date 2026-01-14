@@ -20,7 +20,7 @@ from aletheia.agents.client import LLMClient
 from aletheia.mcp.mcp import load_mcp_tools
 from aletheia.utils.logging import log_error, log_debug
 from aletheia.knowledge import KnowledgePlugin, ChromaKnowledge
-from aletheia.agents.bedrock_wrapper import wrap_bedrock_agent
+from aletheia.agents.bedrock_chat_client_wrapper import wrap_bedrock_chat_client
 
 
 class AgentInfo(ABC):
@@ -179,7 +179,7 @@ class BaseAgent(ABC):
         )
 
         # Wrap with Bedrock response format support if needed
-        wrap_bedrock_agent(self.agent, client.get_provider())
+        wrap_bedrock_chat_client(client.get_client(), client.get_provider())
 
     async def cleanup(self):
         """Clean up MCP tool connections."""

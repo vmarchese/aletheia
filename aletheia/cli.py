@@ -332,6 +332,7 @@ async def _start_investigation(session: Session) -> None:
                     json_buffer = ""
                     current_agent_name = "Orchestrator"  # Default
                     parsed_response = None
+                    json_parsed_successfully = False
 
                     with Live("", console=console, refresh_per_second=5) as live:
                         _ = asyncio.create_task(show_thinking_animation(live, stop_event))
@@ -351,7 +352,19 @@ async def _start_investigation(session: Session) -> None:
 
                                 # Try to parse as structured JSON
                                 try:
-                                    parsed_response = json.loads(json_buffer)
+                                    # Clean up the JSON buffer - remove markdown code fences
+                                    clean_json = json_buffer.strip()
+                                    
+                                    # Remove markdown code blocks
+                                    if clean_json.startswith('```json'):
+                                        clean_json = clean_json[7:]
+                                    elif clean_json.startswith('```'):
+                                        clean_json = clean_json[3:]
+                                    if clean_json.endswith('```'):
+                                        clean_json = clean_json[:-3]
+                                    clean_json = clean_json.strip()
+                                    
+                                    parsed_response = json.loads(clean_json)
                                     # Successfully parsed structured response
                                     display_parts = []
 
@@ -421,10 +434,13 @@ async def _start_investigation(session: Session) -> None:
 
                                     display_text = "".join(display_parts)
                                     live.update(Markdown(display_text))
+                                    
+                                    # Mark that we successfully parsed and displayed the response
+                                    json_parsed_successfully = True
 
                                 except json.JSONDecodeError:
                                     # Not yet complete JSON, continue buffering
-                                    pass
+                                    json_parsed_successfully = False
 
                             if response and response.contents:
                                 for content in response.contents:
@@ -432,6 +448,12 @@ async def _start_investigation(session: Session) -> None:
                                         completion_usage += content.details
 
                     log_debug(f"complete response:{json_buffer}")
+                    
+                    # If we couldn't parse the JSON successfully, show the raw response
+                    if not json_parsed_successfully and json_buffer.strip():
+                        console.print("\n[yellow]Raw response (JSON parsing failed):[/yellow]")
+                        console.print(Markdown(json_buffer))
+                    
                     # Print final usage for this turn
                     if completion_usage:
                         console.print(f"_[dim]Usage: {completion_usage.total_token_count} (In: {completion_usage.input_token_count}, Out: {completion_usage.output_token_count})[/dim]_", style="dim")
