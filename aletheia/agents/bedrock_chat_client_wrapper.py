@@ -1,400 +1,124 @@
 """
-Bedrock chat client wrapper that adds response_format support at the chat client level.
+Bedrock chat client wrapper that adds detailed tracing for debugging.
 
-This wrapper intercepts the chat client's get_streaming_response method where
-tool definitions are actually sent to the LLM, providing better control over
-structured output without interfering with tool calling.
+This wrapper provides comprehensive logging and request/response dumping
+for Bedrock API calls to aid in troubleshooting and development.
 """
 import json
-import re
-from copy import deepcopy
-from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union
-from pydantic import BaseModel, ValidationError
+from typing import Any, AsyncIterable, Dict, List, Optional, Type, Union
 
 from agent_framework import ChatMessage, TextContent, Role, FunctionCallContent, FunctionResultContent
-from agent_framework._types import ChatOptions, ChatResponseUpdate
+from agent_framework._types import ChatOptions as ChatOptionsTypedDict, ChatResponseUpdate
 from aletheia.utils.logging import log_debug, log_error
 
 
-class BedrockChatClientResponseWrapper:
-    """Wrapper for chat response objects that matches the expected interface."""
+class ChatOptions:
+    """Local wrapper class for chat options that provides attribute access to dict values.
     
-    def __init__(self, text: str, **kwargs):
-        """Initialize response wrapper.
+    The agent framework's ChatOptions is a TypedDict (returns a dict), but we want
+    attribute access for cleaner code. This wrapper provides that while maintaining
+    compatibility with the dict-based interface.
+    """
+    
+    def __init__(self, options_dict: dict[str, Any]):
+        """Initialize from options dict.
         
         Args:
-            text: The response text
-            **kwargs: Additional attributes to set on the wrapper
+            options_dict: The options dictionary from the framework
         """
-        self.text = text
-        # Set any additional attributes from the original response
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-
-class BedrockChatClientWrapper:
-    """Wrapper that adds response_format support to Bedrock chat clients."""
+        self._dict = options_dict
     
-    def __init__(self, chat_client):
-        """Initialize the wrapper with a chat client instance.
+    @property
+    def model_id(self) -> Optional[str]:
+        return self._dict.get('model_id')
+    
+    @property
+    def max_tokens(self) -> Optional[int]:
+        return self._dict.get('max_tokens')
+    
+    @property
+    def temperature(self) -> Optional[float]:
+        return self._dict.get('temperature')
+    
+    @property
+    def top_p(self) -> Optional[float]:
+        return self._dict.get('top_p')
+    
+    @property
+    def tools(self) -> Optional[Any]:
+        return self._dict.get('tools')
+    
+    @property
+    def tool_choice(self) -> Optional[Any]:
+        return self._dict.get('tool_choice')
+    
+    @property
+    def response_format(self) -> Optional[Any]:
+        return self._dict.get('response_format')
+    
+    @property
+    def allow_multiple_tool_calls(self) -> Optional[bool]:
+        return self._dict.get('allow_multiple_tool_calls')
+    
+    @property
+    def conversation_id(self) -> Optional[str]:
+        return self._dict.get('conversation_id')
+    
+    @property
+    def frequency_penalty(self) -> Optional[float]:
+        return self._dict.get('frequency_penalty')
+    
+    @property
+    def presence_penalty(self) -> Optional[float]:
+        return self._dict.get('presence_penalty')
+    
+    @property
+    def instructions(self) -> Optional[str]:
+        return self._dict.get('instructions')
+    
+    @property
+    def logit_bias(self) -> Optional[Dict]:
+        return self._dict.get('logit_bias')
+    
+    @property
+    def metadata(self) -> Optional[Dict]:
+        return self._dict.get('metadata')
+    
+    @property
+    def seed(self) -> Optional[int]:
+        return self._dict.get('seed')
+    
+    @property
+    def stop(self) -> Optional[Any]:
+        return self._dict.get('stop')
+    
+    @property
+    def store(self) -> Optional[bool]:
+        return self._dict.get('store')
+    
+    @property
+    def user(self) -> Optional[str]:
+        return self._dict.get('user')
+    
+    @property
+    def additional_properties(self) -> Optional[Dict]:
+        return self._dict.get('additional_properties', {})
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert back to dict for framework interface.
+        
+        Returns:
+            Dictionary with all non-None values
+        """
+        return {k: v for k, v in self._dict.items() if v is not None}
+    
+    def update(self, **kwargs):
+        """Update options values.
         
         Args:
-            chat_client: The Bedrock chat client instance to wrap
+            **kwargs: Key-value pairs to update
         """
-        self.chat_client = chat_client
-        self._original_get_streaming_response = chat_client._inner_get_streaming_response
-        
-        # Replace the _inner_get_streaming_response method with our wrapper
-        chat_client._inner_get_streaming_response = self._wrapped_get_streaming_response
-    
-    async def _wrapped_get_streaming_response(
-        self, 
-        *,
-        messages: List[ChatMessage],
-        options: ChatOptions,
-        **kwargs
-    ) -> AsyncGenerator[ChatResponseUpdate, None]:
-        """Wrapped get_streaming_response method that handles response_format for Bedrock.
-        
-        Args:
-            messages: List of chat messages (includes system messages with tools)
-            options: Chat options including response_format
-            **kwargs: Additional arguments
-            
-        Yields:
-            Streaming response chunks
-        """
-        log_debug(f"BedrockChatClientWrapper called with {len(messages)} messages")
-        log_debug(f"Chat options - response_format: {options.response_format}")
-        log_debug(f"Chat options - tools: {len(options.tools) if options.tools else 0}")
-        log_debug(f"Chat options - max_tokens: {options.max_tokens}")
-        log_debug(f"Chat options - tool_choice: {options.tool_choice}")
-        
-        # Log detailed message information
-        for i, msg in enumerate(messages):
-            log_debug(f"Input message {i}: role={msg.role}")
-            if hasattr(msg, 'contents') and msg.contents:
-                for j, content in enumerate(msg.contents):
-                    content_type = type(content).__name__
-                    if 'Tool' in content_type or hasattr(content, 'tool_use_id'):
-                        log_debug(f"Input message {i} content {j}: {content_type} (TOOL CONTENT)")
-                        if hasattr(content, 'tool_use_id'):
-                            log_debug(f"  tool_use_id: {getattr(content, 'tool_use_id', 'N/A')}")
-                        if hasattr(content, 'name'):
-                            log_debug(f"  name: {getattr(content, 'name', 'N/A')}")
-                    else:
-                        log_debug(f"Input message {i} content {j}: {content_type}")
-        
-        # Log tool information at debug level
-        if options.tools:
-            log_debug(f"Available tools: {[getattr(tool, 'name', str(tool)) for tool in options.tools]}")
-        else:
-            log_debug("No tools available in options")
-        
-        # Temporarily patch the _build_converse_request method to log what's being sent
-        original_build_request = self.chat_client._build_converse_request
-        
-        def debug_build_request(*args, **kwargs):
-            request = original_build_request(*args, **kwargs)
-            log_debug(f"Bedrock request - Model: {request.get('modelId')}")
-            log_debug(f"Bedrock request - Messages: {len(request.get('messages', []))}")
-            log_debug(f"Bedrock request - Tools: {len(request.get('toolConfig', {}).get('tools', []))}")
-            log_debug(f"Bedrock request - Tool choice: {request.get('toolConfig', {}).get('toolChoice', 'None')}")
-            return request
-        
-        # Apply the patch
-        self.chat_client._build_converse_request = debug_build_request
-        
-        # Override max_tokens for Bedrock to avoid the 1024 token default limit
-        modified_options = options
-        if options.max_tokens is None or options.max_tokens < 32768:
-            # Create a new ChatOptions with updated max_tokens
-            modified_options = ChatOptions(
-                model_id=options.model_id,
-                allow_multiple_tool_calls=options.allow_multiple_tool_calls,
-                conversation_id=options.conversation_id,
-                frequency_penalty=options.frequency_penalty,
-                instructions=options.instructions,
-                logit_bias=options.logit_bias,
-                max_tokens=32768,  # Set to 32K tokens
-                metadata=options.metadata,
-                presence_penalty=options.presence_penalty,
-                response_format=options.response_format,
-                seed=options.seed,
-                stop=options.stop,
-                store=options.store,
-                temperature=options.temperature,
-                tool_choice=options.tool_choice,
-                tools=options.tools,
-                top_p=options.top_p,
-                user=options.user,
-                additional_properties=options.additional_properties,
-            )
-            log_debug(f"Updated max_tokens to {modified_options.max_tokens}")
-        
-        # Check if this is a tool call scenario - if so, let the agent framework handle it naturally
-        has_tools = options.tools and len(options.tools) > 0
-        has_tool_content = any(
-            hasattr(msg, 'contents') and msg.contents and any(
-                'Tool' in type(content).__name__ or 
-                hasattr(content, 'tool_use_id') or
-                'tool_use' in str(type(content)).lower() or
-                'tool_result' in str(type(content)).lower()
-                for content in msg.contents
-            )
-            for msg in messages
-        )
-        
-        # Always use original method when tools are available, regardless of tool content in history
-        # This prevents interference with the agent framework's tool management
-        if has_tools:
-            log_debug("Tools available - using original method without message modification")
-            # For tool calls, use the original method without our message modifications
-            # to avoid interfering with the agent framework's tool call management
-            chunk_count = 0
-            async for chunk in self._original_get_streaming_response(messages=messages, options=modified_options, **kwargs):
-                chunk_count += 1
-                yield chunk
-            log_debug(f"Yielded {chunk_count} chunks from original method (tools available)")
-            # Restore original method
-            self.chat_client._build_converse_request = original_build_request
-            return
-        
-        if options.response_format is None:
-            # No response format specified, use original method
-            log_debug("No response_format specified, using original method")
-            chunk_count = 0
-            async for chunk in self._original_get_streaming_response(messages=messages, options=modified_options, **kwargs):
-                chunk_count += 1
-                yield chunk
-            log_debug(f"Yielded {chunk_count} chunks from original method")
-            # Restore original method
-            self.chat_client._build_converse_request = original_build_request
-            return
-        
-        log_debug("Adding JSON schema instructions for structured output")
-        
-        # Only modify messages for structured output when there are no tool calls involved
-        modified_messages = []
-        for i, msg in enumerate(messages):
-            log_debug(f"Processing message {i}: role={msg.role}")
-            
-            # Create a new message to avoid modifying the original
-            new_contents = []
-            
-            if hasattr(msg, 'contents') and msg.contents:
-                for j, content in enumerate(msg.contents):
-                    if hasattr(content, 'text'):
-                        # Create new TextContent to avoid modifying original
-                        new_contents.append(TextContent(text=content.text))
-                    else:
-                        new_contents.append(content)
-            
-            # Create new message with copied contents
-            new_msg = ChatMessage(
-                role=msg.role,
-                contents=new_contents,
-                author_name=getattr(msg, 'author_name', None),
-                message_id=getattr(msg, 'message_id', None),
-                additional_properties=getattr(msg, 'additional_properties', {}),
-                raw_representation=getattr(msg, 'raw_representation', None)
-            )
-            modified_messages.append(new_msg)
-            log_debug(f"Added message {i} to modified_messages (role={msg.role}, contents={len(new_contents)})")
-        
-        response_format = options.response_format
-        
-        # Get the JSON schema from the response_format model
-        schema = response_format.model_json_schema()
-        schema_str = json.dumps(schema, indent=2)
-        
-        # Add JSON schema instructions to the system message or create one
-        json_instructions = f"""
-
-CRITICAL: You must format your response as valid JSON that matches this exact schema:
-
-```json
-{schema_str}
-```
-
-IMPORTANT INSTRUCTIONS:
-- Your response must be valid JSON only
-- Do NOT include any text before or after the JSON
-- Do NOT use <thinking> tags or any XML-style tags
-- Do NOT include explanations or reasoning outside the JSON
-- Follow the schema exactly
-- Use proper JSON formatting with quotes around strings
-- Start your response directly with the opening curly brace {{
-- If you need to call tools, do so first, then format the final response as JSON
-"""
-        
-        # Find system message or create one - be careful not to modify tool messages
-        system_message_found = False
-        for msg in modified_messages:
-            if msg.role == Role.SYSTEM:
-                # Add to existing system message
-                for content in msg.contents:
-                    if hasattr(content, 'text'):
-                        content.text += json_instructions
-                        system_message_found = True
-                        break
-                break
-        
-        if not system_message_found:
-            # Create new system message at the beginning
-            system_msg = ChatMessage(
-                role=Role.SYSTEM,
-                contents=[TextContent(text=json_instructions)]
-            )
-            modified_messages.insert(0, system_msg)
-        
-        log_debug(f"Modified messages for JSON schema - total messages: {len(modified_messages)}")
-        
-        # Log message roles to debug the conversation flow
-        for i, msg in enumerate(modified_messages):
-            log_debug(f"Message {i}: role={msg.role}, contents_count={len(msg.contents) if hasattr(msg, 'contents') else 0}")
-            # Check for tool-related content
-            if hasattr(msg, 'contents'):
-                for j, content in enumerate(msg.contents):
-                    content_type = type(content).__name__
-                    if 'Tool' in content_type or 'Function' in content_type:
-                        log_debug(f"Message {i} Content {j}: {content_type} - potential tool content")
-        
-        # Remove response_format from options to avoid conflicts
-        modified_options_no_format = ChatOptions(
-            model_id=modified_options.model_id,
-            allow_multiple_tool_calls=modified_options.allow_multiple_tool_calls,
-            conversation_id=modified_options.conversation_id,
-            frequency_penalty=modified_options.frequency_penalty,
-            instructions=modified_options.instructions,
-            logit_bias=modified_options.logit_bias,
-            max_tokens=modified_options.max_tokens,
-            metadata=modified_options.metadata,
-            presence_penalty=modified_options.presence_penalty,
-            response_format=None,  # Remove to avoid conflicts
-            seed=modified_options.seed,
-            stop=modified_options.stop,
-            store=modified_options.store,
-            temperature=modified_options.temperature,
-            tool_choice=modified_options.tool_choice,
-            tools=modified_options.tools,
-            top_p=modified_options.top_p,
-            user=modified_options.user,
-            additional_properties=modified_options.additional_properties,
-        )
-        
-        # Collect all response text for parsing
-        accumulated_text = ""
-        all_chunks = []
-        
-        log_debug("Starting to collect response chunks...")
-        chunk_count = 0
-        async for chunk in self._original_get_streaming_response(messages=modified_messages, options=modified_options_no_format, **kwargs):
-            chunk_count += 1
-            all_chunks.append(chunk)
-            
-            # Extract text from chunk
-            chunk_text = ""
-            if hasattr(chunk, 'contents') and chunk.contents:
-                for content in chunk.contents:
-                    if hasattr(content, 'text') and content.text:
-                        chunk_text += content.text
-            elif hasattr(chunk, 'text') and chunk.text:
-                chunk_text = chunk.text
-            
-            if chunk_text:
-                accumulated_text += chunk_text
-        
-        log_debug(f"Collected {len(accumulated_text)} characters from {len(all_chunks)} chunks")
-        
-        # Try to parse the accumulated text as JSON
-        try:
-            # Clean up the text - remove Nova thinking tags, YAML frontmatter, and markdown
-            json_text = accumulated_text.strip()
-            
-            # Remove Nova model thinking tags
-            if '<thinking>' in json_text and '</thinking>' in json_text:
-                thinking_end = json_text.find('</thinking>')
-                if thinking_end != -1:
-                    json_text = json_text[thinking_end + 12:].strip()
-                    log_debug("Removed <thinking> tags from Nova model response")
-            
-            # Remove YAML frontmatter (appears before JSON in some responses)
-            # Format: ---\nagent: ...\ntimestamp: ...\n---\n
-            if json_text.startswith('---'):
-                # Find the closing --- of the frontmatter
-                frontmatter_end = json_text.find('---', 3)
-                if frontmatter_end != -1:
-                    json_text = json_text[frontmatter_end + 3:].strip()
-                    log_debug("Removed YAML frontmatter from response")
-            
-            # Remove markdown code blocks
-            if json_text.startswith('```json'):
-                json_text = json_text[7:]
-            elif json_text.startswith('```'):
-                json_text = json_text[3:]
-            
-            if json_text.endswith('```'):
-                json_text = json_text[:-3]
-            json_text = json_text.strip()
-            
-            # Handle DeepSeek models that might miss the opening brace
-            if json_text.startswith('"') and not json_text.startswith('{'):
-                json_text = '{' + json_text
-                log_debug("Added missing opening brace for DeepSeek model")
-            
-            # Handle missing closing brace (if response was truncated)
-            if json_text.startswith('{') and not json_text.rstrip().endswith('}'):
-                open_braces = json_text.count('{')
-                close_braces = json_text.count('}')
-                if open_braces > close_braces:
-                    json_text = json_text.rstrip() + '}'
-                    log_debug("Added missing closing brace")
-            
-            log_debug(f"Attempting to parse JSON response ({len(json_text)} characters)")
-            
-            # Parse and validate against the schema
-            parsed_data = json.loads(json_text)
-            validated_response = response_format(**parsed_data)
-            
-            log_debug("Successfully parsed and validated JSON response")
-            
-            # Create a single response chunk with the validated data
-            response_text = validated_response.model_dump_json(indent=2)
-            
-            # Create a ChatResponseUpdate that matches the original format
-            if all_chunks:
-                # Use the last chunk as a template
-                last_chunk = all_chunks[-1]
-                yield ChatResponseUpdate(
-                    contents=[TextContent(text=response_text)],
-                    role=last_chunk.role,
-                    author_name=getattr(last_chunk, 'author_name', None),
-                    response_id=getattr(last_chunk, 'response_id', None),
-                    message_id=getattr(last_chunk, 'message_id', None),
-                    created_at=getattr(last_chunk, 'created_at', None),
-                    additional_properties=getattr(last_chunk, 'additional_properties', {}),
-                    raw_representation=getattr(last_chunk, 'raw_representation', None),
-                )
-            else:
-                # Fallback if no chunks were collected
-                yield ChatResponseUpdate(
-                    contents=[TextContent(text=response_text)],
-                    role=Role.ASSISTANT,
-                )
-            
-        except (json.JSONDecodeError, ValidationError) as e:
-            log_error(f"Failed to parse JSON response: {e}")
-            log_debug(f"Raw response text (first 500 chars): {accumulated_text[:500]}...")
-            
-            # Fallback: yield original chunks
-            log_debug("Falling back to original response chunks")
-            for chunk in all_chunks:
-                yield chunk
-        
-        # Always restore the original method
-        finally:
-            self.chat_client._build_converse_request = original_build_request
+        self._dict.update(kwargs)
 
 
 def wrap_bedrock_chat_client(chat_client, provider: str) -> None:
@@ -404,13 +128,11 @@ def wrap_bedrock_chat_client(chat_client, provider: str) -> None:
         chat_client: The chat client instance to potentially wrap
         provider: The LLM provider name ("bedrock", "azure", "openai")
     """
-    # DISABLED: Wrapping causes deepcopy issues with agent_framework
-    # The wrapper modifies chat_client._inner_get_streaming_response which gets
-    # stored in agent.default_options and causes pickle errors when deepcopied.
-    # 
-    # For now, Bedrock structured outputs are not supported.
-    # TODO: Find a way to wrap without modifying the chat_client instance
-    log_debug(f"Bedrock wrapping disabled for provider {provider} to avoid deepcopy issues")
+    if provider == "bedrock":
+        log_debug("Bedrock provider detected - Adding trace wrapper for debugging")
+        BedrockChatClientTraceWrapper(chat_client)
+    else:
+        log_debug(f"Provider {provider} already supports response_format, no chat client wrapping needed")
 
 
 class BedrockChatClientTraceWrapper:
@@ -501,14 +223,14 @@ class BedrockChatClientTraceWrapper:
         
         return session_dir
     
-    def _dump_input_messages(self, messages: List[ChatMessage], options: ChatOptions, request_id: str):
+    def _dump_input_messages(self, messages: List[ChatMessage], chat_options: ChatOptions, request_id: str):
         """Dump the input messages as they arrive to the wrapper (before cleaning).
         
         Only dumps when trace logging is enabled (--very-verbose flag).
         
         Args:
             messages: Original input messages
-            options: Original chat options
+            chat_options: ChatOptions object (converted from dict internally)
             request_id: Unique request identifier for correlation
         """
         import json
@@ -534,13 +256,13 @@ class BedrockChatClientTraceWrapper:
                 "stage": "input",
                 "description": "Messages as received by wrapper (before cleaning)",
                 "message_count": len(messages),
-                "options": {
-                    "model_id": options.model_id,
-                    "max_tokens": options.max_tokens,
-                    "temperature": options.temperature,
-                    "tool_choice": str(options.tool_choice) if options.tool_choice else None,
-                    "tools_count": len(options.tools) if options.tools else 0,
-                    "response_format": str(options.response_format) if options.response_format else None,
+                "chat_options": {
+                    "model_id": chat_options.model_id,
+                    "max_tokens": chat_options.max_tokens,
+                    "temperature": chat_options.temperature,
+                    "tool_choice": str(chat_options.tool_choice) if chat_options.tool_choice else None,
+                    "tools_count": len(chat_options.tools) if chat_options.tools else 0,
+                    "response_format": str(chat_options.response_format) if chat_options.response_format else None,
                 },
                 "messages": []
             }
@@ -1225,20 +947,23 @@ class BedrockChatClientTraceWrapper:
         self, 
         *,
         messages: List[ChatMessage],
-        options: ChatOptions,
+        options: dict[str, Any],
         **kwargs
-    ) -> AsyncGenerator[ChatResponseUpdate, None]:
+    ) -> AsyncIterable[ChatResponseUpdate]:
         """Traced get_streaming_response method that logs all details for debugging.
         
         Args:
             messages: List of chat messages (includes system messages with tools)
-            options: Chat options including response_format
+            options: Chat options dict (framework interface requirement)
             **kwargs: Additional arguments
             
         Yields:
             Streaming response chunks
         """
         from datetime import datetime
+        
+        # Wrap the options dict in our local ChatOptions class for attribute access
+        chat_options = ChatOptions(options)
         
         # CRITICAL: Create a copy of kwargs to avoid modifying framework variables
         # The framework passes kwargs that may be reused across calls
@@ -1252,14 +977,14 @@ class BedrockChatClientTraceWrapper:
         
         self._log_trace(f"=== BEDROCK CALL START (ID: {request_id}) ===")
         self._log_trace(f"Number of messages (before cleaning): {len(messages)}")
-        self._log_trace(f"Response format: {options.response_format}")
-        self._log_trace(f"Tools available: {len(options.tools) if options.tools else 0}")
-        self._log_trace(f"Max tokens: {options.max_tokens}")
-        self._log_trace(f"Tool choice: {options.tool_choice}")
+        self._log_trace(f"Response format: {chat_options.response_format}")
+        self._log_trace(f"Tools available: {len(chat_options.tools) if chat_options.tools else 0}")
+        self._log_trace(f"Max tokens: {chat_options.max_tokens}")
+        self._log_trace(f"Tool choice: {chat_options.tool_choice}")
         self._log_trace(f"Kwargs tool_choice: {kwargs.get('tool_choice', 'NOT SET')}")
         
         # Dump input messages (before cleaning)
-        self._dump_input_messages(messages, options, request_id)
+        self._dump_input_messages(messages, chat_options, request_id)
         
         # Log message summary BEFORE cleaning
         for i, msg in enumerate(messages):
@@ -1292,59 +1017,14 @@ class BedrockChatClientTraceWrapper:
         
         # Override max_tokens for Bedrock to avoid truncation
         # Bedrock defaults to 1024 tokens which is too small for structured responses
-        # IMPORTANT: Create a new ChatOptions object instead of modifying the original
-        # to avoid affecting framework logic
-        if options.max_tokens is None or options.max_tokens < 8192:
-            self._log_trace(f"Increasing max_tokens from {options.max_tokens} to 8192 to avoid truncation")
-            options = ChatOptions(
-                model_id=options.model_id,
-                allow_multiple_tool_calls=options.allow_multiple_tool_calls,
-                conversation_id=options.conversation_id,
-                frequency_penalty=options.frequency_penalty,
-                instructions=options.instructions,
-                logit_bias=options.logit_bias,
-                max_tokens=8192,  # Set to 8K tokens minimum
-                metadata=options.metadata,
-                presence_penalty=options.presence_penalty,
-                response_format=options.response_format,
-                seed=options.seed,
-                stop=options.stop,
-                store=options.store,
-                temperature=options.temperature,
-                tool_choice=options.tool_choice,
-                tools=options.tools,
-                top_p=options.top_p,
-                user=options.user,
-                additional_properties=options.additional_properties,
-            )
-        else:
-            # Even if max_tokens is OK, create a copy to avoid modifying the original
-            options = ChatOptions(
-                model_id=options.model_id,
-                allow_multiple_tool_calls=options.allow_multiple_tool_calls,
-                conversation_id=options.conversation_id,
-                frequency_penalty=options.frequency_penalty,
-                instructions=options.instructions,
-                logit_bias=options.logit_bias,
-                max_tokens=options.max_tokens,
-                metadata=options.metadata,
-                presence_penalty=options.presence_penalty,
-                response_format=options.response_format,
-                seed=options.seed,
-                stop=options.stop,
-                store=options.store,
-                temperature=options.temperature,
-                tool_choice=options.tool_choice,
-                tools=options.tools,
-                top_p=options.top_p,
-                user=options.user,
-                additional_properties=options.additional_properties,
-            )
+        if chat_options.max_tokens is None or chat_options.max_tokens < 8192:
+            self._log_trace(f"Increasing max_tokens from {chat_options.max_tokens} to 8192 to avoid truncation")
+            chat_options.update(max_tokens=8192)
         
         # Cache tools when they're provided
-        if options.tools and len(options.tools) > 0:
-            self._cached_tools = options.tools
-            self._log_trace(f"Caching {len(options.tools)} tools for future use")
+        if chat_options.tools and len(chat_options.tools) > 0:
+            self._cached_tools = chat_options.tools
+            self._log_trace(f"Caching {len(chat_options.tools)} tools for future use")
         
         # Check if conversation history contains any tool-related content
         has_tool_content_in_history = self._has_tool_content(messages)
@@ -1362,7 +1042,7 @@ class BedrockChatClientTraceWrapper:
         
         # ADDITIONAL FIX: Check kwargs for tool_choice="none" that persists from previous calls
         # The framework modifies kwargs in place, setting tool_choice="none" after tool execution
-        # This persists across calls even when options is recreated
+        # This persists across calls even when chat_options is recreated
         kwargs_tool_choice = kwargs.get("tool_choice")
         if kwargs_tool_choice == "none" and self._cached_tools:
             self._log_trace(f"⚠️  DETECTED: kwargs has tool_choice='none' from previous call")
@@ -1371,14 +1051,14 @@ class BedrockChatClientTraceWrapper:
             # Remove it from kwargs so it doesn't override our logic
             kwargs.pop("tool_choice", None)
         
-        if options.tools is None or len(options.tools) == 0:
+        if chat_options.tools is None or len(chat_options.tools) == 0:
             if self._cached_tools:
                 # Determine reason for restoration and appropriate tool_choice
                 if has_tool_content_in_history:
                     # MUST restore tools - Bedrock API will fail without them
                     reason = "required by Bedrock API (tool content in history)"
                     new_tool_choice = "auto"
-                elif options.tool_choice == "none":
+                elif chat_options.tool_choice == "none":
                     # Agent framework explicitly disabled tools, but we need them for continued conversation
                     reason = "enabling continued conversation (was 'none')"
                     new_tool_choice = "auto"
@@ -1389,28 +1069,12 @@ class BedrockChatClientTraceWrapper:
                 
                 self._log_trace(f"No tools provided but have cached tools - restoring {len(self._cached_tools)} tools")
                 self._log_trace(f"Reason: {reason}")
-                self._log_trace(f"Updating tool_choice from '{options.tool_choice}' to '{new_tool_choice}'")
+                self._log_trace(f"Updating tool_choice from '{chat_options.tool_choice}' to '{new_tool_choice}'")
                 
-                options = ChatOptions(
-                    model_id=options.model_id,
-                    allow_multiple_tool_calls=options.allow_multiple_tool_calls,
-                    conversation_id=options.conversation_id,
-                    frequency_penalty=options.frequency_penalty,
-                    instructions=options.instructions,
-                    logit_bias=options.logit_bias,
-                    max_tokens=options.max_tokens,
-                    metadata=options.metadata,
-                    presence_penalty=options.presence_penalty,
-                    response_format=options.response_format,
-                    seed=options.seed,
-                    stop=options.stop,
-                    store=options.store,
-                    temperature=options.temperature,
-                    tool_choice=new_tool_choice,  # FIX: Update from "none" to "auto" to enable responses
-                    tools=self._cached_tools,  # Reuse cached tools
-                    top_p=options.top_p,
-                    user=options.user,
-                    additional_properties=options.additional_properties,
+                # Update options with restored tools and new tool_choice
+                chat_options.update(
+                    tool_choice=new_tool_choice,
+                    tools=self._cached_tools
                 )
             elif has_tool_content_in_history:
                 # No cached tools but history has tool content - this will fail
@@ -1418,29 +1082,9 @@ class BedrockChatClientTraceWrapper:
                 self._log_trace(f"This will cause Bedrock API error")
             else:
                 # No tools, no cached tools, no tool content - safe to proceed without tools
-                if options.tool_choice is not None:
+                if chat_options.tool_choice is not None:
                     self._log_trace(f"No tools and no tool content in history, setting tool_choice to None")
-                    options = ChatOptions(
-                        model_id=options.model_id,
-                        allow_multiple_tool_calls=options.allow_multiple_tool_calls,
-                        conversation_id=options.conversation_id,
-                        frequency_penalty=options.frequency_penalty,
-                        instructions=options.instructions,
-                        logit_bias=options.logit_bias,
-                        max_tokens=options.max_tokens,
-                        metadata=options.metadata,
-                        presence_penalty=options.presence_penalty,
-                        response_format=options.response_format,
-                        seed=options.seed,
-                        stop=options.stop,
-                        store=options.store,
-                        temperature=options.temperature,
-                        tool_choice=None,  # Set to None when no tools and no tool content
-                        tools=options.tools,
-                        top_p=options.top_p,
-                        user=options.user,
-                        additional_properties=options.additional_properties,
-                    )
+                    chat_options.update(tool_choice=None)
         
         # Log detailed message information AFTER cleaning
         for i, msg in enumerate(messages):
@@ -1474,17 +1118,18 @@ class BedrockChatClientTraceWrapper:
                         self._log_trace(f"Other: {str(content)[:100]}")
         
         # Log tools information
-        if options.tools:
+        if chat_options.tools:
             self._log_trace(f"--- Available Tools ---")
-            for i, tool in enumerate(options.tools):
+            for i, tool in enumerate(chat_options.tools):
                 tool_name = getattr(tool, 'name', f'tool_{i}')
                 self._log_trace(f"Tool {i}: {tool_name}")
         
-        # Temporarily patch the _build_converse_request method to log the actual request
-        original_build_request = self.chat_client._build_converse_request
+        # Temporarily patch the _prepare_options method to log the actual request
+        # In the new framework, _prepare_options builds the request dict that's passed to bedrock
+        original_prepare_options = self.chat_client._prepare_options
         
-        def traced_build_request(*args, **kwargs):
-            request = original_build_request(*args, **kwargs)
+        def traced_prepare_options(*args, **kwargs):
+            request = original_prepare_options(*args, **kwargs)
             
             # Dump the complete request to a separate JSON file
             self._dump_bedrock_request(request, request_id)
@@ -1537,7 +1182,7 @@ class BedrockChatClientTraceWrapper:
             return request
         
         # Apply the patch
-        self.chat_client._build_converse_request = traced_build_request
+        self.chat_client._prepare_options = traced_prepare_options
         
         # Track response data for dumping
         response_chunks = []
@@ -1546,8 +1191,12 @@ class BedrockChatClientTraceWrapper:
         try:
             # Call the original method and trace the response
             self._log_trace(f"--- CALLING ORIGINAL METHOD ---")
+            
+            # Convert ChatOptions wrapper back to dict for the framework interface
+            options_dict = chat_options.to_dict()
+            
             chunk_count = 0
-            async for chunk in self._original_get_streaming_response(messages=messages, options=options, **kwargs):
+            async for chunk in self._original_get_streaming_response(messages=messages, options=options_dict, **kwargs):
                 chunk_count += 1
                 response_chunks.append(chunk)
                 if chunk_count <= 5:  # Log first few chunks
@@ -1646,4 +1295,4 @@ class BedrockChatClientTraceWrapper:
             raise
         finally:
             # Always restore the original method
-            self.chat_client._build_converse_request = original_build_request
+            self.chat_client._prepare_options = original_prepare_options
