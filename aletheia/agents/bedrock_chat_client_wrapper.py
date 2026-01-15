@@ -309,7 +309,7 @@ IMPORTANT INSTRUCTIONS:
         
         # Try to parse the accumulated text as JSON
         try:
-            # Clean up the text - remove Nova thinking tags and markdown
+            # Clean up the text - remove Nova thinking tags, YAML frontmatter, and markdown
             json_text = accumulated_text.strip()
             
             # Remove Nova model thinking tags
@@ -319,9 +319,21 @@ IMPORTANT INSTRUCTIONS:
                     json_text = json_text[thinking_end + 12:].strip()
                     log_debug("Removed <thinking> tags from Nova model response")
             
+            # Remove YAML frontmatter (appears before JSON in some responses)
+            # Format: ---\nagent: ...\ntimestamp: ...\n---\n
+            if json_text.startswith('---'):
+                # Find the closing --- of the frontmatter
+                frontmatter_end = json_text.find('---', 3)
+                if frontmatter_end != -1:
+                    json_text = json_text[frontmatter_end + 3:].strip()
+                    log_debug("Removed YAML frontmatter from response")
+            
             # Remove markdown code blocks
             if json_text.startswith('```json'):
                 json_text = json_text[7:]
+            elif json_text.startswith('```'):
+                json_text = json_text[3:]
+            
             if json_text.endswith('```'):
                 json_text = json_text[:-3]
             json_text = json_text.strip()
