@@ -633,6 +633,9 @@ async def _start_investigation(session: Session) -> None:
     except Exception as e:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
+        # Print full traceback for debugging
+        import traceback
+        traceback.print_exc()
         raise typer.Exit(1)
 
 

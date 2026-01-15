@@ -21,6 +21,10 @@ from aletheia.mcp.mcp import load_mcp_tools
 from aletheia.utils.logging import log_error, log_debug
 from aletheia.knowledge import KnowledgePlugin, ChromaKnowledge
 from aletheia.agents.bedrock_chat_client_wrapper import wrap_bedrock_chat_client
+from aletheia.agents.deepcopy_patch import patch_deepcopy
+
+# Apply the deepcopy patch to handle bound methods in tools
+patch_deepcopy()
 
 
 class AgentInfo(ABC):

@@ -16,6 +16,37 @@ from agent_framework._types import ChatOptions, ChatResponseUpdate
 from aletheia.utils.logging import log_debug, log_error
 
 
+class _NonCopyableWrapper:
+    """A callable wrapper that prevents deepcopy from traversing into it."""
+    
+    def __init__(self, func):
+        """Initialize with the function to wrap.
+        
+        Args:
+            func: The async function to wrap
+        """
+        self._func = func
+    
+    async def __call__(self, *args, **kwargs):
+        """Call the wrapped function."""
+        return await self._func(*args, **kwargs)
+    
+    def __deepcopy__(self, memo):
+        """Prevent deepcopy from copying this wrapper."""
+        log_debug(f"_NonCopyableWrapper.__deepcopy__ called - returning self to prevent copy")
+        return self
+    
+    def __getstate__(self):
+        """Prevent pickle from serializing this wrapper."""
+        log_debug(f"_NonCopyableWrapper.__getstate__ called - returning empty dict")
+        return {}
+    
+    def __setstate__(self, state):
+        """Prevent pickle from deserializing this wrapper."""
+        log_debug(f"_NonCopyableWrapper.__setstate__ called")
+        pass
+
+
 class BedrockChatClientResponseWrapper:
     """Wrapper for chat response objects that matches the expected interface."""
     
@@ -44,31 +75,59 @@ class BedrockChatClientWrapper:
         self.chat_client = chat_client
         self._original_get_streaming_response = chat_client._inner_get_streaming_response
         
-        # Replace the _inner_get_streaming_response method with our wrapper
-        chat_client._inner_get_streaming_response = self._wrapped_get_streaming_response
+        # Create a wrapper function that captures self and original method in closure
+        # This avoids creating a bound method that references self
+        original_method = self._original_get_streaming_response
+        wrapper_instance = self
+        
+        async def wrapper_func(*args, **kwargs):
+            """Wrapper function that calls the instance method."""
+            return await wrapper_instance._wrapped_get_streaming_response(*args, **kwargs)
+        
+        # Wrap in a non-copyable wrapper to prevent deepcopy issues
+        non_copyable_wrapper = _NonCopyableWrapper(wrapper_func)
+        
+        # Replace the _inner_get_streaming_response method with our wrapper function
+        chat_client._inner_get_streaming_response = non_copyable_wrapper
+    
+    def __getstate__(self):
+        """Custom pickle support - exclude unpicklable method references."""
+        # Return empty state - the wrapper will be recreated if needed
+        return {}
+    
+    def __setstate__(self, state):
+        """Custom unpickle support - restore from empty state."""
+        # The wrapper will be recreated by wrap_bedrock_chat_client if needed
+        pass
+    
+    def __deepcopy__(self, memo):
+        """Custom deepcopy support - return self without copying."""
+        # Don't actually copy the wrapper, just return a reference to self
+        # This prevents deepcopy from trying to copy the bound methods
+        return self
     
     async def _wrapped_get_streaming_response(
         self, 
         *,
         messages: List[ChatMessage],
-        chat_options: ChatOptions,
+        options: ChatOptions,
         **kwargs
     ) -> AsyncGenerator[ChatResponseUpdate, None]:
         """Wrapped get_streaming_response method that handles response_format for Bedrock.
         
         Args:
             messages: List of chat messages (includes system messages with tools)
-            chat_options: Chat options including response_format
+            options: Chat options including response_format
             **kwargs: Additional arguments
             
         Yields:
             Streaming response chunks
         """
         log_debug(f"BedrockChatClientWrapper called with {len(messages)} messages")
-        log_debug(f"Chat options - response_format: {chat_options.response_format}")
-        log_debug(f"Chat options - tools: {len(chat_options.tools) if chat_options.tools else 0}")
-        log_debug(f"Chat options - max_tokens: {chat_options.max_tokens}")
-        log_debug(f"Chat options - tool_choice: {chat_options.tool_choice}")
+        log_debug(f"Chat options - response_format: {options.response_format}")
+        log_debug(f"Chat options - tools: {len(options.tools) if options.tools else 0}")
+        log_debug(f"Chat options - max_tokens: {options.max_tokens}")
+        log_debug(f"Chat options - tool_choice: {options.tool_choice}")
         
         # Log detailed message information
         for i, msg in enumerate(messages):
@@ -86,10 +145,10 @@ class BedrockChatClientWrapper:
                         log_debug(f"Input message {i} content {j}: {content_type}")
         
         # Log tool information at debug level
-        if chat_options.tools:
-            log_debug(f"Available tools: {[getattr(tool, 'name', str(tool)) for tool in chat_options.tools]}")
+        if options.tools:
+            log_debug(f"Available tools: {[getattr(tool, 'name', str(tool)) for tool in options.tools]}")
         else:
-            log_debug("No tools available in chat_options")
+            log_debug("No tools available in options")
         
         # Temporarily patch the _build_converse_request method to log what's being sent
         original_build_request = self.chat_client._build_converse_request
@@ -106,34 +165,34 @@ class BedrockChatClientWrapper:
         self.chat_client._build_converse_request = debug_build_request
         
         # Override max_tokens for Bedrock to avoid the 1024 token default limit
-        modified_chat_options = chat_options
-        if chat_options.max_tokens is None or chat_options.max_tokens < 32768:
+        modified_options = options
+        if options.max_tokens is None or options.max_tokens < 32768:
             # Create a new ChatOptions with updated max_tokens
-            modified_chat_options = ChatOptions(
-                model_id=chat_options.model_id,
-                allow_multiple_tool_calls=chat_options.allow_multiple_tool_calls,
-                conversation_id=chat_options.conversation_id,
-                frequency_penalty=chat_options.frequency_penalty,
-                instructions=chat_options.instructions,
-                logit_bias=chat_options.logit_bias,
+            modified_options = ChatOptions(
+                model_id=options.model_id,
+                allow_multiple_tool_calls=options.allow_multiple_tool_calls,
+                conversation_id=options.conversation_id,
+                frequency_penalty=options.frequency_penalty,
+                instructions=options.instructions,
+                logit_bias=options.logit_bias,
                 max_tokens=32768,  # Set to 32K tokens
-                metadata=chat_options.metadata,
-                presence_penalty=chat_options.presence_penalty,
-                response_format=chat_options.response_format,
-                seed=chat_options.seed,
-                stop=chat_options.stop,
-                store=chat_options.store,
-                temperature=chat_options.temperature,
-                tool_choice=chat_options.tool_choice,
-                tools=chat_options.tools,
-                top_p=chat_options.top_p,
-                user=chat_options.user,
-                additional_properties=chat_options.additional_properties,
+                metadata=options.metadata,
+                presence_penalty=options.presence_penalty,
+                response_format=options.response_format,
+                seed=options.seed,
+                stop=options.stop,
+                store=options.store,
+                temperature=options.temperature,
+                tool_choice=options.tool_choice,
+                tools=options.tools,
+                top_p=options.top_p,
+                user=options.user,
+                additional_properties=options.additional_properties,
             )
-            log_debug(f"Updated max_tokens to {modified_chat_options.max_tokens}")
+            log_debug(f"Updated max_tokens to {modified_options.max_tokens}")
         
         # Check if this is a tool call scenario - if so, let the agent framework handle it naturally
-        has_tools = chat_options.tools and len(chat_options.tools) > 0
+        has_tools = options.tools and len(options.tools) > 0
         has_tool_content = any(
             hasattr(msg, 'contents') and msg.contents and any(
                 'Tool' in type(content).__name__ or 
@@ -152,7 +211,7 @@ class BedrockChatClientWrapper:
             # For tool calls, use the original method without our message modifications
             # to avoid interfering with the agent framework's tool call management
             chunk_count = 0
-            async for chunk in self._original_get_streaming_response(messages=messages, chat_options=modified_chat_options, **kwargs):
+            async for chunk in self._original_get_streaming_response(messages=messages, options=modified_options, **kwargs):
                 chunk_count += 1
                 yield chunk
             log_debug(f"Yielded {chunk_count} chunks from original method (tools available)")
@@ -160,11 +219,11 @@ class BedrockChatClientWrapper:
             self.chat_client._build_converse_request = original_build_request
             return
         
-        if chat_options.response_format is None:
+        if options.response_format is None:
             # No response format specified, use original method
             log_debug("No response_format specified, using original method")
             chunk_count = 0
-            async for chunk in self._original_get_streaming_response(messages=messages, chat_options=modified_chat_options, **kwargs):
+            async for chunk in self._original_get_streaming_response(messages=messages, options=modified_options, **kwargs):
                 chunk_count += 1
                 yield chunk
             log_debug(f"Yielded {chunk_count} chunks from original method")
@@ -202,7 +261,7 @@ class BedrockChatClientWrapper:
             modified_messages.append(new_msg)
             log_debug(f"Added message {i} to modified_messages (role={msg.role}, contents={len(new_contents)})")
         
-        response_format = chat_options.response_format
+        response_format = options.response_format
         
         # Get the JSON schema from the response_format model
         schema = response_format.model_json_schema()
@@ -260,27 +319,27 @@ IMPORTANT INSTRUCTIONS:
                     if 'Tool' in content_type or 'Function' in content_type:
                         log_debug(f"Message {i} Content {j}: {content_type} - potential tool content")
         
-        # Remove response_format from chat_options to avoid conflicts
-        modified_chat_options_no_format = ChatOptions(
-            model_id=modified_chat_options.model_id,
-            allow_multiple_tool_calls=modified_chat_options.allow_multiple_tool_calls,
-            conversation_id=modified_chat_options.conversation_id,
-            frequency_penalty=modified_chat_options.frequency_penalty,
-            instructions=modified_chat_options.instructions,
-            logit_bias=modified_chat_options.logit_bias,
-            max_tokens=modified_chat_options.max_tokens,
-            metadata=modified_chat_options.metadata,
-            presence_penalty=modified_chat_options.presence_penalty,
+        # Remove response_format from options to avoid conflicts
+        modified_options_no_format = ChatOptions(
+            model_id=modified_options.model_id,
+            allow_multiple_tool_calls=modified_options.allow_multiple_tool_calls,
+            conversation_id=modified_options.conversation_id,
+            frequency_penalty=modified_options.frequency_penalty,
+            instructions=modified_options.instructions,
+            logit_bias=modified_options.logit_bias,
+            max_tokens=modified_options.max_tokens,
+            metadata=modified_options.metadata,
+            presence_penalty=modified_options.presence_penalty,
             response_format=None,  # Remove to avoid conflicts
-            seed=modified_chat_options.seed,
-            stop=modified_chat_options.stop,
-            store=modified_chat_options.store,
-            temperature=modified_chat_options.temperature,
-            tool_choice=modified_chat_options.tool_choice,
-            tools=modified_chat_options.tools,
-            top_p=modified_chat_options.top_p,
-            user=modified_chat_options.user,
-            additional_properties=modified_chat_options.additional_properties,
+            seed=modified_options.seed,
+            stop=modified_options.stop,
+            store=modified_options.store,
+            temperature=modified_options.temperature,
+            tool_choice=modified_options.tool_choice,
+            tools=modified_options.tools,
+            top_p=modified_options.top_p,
+            user=modified_options.user,
+            additional_properties=modified_options.additional_properties,
         )
         
         # Collect all response text for parsing
@@ -289,7 +348,7 @@ IMPORTANT INSTRUCTIONS:
         
         log_debug("Starting to collect response chunks...")
         chunk_count = 0
-        async for chunk in self._original_get_streaming_response(messages=modified_messages, chat_options=modified_chat_options_no_format, **kwargs):
+        async for chunk in self._original_get_streaming_response(messages=modified_messages, options=modified_options_no_format, **kwargs):
             chunk_count += 1
             all_chunks.append(chunk)
             
@@ -404,11 +463,13 @@ def wrap_bedrock_chat_client(chat_client, provider: str) -> None:
         chat_client: The chat client instance to potentially wrap
         provider: The LLM provider name ("bedrock", "azure", "openai")
     """
-    if provider == "bedrock":
-        log_debug("Bedrock provider detected - Adding trace wrapper for debugging")
-        BedrockChatClientTraceWrapper(chat_client)
-    else:
-        log_debug(f"Provider {provider} already supports response_format, no chat client wrapping needed")
+    # DISABLED: Wrapping causes deepcopy issues with agent_framework
+    # The wrapper modifies chat_client._inner_get_streaming_response which gets
+    # stored in agent.default_options and causes pickle errors when deepcopied.
+    # 
+    # For now, Bedrock structured outputs are not supported.
+    # TODO: Find a way to wrap without modifying the chat_client instance
+    log_debug(f"Bedrock wrapping disabled for provider {provider} to avoid deepcopy issues")
 
 
 class BedrockChatClientTraceWrapper:
@@ -425,8 +486,49 @@ class BedrockChatClientTraceWrapper:
         self._cached_tools = None  # Cache tools for reuse when needed
         self._call_counter = 0  # Counter for API calls to number the dump files
         
-        # Replace the _inner_get_streaming_response method with our wrapper
-        chat_client._inner_get_streaming_response = self._traced_get_streaming_response
+        # Create a wrapper function that captures self and original method in closure
+        # This avoids creating a bound method that references self
+        wrapper_instance = self
+        
+        async def wrapper_func(*args, **kwargs):
+            """Wrapper function that calls the instance method."""
+            return await wrapper_instance._traced_get_streaming_response(*args, **kwargs)
+        
+        # Wrap in a non-copyable wrapper to prevent deepcopy issues
+        non_copyable_wrapper = _NonCopyableWrapper(wrapper_func)
+        
+        # Replace the _inner_get_streaming_response method with our wrapper function
+        chat_client._inner_get_streaming_response = non_copyable_wrapper
+    
+    def __getstate__(self):
+        """Custom pickle support - exclude unpicklable method references."""
+        # Only preserve the call counter and cached tools (if they're picklable)
+        state = {
+            '_call_counter': self._call_counter,
+            '_cached_tools': None  # Don't pickle tools as they may contain unpicklable objects
+        }
+        return state
+    
+    def __setstate__(self, state):
+        """Custom unpickle support - restore from saved state."""
+        self._call_counter = state.get('_call_counter', 0)
+        self._cached_tools = state.get('_cached_tools', None)
+        # chat_client and _original_get_streaming_response will be None after unpickling
+        # The wrapper will be recreated by wrap_bedrock_chat_client if needed
+        self.chat_client = None
+        self._original_get_streaming_response = None
+    
+    def __deepcopy__(self, memo):
+        """Custom deepcopy support - return self without copying."""
+        # Don't actually copy the wrapper, just return a reference to self
+        # This prevents deepcopy from trying to copy the bound methods
+        return self
+    
+    def __deepcopy__(self, memo):
+        """Custom deepcopy support - return self without copying."""
+        # Don't actually copy the wrapper, just return a reference to self
+        # This prevents deepcopy from trying to copy the bound methods
+        return self
     
     def _log_trace(self, message: str, data: any = None):
         """Log trace information to both debug log and trace file."""
@@ -499,14 +601,14 @@ class BedrockChatClientTraceWrapper:
         
         return session_dir
     
-    def _dump_input_messages(self, messages: List[ChatMessage], chat_options: ChatOptions, request_id: str):
+    def _dump_input_messages(self, messages: List[ChatMessage], options: ChatOptions, request_id: str):
         """Dump the input messages as they arrive to the wrapper (before cleaning).
         
         Only dumps when trace logging is enabled (--very-verbose flag).
         
         Args:
             messages: Original input messages
-            chat_options: Original chat options
+            options: Original chat options
             request_id: Unique request identifier for correlation
         """
         import json
@@ -532,13 +634,13 @@ class BedrockChatClientTraceWrapper:
                 "stage": "input",
                 "description": "Messages as received by wrapper (before cleaning)",
                 "message_count": len(messages),
-                "chat_options": {
-                    "model_id": chat_options.model_id,
-                    "max_tokens": chat_options.max_tokens,
-                    "temperature": chat_options.temperature,
-                    "tool_choice": str(chat_options.tool_choice) if chat_options.tool_choice else None,
-                    "tools_count": len(chat_options.tools) if chat_options.tools else 0,
-                    "response_format": str(chat_options.response_format) if chat_options.response_format else None,
+                "options": {
+                    "model_id": options.model_id,
+                    "max_tokens": options.max_tokens,
+                    "temperature": options.temperature,
+                    "tool_choice": str(options.tool_choice) if options.tool_choice else None,
+                    "tools_count": len(options.tools) if options.tools else 0,
+                    "response_format": str(options.response_format) if options.response_format else None,
                 },
                 "messages": []
             }
@@ -1223,14 +1325,14 @@ class BedrockChatClientTraceWrapper:
         self, 
         *,
         messages: List[ChatMessage],
-        chat_options: ChatOptions,
+        options: ChatOptions,
         **kwargs
     ) -> AsyncGenerator[ChatResponseUpdate, None]:
         """Traced get_streaming_response method that logs all details for debugging.
         
         Args:
             messages: List of chat messages (includes system messages with tools)
-            chat_options: Chat options including response_format
+            options: Chat options including response_format
             **kwargs: Additional arguments
             
         Yields:
@@ -1250,14 +1352,14 @@ class BedrockChatClientTraceWrapper:
         
         self._log_trace(f"=== BEDROCK CALL START (ID: {request_id}) ===")
         self._log_trace(f"Number of messages (before cleaning): {len(messages)}")
-        self._log_trace(f"Response format: {chat_options.response_format}")
-        self._log_trace(f"Tools available: {len(chat_options.tools) if chat_options.tools else 0}")
-        self._log_trace(f"Max tokens: {chat_options.max_tokens}")
-        self._log_trace(f"Tool choice: {chat_options.tool_choice}")
+        self._log_trace(f"Response format: {options.response_format}")
+        self._log_trace(f"Tools available: {len(options.tools) if options.tools else 0}")
+        self._log_trace(f"Max tokens: {options.max_tokens}")
+        self._log_trace(f"Tool choice: {options.tool_choice}")
         self._log_trace(f"Kwargs tool_choice: {kwargs.get('tool_choice', 'NOT SET')}")
         
         # Dump input messages (before cleaning)
-        self._dump_input_messages(messages, chat_options, request_id)
+        self._dump_input_messages(messages, options, request_id)
         
         # Log message summary BEFORE cleaning
         for i, msg in enumerate(messages):
@@ -1292,57 +1394,57 @@ class BedrockChatClientTraceWrapper:
         # Bedrock defaults to 1024 tokens which is too small for structured responses
         # IMPORTANT: Create a new ChatOptions object instead of modifying the original
         # to avoid affecting framework logic
-        if chat_options.max_tokens is None or chat_options.max_tokens < 8192:
-            self._log_trace(f"Increasing max_tokens from {chat_options.max_tokens} to 8192 to avoid truncation")
-            chat_options = ChatOptions(
-                model_id=chat_options.model_id,
-                allow_multiple_tool_calls=chat_options.allow_multiple_tool_calls,
-                conversation_id=chat_options.conversation_id,
-                frequency_penalty=chat_options.frequency_penalty,
-                instructions=chat_options.instructions,
-                logit_bias=chat_options.logit_bias,
+        if options.max_tokens is None or options.max_tokens < 8192:
+            self._log_trace(f"Increasing max_tokens from {options.max_tokens} to 8192 to avoid truncation")
+            options = ChatOptions(
+                model_id=options.model_id,
+                allow_multiple_tool_calls=options.allow_multiple_tool_calls,
+                conversation_id=options.conversation_id,
+                frequency_penalty=options.frequency_penalty,
+                instructions=options.instructions,
+                logit_bias=options.logit_bias,
                 max_tokens=8192,  # Set to 8K tokens minimum
-                metadata=chat_options.metadata,
-                presence_penalty=chat_options.presence_penalty,
-                response_format=chat_options.response_format,
-                seed=chat_options.seed,
-                stop=chat_options.stop,
-                store=chat_options.store,
-                temperature=chat_options.temperature,
-                tool_choice=chat_options.tool_choice,
-                tools=chat_options.tools,
-                top_p=chat_options.top_p,
-                user=chat_options.user,
-                additional_properties=chat_options.additional_properties,
+                metadata=options.metadata,
+                presence_penalty=options.presence_penalty,
+                response_format=options.response_format,
+                seed=options.seed,
+                stop=options.stop,
+                store=options.store,
+                temperature=options.temperature,
+                tool_choice=options.tool_choice,
+                tools=options.tools,
+                top_p=options.top_p,
+                user=options.user,
+                additional_properties=options.additional_properties,
             )
         else:
             # Even if max_tokens is OK, create a copy to avoid modifying the original
-            chat_options = ChatOptions(
-                model_id=chat_options.model_id,
-                allow_multiple_tool_calls=chat_options.allow_multiple_tool_calls,
-                conversation_id=chat_options.conversation_id,
-                frequency_penalty=chat_options.frequency_penalty,
-                instructions=chat_options.instructions,
-                logit_bias=chat_options.logit_bias,
-                max_tokens=chat_options.max_tokens,
-                metadata=chat_options.metadata,
-                presence_penalty=chat_options.presence_penalty,
-                response_format=chat_options.response_format,
-                seed=chat_options.seed,
-                stop=chat_options.stop,
-                store=chat_options.store,
-                temperature=chat_options.temperature,
-                tool_choice=chat_options.tool_choice,
-                tools=chat_options.tools,
-                top_p=chat_options.top_p,
-                user=chat_options.user,
-                additional_properties=chat_options.additional_properties,
+            options = ChatOptions(
+                model_id=options.model_id,
+                allow_multiple_tool_calls=options.allow_multiple_tool_calls,
+                conversation_id=options.conversation_id,
+                frequency_penalty=options.frequency_penalty,
+                instructions=options.instructions,
+                logit_bias=options.logit_bias,
+                max_tokens=options.max_tokens,
+                metadata=options.metadata,
+                presence_penalty=options.presence_penalty,
+                response_format=options.response_format,
+                seed=options.seed,
+                stop=options.stop,
+                store=options.store,
+                temperature=options.temperature,
+                tool_choice=options.tool_choice,
+                tools=options.tools,
+                top_p=options.top_p,
+                user=options.user,
+                additional_properties=options.additional_properties,
             )
         
         # Cache tools when they're provided
-        if chat_options.tools and len(chat_options.tools) > 0:
-            self._cached_tools = chat_options.tools
-            self._log_trace(f"Caching {len(chat_options.tools)} tools for future use")
+        if options.tools and len(options.tools) > 0:
+            self._cached_tools = options.tools
+            self._log_trace(f"Caching {len(options.tools)} tools for future use")
         
         # Check if conversation history contains any tool-related content
         has_tool_content_in_history = self._has_tool_content(messages)
@@ -1360,7 +1462,7 @@ class BedrockChatClientTraceWrapper:
         
         # ADDITIONAL FIX: Check kwargs for tool_choice="none" that persists from previous calls
         # The framework modifies kwargs in place, setting tool_choice="none" after tool execution
-        # This persists across calls even when chat_options is recreated
+        # This persists across calls even when options is recreated
         kwargs_tool_choice = kwargs.get("tool_choice")
         if kwargs_tool_choice == "none" and self._cached_tools:
             self._log_trace(f"⚠️  DETECTED: kwargs has tool_choice='none' from previous call")
@@ -1369,14 +1471,14 @@ class BedrockChatClientTraceWrapper:
             # Remove it from kwargs so it doesn't override our logic
             kwargs.pop("tool_choice", None)
         
-        if chat_options.tools is None or len(chat_options.tools) == 0:
+        if options.tools is None or len(options.tools) == 0:
             if self._cached_tools:
                 # Determine reason for restoration and appropriate tool_choice
                 if has_tool_content_in_history:
                     # MUST restore tools - Bedrock API will fail without them
                     reason = "required by Bedrock API (tool content in history)"
                     new_tool_choice = "auto"
-                elif chat_options.tool_choice == "none":
+                elif options.tool_choice == "none":
                     # Agent framework explicitly disabled tools, but we need them for continued conversation
                     reason = "enabling continued conversation (was 'none')"
                     new_tool_choice = "auto"
@@ -1387,28 +1489,28 @@ class BedrockChatClientTraceWrapper:
                 
                 self._log_trace(f"No tools provided but have cached tools - restoring {len(self._cached_tools)} tools")
                 self._log_trace(f"Reason: {reason}")
-                self._log_trace(f"Updating tool_choice from '{chat_options.tool_choice}' to '{new_tool_choice}'")
+                self._log_trace(f"Updating tool_choice from '{options.tool_choice}' to '{new_tool_choice}'")
                 
-                chat_options = ChatOptions(
-                    model_id=chat_options.model_id,
-                    allow_multiple_tool_calls=chat_options.allow_multiple_tool_calls,
-                    conversation_id=chat_options.conversation_id,
-                    frequency_penalty=chat_options.frequency_penalty,
-                    instructions=chat_options.instructions,
-                    logit_bias=chat_options.logit_bias,
-                    max_tokens=chat_options.max_tokens,
-                    metadata=chat_options.metadata,
-                    presence_penalty=chat_options.presence_penalty,
-                    response_format=chat_options.response_format,
-                    seed=chat_options.seed,
-                    stop=chat_options.stop,
-                    store=chat_options.store,
-                    temperature=chat_options.temperature,
+                options = ChatOptions(
+                    model_id=options.model_id,
+                    allow_multiple_tool_calls=options.allow_multiple_tool_calls,
+                    conversation_id=options.conversation_id,
+                    frequency_penalty=options.frequency_penalty,
+                    instructions=options.instructions,
+                    logit_bias=options.logit_bias,
+                    max_tokens=options.max_tokens,
+                    metadata=options.metadata,
+                    presence_penalty=options.presence_penalty,
+                    response_format=options.response_format,
+                    seed=options.seed,
+                    stop=options.stop,
+                    store=options.store,
+                    temperature=options.temperature,
                     tool_choice=new_tool_choice,  # FIX: Update from "none" to "auto" to enable responses
                     tools=self._cached_tools,  # Reuse cached tools
-                    top_p=chat_options.top_p,
-                    user=chat_options.user,
-                    additional_properties=chat_options.additional_properties,
+                    top_p=options.top_p,
+                    user=options.user,
+                    additional_properties=options.additional_properties,
                 )
             elif has_tool_content_in_history:
                 # No cached tools but history has tool content - this will fail
@@ -1416,28 +1518,28 @@ class BedrockChatClientTraceWrapper:
                 self._log_trace(f"This will cause Bedrock API error")
             else:
                 # No tools, no cached tools, no tool content - safe to proceed without tools
-                if chat_options.tool_choice is not None:
+                if options.tool_choice is not None:
                     self._log_trace(f"No tools and no tool content in history, setting tool_choice to None")
-                    chat_options = ChatOptions(
-                        model_id=chat_options.model_id,
-                        allow_multiple_tool_calls=chat_options.allow_multiple_tool_calls,
-                        conversation_id=chat_options.conversation_id,
-                        frequency_penalty=chat_options.frequency_penalty,
-                        instructions=chat_options.instructions,
-                        logit_bias=chat_options.logit_bias,
-                        max_tokens=chat_options.max_tokens,
-                        metadata=chat_options.metadata,
-                        presence_penalty=chat_options.presence_penalty,
-                        response_format=chat_options.response_format,
-                        seed=chat_options.seed,
-                        stop=chat_options.stop,
-                        store=chat_options.store,
-                        temperature=chat_options.temperature,
+                    options = ChatOptions(
+                        model_id=options.model_id,
+                        allow_multiple_tool_calls=options.allow_multiple_tool_calls,
+                        conversation_id=options.conversation_id,
+                        frequency_penalty=options.frequency_penalty,
+                        instructions=options.instructions,
+                        logit_bias=options.logit_bias,
+                        max_tokens=options.max_tokens,
+                        metadata=options.metadata,
+                        presence_penalty=options.presence_penalty,
+                        response_format=options.response_format,
+                        seed=options.seed,
+                        stop=options.stop,
+                        store=options.store,
+                        temperature=options.temperature,
                         tool_choice=None,  # Set to None when no tools and no tool content
-                        tools=chat_options.tools,
-                        top_p=chat_options.top_p,
-                        user=chat_options.user,
-                        additional_properties=chat_options.additional_properties,
+                        tools=options.tools,
+                        top_p=options.top_p,
+                        user=options.user,
+                        additional_properties=options.additional_properties,
                     )
         
         # Log detailed message information AFTER cleaning
@@ -1472,9 +1574,9 @@ class BedrockChatClientTraceWrapper:
                         self._log_trace(f"Other: {str(content)[:100]}")
         
         # Log tools information
-        if chat_options.tools:
+        if options.tools:
             self._log_trace(f"--- Available Tools ---")
-            for i, tool in enumerate(chat_options.tools):
+            for i, tool in enumerate(options.tools):
                 tool_name = getattr(tool, 'name', f'tool_{i}')
                 self._log_trace(f"Tool {i}: {tool_name}")
         
@@ -1545,7 +1647,7 @@ class BedrockChatClientTraceWrapper:
             # Call the original method and trace the response
             self._log_trace(f"--- CALLING ORIGINAL METHOD ---")
             chunk_count = 0
-            async for chunk in self._original_get_streaming_response(messages=messages, chat_options=chat_options, **kwargs):
+            async for chunk in self._original_get_streaming_response(messages=messages, options=options, **kwargs):
                 chunk_count += 1
                 response_chunks.append(chunk)
                 if chunk_count <= 5:  # Log first few chunks
