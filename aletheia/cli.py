@@ -355,6 +355,11 @@ async def _start_investigation(session: Session) -> None:
                 )
 
                 user_input = await prompt_session.prompt_async(prompt_formatted)
+                
+                # Skip empty input
+                if not user_input or not user_input.strip():
+                    continue
+                    
                 if user_input.lower() in ["exit", "quit"]:
                     chatting = False
                     console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
