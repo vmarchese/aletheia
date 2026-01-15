@@ -16,37 +16,6 @@ from agent_framework._types import ChatOptions, ChatResponseUpdate
 from aletheia.utils.logging import log_debug, log_error
 
 
-class _NonCopyableWrapper:
-    """A callable wrapper that prevents deepcopy from traversing into it."""
-    
-    def __init__(self, func):
-        """Initialize with the function to wrap.
-        
-        Args:
-            func: The async function to wrap
-        """
-        self._func = func
-    
-    async def __call__(self, *args, **kwargs):
-        """Call the wrapped function."""
-        return await self._func(*args, **kwargs)
-    
-    def __deepcopy__(self, memo):
-        """Prevent deepcopy from copying this wrapper."""
-        log_debug(f"_NonCopyableWrapper.__deepcopy__ called - returning self to prevent copy")
-        return self
-    
-    def __getstate__(self):
-        """Prevent pickle from serializing this wrapper."""
-        log_debug(f"_NonCopyableWrapper.__getstate__ called - returning empty dict")
-        return {}
-    
-    def __setstate__(self, state):
-        """Prevent pickle from deserializing this wrapper."""
-        log_debug(f"_NonCopyableWrapper.__setstate__ called")
-        pass
-
-
 class BedrockChatClientResponseWrapper:
     """Wrapper for chat response objects that matches the expected interface."""
     
@@ -75,36 +44,8 @@ class BedrockChatClientWrapper:
         self.chat_client = chat_client
         self._original_get_streaming_response = chat_client._inner_get_streaming_response
         
-        # Create a wrapper function that captures self and original method in closure
-        # This avoids creating a bound method that references self
-        original_method = self._original_get_streaming_response
-        wrapper_instance = self
-        
-        async def wrapper_func(*args, **kwargs):
-            """Wrapper function that calls the instance method."""
-            return await wrapper_instance._wrapped_get_streaming_response(*args, **kwargs)
-        
-        # Wrap in a non-copyable wrapper to prevent deepcopy issues
-        non_copyable_wrapper = _NonCopyableWrapper(wrapper_func)
-        
-        # Replace the _inner_get_streaming_response method with our wrapper function
-        chat_client._inner_get_streaming_response = non_copyable_wrapper
-    
-    def __getstate__(self):
-        """Custom pickle support - exclude unpicklable method references."""
-        # Return empty state - the wrapper will be recreated if needed
-        return {}
-    
-    def __setstate__(self, state):
-        """Custom unpickle support - restore from empty state."""
-        # The wrapper will be recreated by wrap_bedrock_chat_client if needed
-        pass
-    
-    def __deepcopy__(self, memo):
-        """Custom deepcopy support - return self without copying."""
-        # Don't actually copy the wrapper, just return a reference to self
-        # This prevents deepcopy from trying to copy the bound methods
-        return self
+        # Replace the _inner_get_streaming_response method with our wrapper
+        chat_client._inner_get_streaming_response = self._wrapped_get_streaming_response
     
     async def _wrapped_get_streaming_response(
         self, 
@@ -486,49 +427,8 @@ class BedrockChatClientTraceWrapper:
         self._cached_tools = None  # Cache tools for reuse when needed
         self._call_counter = 0  # Counter for API calls to number the dump files
         
-        # Create a wrapper function that captures self and original method in closure
-        # This avoids creating a bound method that references self
-        wrapper_instance = self
-        
-        async def wrapper_func(*args, **kwargs):
-            """Wrapper function that calls the instance method."""
-            return await wrapper_instance._traced_get_streaming_response(*args, **kwargs)
-        
-        # Wrap in a non-copyable wrapper to prevent deepcopy issues
-        non_copyable_wrapper = _NonCopyableWrapper(wrapper_func)
-        
-        # Replace the _inner_get_streaming_response method with our wrapper function
-        chat_client._inner_get_streaming_response = non_copyable_wrapper
-    
-    def __getstate__(self):
-        """Custom pickle support - exclude unpicklable method references."""
-        # Only preserve the call counter and cached tools (if they're picklable)
-        state = {
-            '_call_counter': self._call_counter,
-            '_cached_tools': None  # Don't pickle tools as they may contain unpicklable objects
-        }
-        return state
-    
-    def __setstate__(self, state):
-        """Custom unpickle support - restore from saved state."""
-        self._call_counter = state.get('_call_counter', 0)
-        self._cached_tools = state.get('_cached_tools', None)
-        # chat_client and _original_get_streaming_response will be None after unpickling
-        # The wrapper will be recreated by wrap_bedrock_chat_client if needed
-        self.chat_client = None
-        self._original_get_streaming_response = None
-    
-    def __deepcopy__(self, memo):
-        """Custom deepcopy support - return self without copying."""
-        # Don't actually copy the wrapper, just return a reference to self
-        # This prevents deepcopy from trying to copy the bound methods
-        return self
-    
-    def __deepcopy__(self, memo):
-        """Custom deepcopy support - return self without copying."""
-        # Don't actually copy the wrapper, just return a reference to self
-        # This prevents deepcopy from trying to copy the bound methods
-        return self
+        # Replace the _inner_get_streaming_response method with our wrapper
+        chat_client._inner_get_streaming_response = self._traced_get_streaming_response
     
     def _log_trace(self, message: str, data: any = None):
         """Log trace information to both debug log and trace file."""
