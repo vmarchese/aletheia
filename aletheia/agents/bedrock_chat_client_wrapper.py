@@ -943,6 +943,39 @@ class BedrockChatClientTraceWrapper:
         
         return False
     
+    def _strip_markdown_code_blocks(self, text: str) -> str:
+        """Strip markdown code blocks from text content.
+        
+        Bedrock often wraps JSON responses in markdown code blocks like:
+        ```json
+        {...}
+        ```
+        
+        This method strips those markers to return pure JSON/text.
+        
+        Args:
+            text: Text that may contain markdown code blocks
+            
+        Returns:
+            Text with markdown code blocks stripped
+        """
+        if not text:
+            return text
+        
+        text = text.strip()
+        
+        # Check if text starts with markdown code block
+        if text.startswith('```json'):
+            text = text[7:].strip()  # Remove ```json
+        elif text.startswith('```'):
+            text = text[3:].strip()  # Remove ```
+        
+        # Check if text ends with markdown code block
+        if text.endswith('```'):
+            text = text[:-3].strip()  # Remove trailing ```
+        
+        return text
+    
     async def _traced_get_streaming_response(
         self, 
         *,
@@ -1059,8 +1092,10 @@ class BedrockChatClientTraceWrapper:
                     reason = "required by Bedrock API (tool content in history)"
                     new_tool_choice = "auto"
                 elif chat_options.tool_choice == "none":
-                    # Agent framework explicitly disabled tools, but we need them for continued conversation
-                    reason = "enabling continued conversation (was 'none')"
+                    # Agent framework set tool_choice="none" to indicate analysis mode
+                    # Convert to "auto" and restore tools - let the model decide
+                    # The model should be smart enough to analyze existing data vs fetching new data
+                    reason = "converting 'none' to 'auto' (let model decide)"
                     new_tool_choice = "auto"
                 else:
                     # Default case - enable continued tool use
@@ -1131,6 +1166,32 @@ class BedrockChatClientTraceWrapper:
         def traced_prepare_options(*args, **kwargs):
             request = original_prepare_options(*args, **kwargs)
             
+            # FIX: Handle tool_choice="none" which Bedrock doesn't support
+            # Bedrock only accepts: {"auto": {}}, {"any": {}}, or {"tool": {"name": "..."}}
+            # 
+            # When tool_choice is "none", the framework wants to hint that the model
+            # should analyze existing data rather than fetch new data.
+            # 
+            # The correct fix: Convert "none" to "auto" and keep tools available.
+            # This allows the model to decide whether to use tools or just respond.
+            # With tool_choice="auto", the model should be smart enough to:
+            # - Analyze existing conversation data when appropriate
+            # - Use tools to fetch new data when needed
+            tool_config = request.get('toolConfig', {})
+            if tool_config:
+                tool_choice = tool_config.get('toolChoice', {})
+                
+                # Check if toolChoice is {"none": {}} which is invalid for Bedrock
+                if isinstance(tool_choice, dict) and "none" in tool_choice:
+                    self._log_trace(f"⚠️  FIXING INVALID TOOL_CHOICE: Detected toolChoice={tool_choice}")
+                    self._log_trace(f"   Bedrock doesn't support 'none'")
+                    self._log_trace(f"   Converting to 'auto' - let model decide whether to use tools")
+                    
+                    # Convert "none" to "auto" - let the model decide
+                    # The model should be smart enough to analyze vs fetch based on context
+                    tool_config['toolChoice'] = {"auto": {}}
+                    self._log_trace(f"   ✅ toolChoice changed to 'auto' - model can choose")
+            
             # Dump the complete request to a separate JSON file
             self._dump_bedrock_request(request, request_id)
             
@@ -1171,13 +1232,15 @@ class BedrockChatClientTraceWrapper:
                 if role == 'assistant' and has_tool_result:
                     self._log_trace(f"❌ VALIDATION ERROR: Assistant message {i} contains toolResult - THIS WILL FAIL!")
             
-            # Log tool configuration
+            # Log tool configuration (after fix)
             tool_config = request.get('toolConfig', {})
             if tool_config:
                 tools = tool_config.get('tools', [])
                 self._log_trace(f"Tool config: {len(tools)} tools")
                 tool_choice = tool_config.get('toolChoice', 'auto')
                 self._log_trace(f"Tool choice: {tool_choice}")
+            else:
+                self._log_trace(f"Tool config: None (tools disabled for this request)")
             
             return request
         
@@ -1199,13 +1262,51 @@ class BedrockChatClientTraceWrapper:
             async for chunk in self._original_get_streaming_response(messages=messages, options=options_dict, **kwargs):
                 chunk_count += 1
                 response_chunks.append(chunk)
+                
+                # Strip markdown code blocks from TextContent before yielding
+                # This fixes the issue where Bedrock wraps JSON in ```json ... ```
+                if hasattr(chunk, 'contents') and chunk.contents:
+                    modified_contents = []
+                    has_text_content = False
+                    
+                    for content in chunk.contents:
+                        if isinstance(content, TextContent) and hasattr(content, 'text'):
+                            # Strip markdown code blocks from text
+                            cleaned_text = self._strip_markdown_code_blocks(content.text)
+                            
+                            # Log if we stripped markdown (only for first few chunks)
+                            if chunk_count <= 5 and cleaned_text != content.text:
+                                self._log_trace(f"Stripped markdown code blocks from chunk {chunk_count}")
+                                self._log_trace(f"Original length: {len(content.text)}, Cleaned length: {len(cleaned_text)}")
+                            
+                            # Create new TextContent with cleaned text
+                            modified_content = TextContent(text=cleaned_text)
+                            modified_contents.append(modified_content)
+                            has_text_content = True
+                        else:
+                            # Keep other content types as-is (FunctionCallContent, UsageContent, etc.)
+                            modified_contents.append(content)
+                    
+                    # Only create a new chunk if we actually modified text content
+                    if has_text_content:
+                        # Create new chunk with modified contents
+                        # We need to preserve all chunk attributes
+                        modified_chunk = ChatResponseUpdate(
+                            role=chunk.role if hasattr(chunk, 'role') else None,
+                            contents=modified_contents,
+                            message_id=chunk.message_id if hasattr(chunk, 'message_id') else None,
+                            response_id=chunk.response_id if hasattr(chunk, 'response_id') else None
+                        )
+                        chunk = modified_chunk
+                
                 if chunk_count <= 5:  # Log first few chunks
                     self._log_trace(f"Response chunk {chunk_count}: {type(chunk).__name__}")
                     if hasattr(chunk, 'contents') and chunk.contents:
                         for content in chunk.contents:
                             if hasattr(content, 'text') and content.text:
                                 text_preview = content.text[:50] + "..." if len(content.text) > 50 else content.text
-                                self._log_trace(f"Chunk text: {text_preview}")
+                                self._log_trace(f"Chunk text (after cleaning): {text_preview}")
+                
                 yield chunk
             
             self._log_trace(f"Total chunks yielded: {chunk_count}")
