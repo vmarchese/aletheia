@@ -355,11 +355,11 @@ async def _start_investigation(session: Session) -> None:
                 )
 
                 user_input = await prompt_session.prompt_async(prompt_formatted)
-                
+
                 # Skip empty input
                 if not user_input or not user_input.strip():
                     continue
-                    
+
                 if user_input.lower() in ["exit", "quit"]:
                     chatting = False
                     console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
@@ -426,7 +426,34 @@ async def _start_investigation(session: Session) -> None:
 
                                 # Try to parse as structured JSON
                                 try:
+                                    # First try direct parsing (works for Sonnet)
                                     parsed_response = json.loads(json_buffer)
+                                    parsed_successfully = True  # Mark successful parse
+                                except json.JSONDecodeError:
+                                    # If that fails, try to extract JSON from mixed content (for Haiku)
+                                    try:
+                                        import re
+
+                                        # Look for JSON object in the buffer (handles text before/after JSON)
+                                        json_match = re.search(
+                                            r"\{.*\}", json_buffer, re.DOTALL
+                                        )
+                                        if json_match:
+                                            parsed_response = json.loads(
+                                                json_match.group(0)
+                                            )
+                                            parsed_successfully = True
+                                        else:
+                                            # No JSON found yet, continue buffering
+                                            raise json.JSONDecodeError(
+                                                "No JSON found", json_buffer, 0
+                                            )
+                                    except (json.JSONDecodeError, AttributeError):
+                                        # Not yet complete JSON, continue buffering
+                                        parsed_response = None
+
+                                # Only process if we successfully parsed
+                                if parsed_response is not None:
                                     parsed_successfully = True  # Mark successful parse
                                     # Successfully parsed structured response
                                     display_parts = []
@@ -569,10 +596,6 @@ async def _start_investigation(session: Session) -> None:
                                     display_text = "".join(display_parts)
                                     live.update(Markdown(display_text))
 
-                                except json.JSONDecodeError:
-                                    # Not yet complete JSON, continue buffering
-                                    pass
-
                             if response and response.contents:
                                 for content in response.contents:
                                     if isinstance(content, UsageContent):
@@ -580,16 +603,22 @@ async def _start_investigation(session: Session) -> None:
 
                     # Fallback: If JSON parsing never succeeded, render raw buffer
                     if not parsed_successfully and json_buffer and json_buffer.strip():
-                        console.print("\n[yellow]⚠️ Structured parsing failed, showing raw response:[/yellow]\n")
+                        console.print(
+                            "\n[yellow]⚠️ Structured parsing failed, showing raw response:[/yellow]\n"
+                        )
                         # Try to extract text content from partial JSON or render as-is
                         fallback_text = json_buffer
                         # If it looks like JSON, try to extract string values
-                        if json_buffer.strip().startswith('{'):
+                        if json_buffer.strip().startswith("{"):
                             try:
                                 # Attempt to extract readable text from partial JSON
                                 import re
+
                                 # Extract text from string fields
-                                text_matches = re.findall(r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"', json_buffer)
+                                text_matches = re.findall(
+                                    r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"',
+                                    json_buffer,
+                                )
                                 if text_matches:
                                     fallback_text = "\n\n".join(text_matches)
                             except Exception:
@@ -635,6 +664,7 @@ async def _start_investigation(session: Session) -> None:
         typer.echo(f"Error: {e}", err=True)
         # Print full traceback for debugging
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -930,13 +960,9 @@ def session_timeline(
 
         message = ChatMessage(
             role=Role.USER,
-            contents=[
-                TextContent(
-                    text=f"""
+            contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       """
-                )
-            ],
+                                       """)],
         )
         response = asyncio.run(
             timeline_agent.agent.run(message, response_format=Timeline)
@@ -999,9 +1025,7 @@ def session_timeline(
 @session_app.command("export")
 def session_export(
     session_id: str = typer.Argument(..., help="Session ID to export"),
-    output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output file path"),
     unsafe: bool = typer.Option(
         False, "--unsafe", help="Session uses plaintext storage (skips encryption)"
     ),
