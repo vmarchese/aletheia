@@ -42,6 +42,7 @@ from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import (
     KubernetesDataFetcher,
 )
+from aletheia.agents.loader import load_user_agents
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import (
     LogFileDataFetcher,
 )
@@ -267,6 +268,22 @@ def _build_plugins(
         )
         agent_instances.append(code_analyzer)
         plugins.append(code_analyzer.agent.as_tool())
+
+    # Load user-defined agents
+    if config.user_agents_enabled:
+        user_tools, user_instances = load_user_agents(
+            agents_directory=config.user_agents_directory,
+            config=config,
+            session=session,
+            scratchpad=scratchpad,
+            additional_middleware=additional_middleware,
+        )
+        plugins.extend(user_tools)
+        agent_instances.extend(user_instances)
+
+    # Filter out disabled agents
+    if config.disabled_agents:
+        plugins = [p for p in plugins if p.name not in config.disabled_agents]
 
     COMMANDS["agents"] = AgentsInfo(agents=plugins)
 
@@ -575,16 +592,22 @@ async def _start_investigation(session: Session) -> None:
 
                     # Fallback: If JSON parsing never succeeded, render raw buffer
                     if not parsed_successfully and json_buffer and json_buffer.strip():
-                        console.print("\n[yellow]⚠️ Structured parsing failed, showing raw response:[/yellow]\n")
+                        console.print(
+                            "\n[yellow]⚠️ Structured parsing failed, showing raw response:[/yellow]\n"
+                        )
                         # Try to extract text content from partial JSON or render as-is
                         fallback_text = json_buffer
                         # If it looks like JSON, try to extract string values
-                        if json_buffer.strip().startswith('{'):
+                        if json_buffer.strip().startswith("{"):
                             try:
                                 # Attempt to extract readable text from partial JSON
                                 import re
+
                                 # Extract text from string fields
-                                text_matches = re.findall(r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"', json_buffer)
+                                text_matches = re.findall(
+                                    r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"',
+                                    json_buffer,
+                                )
                                 if text_matches:
                                     fallback_text = "\n\n".join(text_matches)
                             except Exception:
@@ -991,9 +1014,7 @@ def session_timeline(
 @session_app.command("export")
 def session_export(
     session_id: str = typer.Argument(..., help="Session ID to export"),
-    output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output file path"),
     unsafe: bool = typer.Option(
         False, "--unsafe", help="Session uses plaintext storage (skips encryption)"
     ),
