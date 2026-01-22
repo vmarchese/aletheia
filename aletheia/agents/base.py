@@ -25,12 +25,13 @@ from aletheia.knowledge import KnowledgePlugin, ChromaKnowledge
 class AgentInfo(ABC):
     """Holds information about an agent loaded from YAML instructions."""
     def __init__(self,
-                 name: str):
+                 name: str,
+                 prompts_dir: Path | None = None):
         self.name = name
         self.identity = ""
         self.guidelines = ""
         package_dir = Path(__file__).parent.parent
-        self.prompts_dir = package_dir / "agents"
+        self.prompts_dir = prompts_dir if prompts_dir else (package_dir / "agents")
         self.load()
 
     def load(self):
@@ -69,6 +70,7 @@ class BaseAgent(ABC):
         render_instructions: bool = True,
         config=None,
         additional_middleware: Sequence = None,
+        prompts_dir: Path | None = None,
     ):
         """Initialize the base agent.
 
@@ -136,7 +138,7 @@ class BaseAgent(ABC):
                 rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client, custom_instructions=custom_instructions)
         else:
             prompt_template = self.load_prompt_template()
-            agent_info = AgentInfo(self.name)
+            agent_info = AgentInfo(self.name, prompts_dir=prompts_dir)
             rendered_instructions = prompt_template
             if render_instructions:
                 template = Template(prompt_template)

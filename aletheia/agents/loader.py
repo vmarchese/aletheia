@@ -7,10 +7,20 @@ Expected directory structure:
 ```
 user_agents_directory/
   my_agent/
-    config.yaml    # Agent configuration (required)
-    agent.py       # Agent class definition (required)
-    instructions.yaml  # Optional: override default instructions
-    plugins/       # Optional: agent-specific plugins
+    config.yaml        # Agent configuration (required)
+    agent.py           # Agent class definition (required)
+    instructions.yaml  # Agent instructions (required)
+    plugins/           # Optional: agent-specific plugins
+```
+
+The instructions.yaml file must follow the same structure as internal agents:
+```yaml
+agent:
+  name: my_agent
+  identity: |
+    You are MyAgent, a specialized agent for...
+  guidelines: |
+    When handling requests, you should...
 ```
 """
 
@@ -75,8 +85,9 @@ class UserAgentLoader:
 
             config_path = agent_dir / "config.yaml"
             agent_path = agent_dir / "agent.py"
+            instructions_path = agent_dir / "instructions.yaml"
 
-            # Both files must exist
+            # All required files must exist
             if not config_path.exists():
                 log_debug(
                     f"UserAgentLoader::discover_agents:: "
@@ -88,6 +99,13 @@ class UserAgentLoader:
                 log_debug(
                     f"UserAgentLoader::discover_agents:: "
                     f"Skipping {agent_dir.name}: missing agent.py"
+                )
+                continue
+
+            if not instructions_path.exists():
+                log_debug(
+                    f"UserAgentLoader::discover_agents:: "
+                    f"Skipping {agent_dir.name}: missing instructions.yaml"
                 )
                 continue
 
@@ -204,6 +222,7 @@ class UserAgentLoader:
                 "description": agent_def.description,
                 "session": session,
                 "scratchpad": scratchpad,
+                "prompts_dir": agent_dir.parent,  # Parent dir so AgentInfo can find name/instructions.yaml
             }
             if additional_middleware is not None:
                 kwargs["additional_middleware"] = additional_middleware

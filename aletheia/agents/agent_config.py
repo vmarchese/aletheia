@@ -9,11 +9,10 @@ agent:
   class: MyAgentClass
   description: "Agent description for orchestrator"
   enabled: true
-  identity: |
-    You are MyAgent, a specialized agent for...
-  guidelines: |
-    When handling requests...
 ```
+
+Note: Identity and guidelines should be defined in instructions.yaml,
+following the same pattern as internal agents.
 """
 
 from pathlib import Path
@@ -34,10 +33,6 @@ class AgentDefinition(BaseModel):
     )
     description: str = Field(..., description="Agent description shown to orchestrator")
     enabled: bool = Field(default=True, description="Whether the agent is enabled")
-    identity: str = Field(default="", description="Agent identity for prompt template")
-    guidelines: str = Field(
-        default="", description="Agent guidelines for prompt template"
-    )
 
 
 class UserAgentConfig(BaseModel):
