@@ -536,6 +536,136 @@ You can ask questions about the investigation or type 'exit' to end the session.
 ## WEB UI (Alpha)
 Aletheia has a very rudimental WEB UI. To access it start Aletheia with `aletheia serve` and open `http://localhost:8000` in your browser.
 
+## User-Defined Agents
+
+Aletheia supports loading custom agents at runtime without modifying the core codebase. User-defined agents are discovered from a configurable directory and loaded alongside built-in agents.
+
+### Directory Structure
+
+Create your agents in the user agents directory:
+
+- **Linux**: `~/.config/aletheia/agents/`
+- **macOS**: `~/Library/Application Support/aletheia/agents/`
+- **Windows**: `%LOCALAPPDATA%\aletheia\agents\`
+
+Each agent is a subdirectory containing:
+
+```
+agents/
+  my_agent/
+    config.yaml    # Agent metadata (required)
+    agent.py       # Agent class definition (required)
+```
+
+### Configuration (config.yaml)
+
+```yaml
+agent:
+  name: hello_world
+  class: HelloWorldAgent
+  description: "A friendly agent that greets people"
+  enabled: true
+  identity: "A friendly agent that says hello to the world."
+  guidelines: "Be nice and helpful."
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique agent identifier |
+| `class` | Yes | Python class name in agent.py |
+| `description` | Yes | Description shown to the orchestrator |
+| `enabled` | No | Enable/disable the agent (default: true) |
+| `identity` | No | Agent identity for prompts |
+| `guidelines` | No | Agent behavioral guidelines |
+
+### Agent Implementation (agent.py)
+
+```python
+from typing import Annotated, List
+from agent_framework import ToolProtocol
+from aletheia.agents.base import BaseAgent
+from aletheia.plugins.base import BasePlugin
+
+
+class HelloWorldPlugin(BasePlugin):
+    """Custom plugin providing tools for the agent."""
+
+    def __init__(self):
+        self.name = "HelloWorldPlugin"
+        self.instructions = "Use say_hello to greet someone."
+
+    def say_hello(self, name: Annotated[str, "Name of the person to greet"]) -> str:
+        """Greet a person by name."""
+        return f"Hello, {name}!"
+
+    def get_tools(self) -> List[ToolProtocol]:
+        """Return the list of tools provided by this plugin."""
+        return [self.say_hello]
+
+
+class HelloWorldAgent(BaseAgent):
+    """Custom agent that greets people."""
+
+    def __init__(self, name, config, description, session, scratchpad, **kwargs):
+        # Create plugin instances
+        hello_plugin = HelloWorldPlugin()
+        plugins = [scratchpad, hello_plugin]
+
+        # Define agent instructions
+        instructions = """
+        You are HelloWorldAgent, a friendly agent that greets people.
+
+        ## Guidelines
+        - Be nice and friendly
+        - Use the say_hello tool to greet people by name
+        """
+
+        super().__init__(
+            name=name,
+            config=config,
+            description=description,
+            session=session,
+            plugins=plugins,
+            instructions=instructions,
+            **kwargs
+        )
+```
+
+### Configuration Options
+
+Control user agent loading via environment variables or config.yaml:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ALETHEIA_USER_AGENTS_DIRECTORY` | Path to user agents directory | `{config_dir}/agents` |
+| `ALETHEIA_USER_AGENTS_ENABLED` | Enable/disable user agent loading | `true` |
+| `ALETHEIA_DISABLED_AGENTS` | Comma-separated list of agents to disable | `""` |
+
+Example in config.yaml:
+
+```yaml
+user_agents_directory: /path/to/my/agents
+user_agents_enabled: true
+disabled_agents:
+  - aws  # Disable built-in AWS agent
+```
+
+### Plugin Requirements
+
+Custom plugins must:
+1. Inherit from `BasePlugin`
+2. Implement `get_tools()` returning a list of callable methods
+3. Use `Annotated` type hints for tool parameters
+
+```python
+def my_tool(self, param: Annotated[str, "Parameter description"]) -> str:
+    """Tool docstring becomes the tool description."""
+    return "result"
+
+def get_tools(self) -> List[ToolProtocol]:
+    return [self.my_tool]
+```
+
 ## MCP Support (Highly experimental)
 You can add MCP Server to each agent by setting a `ALETHEIA_MCP_SERVERS_YAML` env variable pointing to a yaml configuration which must have the following format:
 
