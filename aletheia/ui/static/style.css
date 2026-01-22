@@ -427,11 +427,11 @@ body {
 .avatar {
     width: 64px;
     height: 64px;
-    border-radius: 50%;
+    border-radius: 0%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
+    font-size: 2rem;
     flex-shrink: 0;
     overflow: hidden;
     /* Ensure image stays inside */
@@ -447,7 +447,6 @@ body {
 
 .message.user .avatar {
     background-color: white;
-    border: 1px solid var(--border-color);
     color: white;
 }
 
