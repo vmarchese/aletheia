@@ -553,11 +553,14 @@ Each agent is a subdirectory containing:
 ```
 agents/
   my_agent/
-    config.yaml    # Agent metadata (required)
-    agent.py       # Agent class definition (required)
+    config.yaml        # Agent metadata (required)
+    agent.py           # Agent class definition (required)
+    instructions.yaml  # Agent instructions (required)
 ```
 
 ### Configuration (config.yaml)
+
+The `config.yaml` file contains basic agent metadata:
 
 ```yaml
 agent:
@@ -565,8 +568,6 @@ agent:
   class: HelloWorldAgent
   description: "A friendly agent that greets people"
   enabled: true
-  identity: "A friendly agent that says hello to the world."
-  guidelines: "Be nice and helpful."
 ```
 
 | Field | Required | Description |
@@ -575,8 +576,27 @@ agent:
 | `class` | Yes | Python class name in agent.py |
 | `description` | Yes | Description shown to the orchestrator |
 | `enabled` | No | Enable/disable the agent (default: true) |
-| `identity` | No | Agent identity for prompts |
-| `guidelines` | No | Agent behavioral guidelines |
+
+### Instructions (instructions.yaml)
+
+The `instructions.yaml` file defines the agent's identity and behavioral guidelines, following the same structure as internal agents:
+
+```yaml
+agent:
+  name: hello_world
+  identity: |
+    You are HelloWorldAgent, a friendly agent that says hello to the world.
+  guidelines: |
+    - Be nice and helpful
+    - Always greet people warmly
+    - Use the say_hello tool when appropriate
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Agent name (should match config.yaml) |
+| `identity` | Yes | Agent identity and role description |
+| `guidelines` | Yes | Behavioral guidelines and instructions |
 
 ### Agent Implementation (agent.py)
 
@@ -611,22 +631,13 @@ class HelloWorldAgent(BaseAgent):
         hello_plugin = HelloWorldPlugin()
         plugins = [scratchpad, hello_plugin]
 
-        # Define agent instructions
-        instructions = """
-        You are HelloWorldAgent, a friendly agent that greets people.
-
-        ## Guidelines
-        - Be nice and friendly
-        - Use the say_hello tool to greet people by name
-        """
-
+        # Instructions are loaded from instructions.yaml via BaseAgent
         super().__init__(
             name=name,
             config=config,
             description=description,
             session=session,
             plugins=plugins,
-            instructions=instructions,
             **kwargs
         )
 ```
