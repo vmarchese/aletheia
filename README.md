@@ -685,7 +685,7 @@ mcp_servers:
   # STDIO Transport
   - name: # MCP Server Name
     type: stdio # if stdio 
-    agent: # name of the agent that will access the server
+    agents: # comma separated names of the agents that are allowed to access the server
     description: # mcp server description
     command: # mcp servert command. e.g.: uvx
     args:  # array of arguments
@@ -694,7 +694,7 @@ mcp_servers:
   # HTTP Streamable Transport
   - name: # MCP Server Name
     type: streamable_http # if stdio 
-    agent: # name of the agent that will access the server
+    agents: # comma separated names of the agents that are allowed to access the server
     description: # mcp server description
     url: # uri of the server
     bearer:  # bearer token
