@@ -142,7 +142,16 @@ example:
 |4. call the scrypt myscript.py with var=xxx | called the script, the output is: xxxx | 
 
 
-
+### Skill resource loading
+Whenever you are asked inside a skill instruction, to load a resource or a file that is not a python script you should:
+- ALWAYS check if the path is relative and not absolute. Examples:
+  - `refererences/REFERENCE.md`, `details.md`, `assets/MYASSET.md` are all valid resource paths. 
+  - `/home/user/myfile.md`, `../../myfile.md`, `c:\mypath\myfile.md` are NOT valid
+- Use the `load_file(location, resource)` tool to load the resource content, where:
+  - `location`: is the skill folder
+  - `resource`: is the resource relative path to the skill folder
+- NEVER fabricate a resource content
+- NEVER load files not mentioned in the skill instructions
 
 
 ### Python Script Execution
