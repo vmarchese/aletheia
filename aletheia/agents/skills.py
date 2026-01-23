@@ -203,3 +203,24 @@ class SkillLoader:
         _, instructions = self.parse_frontmatter(content)
         return instructions
 
+    def load_file(self, 
+                  location: Annotated[str, "Path to the skill directory"],
+                  resource: Annotated[str, "Resource file name within the skill directory"]) -> str:
+        """
+        Loads a specific resource file from a skill directory.
+        Args:
+            location: Path to the skill directory
+            resource: Resource file name within the skill directory
+        Returns:
+
+            String content of the resource file
+        """
+        resource_path = Path(resource)
+        if resource_path.is_absolute() or ".." in resource_path.parts:
+            raise ValueError("Resource must be a relative file name without path traversal.")
+        skill_dir = Path(location)
+        resource_file = skill_dir / resource
+        with open(resource_file, 'r', encoding='utf-8') as file:
+            content = file.read()
+        return content
+

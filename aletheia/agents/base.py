@@ -123,6 +123,7 @@ class BaseAgent(ABC):
             docker_plugin = DockerScriptPlugin(config=config, session=session, scratchpad=scratchpad)
             plugins.append(docker_plugin)
             _tools.append(skillloader.get_skill_instructions)
+            _tools.append(skillloader.load_file)
             _tools.append(docker_plugin.sandbox_run)
 
         client = LLMClient(agent_name=self.name)            
