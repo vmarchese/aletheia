@@ -58,7 +58,11 @@ uv pip install -e .
 
 ## Usage
 
-Aletheia provides a command-line interface for managing troubleshooting sessions and running investigations.
+Aletheia provides multiple interfaces for managing troubleshooting sessions and running investigations:
+
+- **TUI (Terminal)**: Interactive command-line interface with `aletheia session open`
+- **Web UI**: Browser-based interface with `aletheia serve`
+- **Telegram Bot**: Messaging interface with `aletheia telegram serve`
 
 ### Command Line Interface
 
@@ -178,6 +182,11 @@ export ALETHEIA_PROMETHEUS_CREDENTIALS_TYPE=env
 export ALETHEIA_SKILLS_DIRECTORY=/custom/path/to/skills
 export ALETHEIA_CUSTOM_INSTRUCTIONS_DIR=/custom/path/to/instructions
 export ALETHEIA_MCP_SERVERS_YAML=/path/to/mcp-servers.yaml
+
+# Telegram Bot Configuration
+export ALETHEIA_TELEGRAM_BOT_TOKEN=your_bot_token_here
+export ALETHEIA_TELEGRAM_ALLOWED_USERS=123456789,987654321
+export ALETHEIA_TELEGRAM_SESSION_TIMEOUT=30
 ```
 
 ### YAML Configuration
@@ -211,6 +220,11 @@ prometheus_credentials_type: env
 # skills_directory: /path/to/skills
 # custom_instructions_dir: /path/to/instructions
 # mcp_servers_yaml: /path/to/mcp-servers.yaml
+
+# Telegram Bot Configuration (optional)
+# telegram_bot_token: your_bot_token_here
+# telegram_allowed_users: [123456789, 987654321]
+# telegram_session_timeout: 30
 ```
 
 See [config.yaml.example](config.yaml.example) for a complete configuration template with detailed comments.
@@ -231,6 +245,9 @@ See [config.yaml.example](config.yaml.example) for a complete configuration temp
 | `custom_instructions_dir` | Path to custom instructions | `{config_dir}/instructions` |
 | `mcp_servers_yaml` | Path to MCP servers config | `None` |
 | `temp_folder` | Temporary file storage | `/tmp/aletheia` |
+| `telegram_bot_token` | Telegram bot API token | `None` |
+| `telegram_allowed_users` | List of allowed Telegram user IDs | `[]` |
+| `telegram_session_timeout` | Session timeout in minutes | `30` |
 
 ### Custom Agent Instructions
 
@@ -535,6 +552,151 @@ You can ask questions about the investigation or type 'exit' to end the session.
 
 ## WEB UI (Alpha)
 Aletheia has a very rudimental WEB UI. To access it start Aletheia with `aletheia serve` and open `http://localhost:8000` in your browser.
+
+## Telegram Bot
+
+Aletheia provides a Telegram bot interface for remote troubleshooting via messaging. The bot supports all core functionality including session management, agent interactions, and command execution through a conversational interface.
+
+### Features
+
+- **Session Management**: Create, resume, list, and view investigation sessions
+- **AI-Powered Chat**: Send messages to investigate issues with full agent orchestration
+- **Command Support**: All built-in commands (`/help`, `/info`, `/agents`, `/cost`, `/version`) and custom commands
+- **User Authorization**: Allowlist-based access control for security
+- **Persistent Sessions**: Sessions stored in unsafe mode (plaintext) for easy access
+
+### Setup
+
+#### 1. Create a Telegram Bot
+
+1. Message [@BotFather](https://t.me/botfather) on Telegram
+2. Use the `/newbot` command and follow the prompts
+3. Copy the bot token provided by BotFather
+
+#### 2. Get Your Telegram User ID
+
+1. Message [@userinfobot](https://t.me/userinfobot) on Telegram
+2. The bot will reply with your user ID (a numeric value)
+
+#### 3. Configure Aletheia
+
+Set the bot token and allowed users via environment variables:
+
+```bash
+# Bot token (required)
+export ALETHEIA_TELEGRAM_BOT_TOKEN="your_bot_token_from_botfather"
+
+# Allowed user IDs (comma-separated, recommended)
+export ALETHEIA_TELEGRAM_ALLOWED_USERS="123456789,987654321"
+```
+
+Or add to your `config.yaml`:
+
+```yaml
+# Telegram Bot Configuration
+telegram_bot_token: "your_bot_token_from_botfather"
+telegram_allowed_users:
+  - 123456789
+  - 987654321
+```
+
+#### 4. Start the Bot
+
+```bash
+aletheia telegram serve
+```
+
+Options:
+- `--token`: Override configured bot token
+- `--verbose, -v`: Enable verbose logging
+
+The bot will start polling for messages. You'll see a security disclaimer about Telegram's encryption.
+
+### Available Commands
+
+#### Session Commands
+
+- `/start` - Welcome message and introduction
+- `/new_session` - Create a new investigation session (always in unsafe mode)
+- `/session list` - List all available sessions
+- `/session resume <session-id>` - Resume an existing session
+- `/session timeline <session-id>` - View session timeline
+- `/session show <session-id>` - View session scratchpad
+
+#### Built-in Commands
+
+- `/help` - Show available commands
+- `/info` - Display Aletheia configuration
+- `/agents` - List all loaded agents
+- `/cost` - Show token usage and costs
+- `/version` - Display Aletheia version
+
+#### Custom Commands
+
+All custom commands defined in `~/.config/aletheia/commands/` are automatically available.
+
+#### Regular Messages
+
+Any non-command text is sent to the active session's AI orchestrator for investigation.
+
+### Usage Example
+
+```
+You: /start
+Bot: 👋 Welcome to Aletheia!
+     Start with /new_session or resume with /session resume <id>
+
+You: /new_session
+Bot: ✅ New session created: INC-0042
+     You can now send messages to investigate issues.
+
+You: Why is my Kubernetes pod failing?
+Bot: [AI-generated analysis with findings, decisions, and next actions]
+
+You: /session list
+Bot: Available Sessions:
+     • INC-0042 - Telegram-123456789
+       Created: 2026-01-26T14:30:00
+       Status: active
+```
+
+### Security Considerations
+
+⚠️ **Important Security Notes:**
+
+1. **No End-to-End Encryption**: Telegram is not end-to-end encrypted. Messages can be read by Telegram server administrators. Avoid sharing sensitive data.
+
+2. **User Allowlist**: Always configure `telegram_allowed_users` to restrict access. An empty allowlist allows ALL users.
+
+3. **Plaintext Storage**: All Telegram sessions use unsafe mode (plaintext, no password encryption) for ease of access.
+
+4. **Bot Token**: Keep your bot token secret. Anyone with the token can control your bot.
+
+### Managing Allowed Users
+
+View configured allowed users:
+
+```bash
+aletheia telegram allowed-users
+```
+
+This displays a table of authorized user IDs. To add or remove users, update your configuration and restart the bot.
+
+### Troubleshooting
+
+**Bot not responding:**
+- Verify bot token is correct
+- Check that your user ID is in the allowlist
+- Review bot logs with `--verbose` flag
+
+**Authorization errors:**
+- Ensure your Telegram user ID is in `telegram_allowed_users`
+- Check that the configuration is loaded correctly
+
+**Session errors:**
+- Sessions are stored in `~/.aletheia/sessions/`
+- Use `/session list` to verify session exists
+- Resume sessions with `/session resume <id>`
 
 ## User-Defined Agents
 

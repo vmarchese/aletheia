@@ -123,8 +123,14 @@ knowledge_app = typer.Typer(
     help="Manage knowledge base",
 )
 
+telegram_app = typer.Typer(
+    name="telegram",
+    help="Telegram bot server commands",
+)
+
 app.add_typer(session_app, name="session")
 app.add_typer(knowledge_app, name="knowledge")
+app.add_typer(telegram_app, name="telegram")
 
 
 console = get_console_wrapper().get_console()
@@ -299,6 +305,51 @@ async def show_thinking_animation(live, stop_event):
         await asyncio.sleep(1)
 
 
+async def init_orchestrator(session: Session, config: Config) -> Orchestrator:
+    """Initialize orchestrator for a session.
+
+    This is a reusable function for CLI, Telegram, and API modes.
+
+    Args:
+        session: Active session
+        config: Aletheia configuration
+
+    Returns:
+        Initialized Orchestrator instance with thread
+    """
+    prompt_loader = Loader()
+
+    # Initialize scratchpad with session directory and encryption key
+    scratchpad = Scratchpad(
+        session_dir=session.session_path, encryption_key=session.get_key()
+    )
+    session.scratchpad = scratchpad
+
+    # Build plugins
+    tools, agent_instances = _build_plugins(
+        config=config,
+        prompt_loader=prompt_loader,
+        session=session,
+        scratchpad=scratchpad,
+    )
+
+    # Create orchestrator
+    orchestrator = Orchestrator(
+        name="orchestrator",
+        description="Orchestrator agent managing the investigation workflow",
+        instructions=prompt_loader.load("orchestrator", "instructions"),
+        session=session,
+        sub_agents=tools,
+        scratchpad=scratchpad,
+        config=config,
+    )
+
+    # Initialize thread
+    orchestrator.thread = orchestrator.agent.get_new_thread()
+
+    return orchestrator
+
+
 async def _start_investigation(session: Session) -> None:
     """
     Start the investigation workflow for a session.
@@ -312,38 +363,14 @@ async def _start_investigation(session: Session) -> None:
         # Load configuration
         config = load_config()
 
-        # Prompt loader
-        prompt_loader = Loader()
-        # Initialize scratchpad with session directory and encryption key
-
-        # Load existing scratchpad if it exists, otherwise create new one
-        scratchpad = Scratchpad(
-            session_dir=session.session_path, encryption_key=session.get_key()
-        )
-        session.scratchpad = scratchpad
-
-        tools, agent_instances = _build_plugins(
-            config=config,
-            prompt_loader=prompt_loader,
-            session=session,
-            scratchpad=scratchpad,
-        )
-
-        entry = Orchestrator(
-            name="orchestrator",
-            description="Orchestrator agent managing the investigation workflow",
-            instructions=prompt_loader.load("orchestrator", "instructions"),
-            session=session,
-            sub_agents=tools,
-            scratchpad=scratchpad,
-            config=config,
-        )
+        # Initialize orchestrator using helper function
+        entry = await init_orchestrator(session, config)
 
         chatting = True
 
         completion_usage = UsageDetails()
 
-        thread: AgentThread = entry.agent.get_new_thread()
+        thread: AgentThread = entry.thread
 
         # Initialize prompt_toolkit session with command completion
         completer = CommandCompleter(config)
@@ -1311,6 +1338,107 @@ def knowledge_list() -> None:
     except Exception as e:
         console.print(f"[red]Error listing documents: {e}[/red]")
         raise typer.Exit(1)
+
+
+@telegram_app.command("serve")
+def telegram_serve(
+    token: str = typer.Option(
+        None, "--token", help="Bot token (overrides config/env var)"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging"
+    ),
+) -> None:
+    """Start the Telegram bot server with polling.
+
+    The bot will start polling for messages from Telegram users.
+    All sessions created via Telegram use unsafe mode (plaintext storage).
+
+    Configuration:
+    - Bot token: --token flag, ALETHEIA_TELEGRAM_BOT_TOKEN env var, or config.yaml
+    - Allowed users: ALETHEIA_TELEGRAM_ALLOWED_USERS env var or config.yaml
+
+    Security Note: Telegram is not end-to-end encrypted. Messages can be read
+    by Telegram server administrators. Use the allowlist to restrict access.
+    """
+    from aletheia.telegram.bot import run_telegram_bot
+
+    # Print security disclaimer
+    console.print("[bold red]⚠️  SECURITY NOTICE[/bold red]")
+    console.print(
+        "[yellow]Telegram is not encrypted end-to-end. "
+        "Your messages can be read by Telegram server administrators. "
+        "Avoid sharing sensitive data.[/yellow]\n"
+    )
+
+    # Load configuration
+    config = load_config()
+    bot_token = token or config.telegram_bot_token
+
+    if not bot_token:
+        console.print(
+            "[red]Error: Bot token not configured.[/red]\n"
+            "\nSet the token using one of:\n"
+            "  1. --token flag: aletheia telegram serve --token YOUR_TOKEN\n"
+            "  2. Environment variable: export ALETHEIA_TELEGRAM_BOT_TOKEN=YOUR_TOKEN\n"
+            "  3. Config file: Add 'telegram_bot_token: YOUR_TOKEN' to ~/.config/aletheia/config.yaml"
+        )
+        raise typer.Exit(1)
+
+    # Check allowlist configuration
+    if not config.telegram_allowed_users:
+        console.print(
+            "[yellow]⚠️  Warning: No allowed users configured.[/yellow]\n"
+            "[yellow]All Telegram users can access the bot.[/yellow]\n"
+            "\nTo restrict access, set allowed users:\n"
+            "  1. Environment variable: export ALETHEIA_TELEGRAM_ALLOWED_USERS=123456789,987654321\n"
+            "  2. Config file: Add 'telegram_allowed_users: [123456789, 987654321]' to config.yaml\n"
+        )
+
+    console.print("[green]Starting Telegram bot with polling...[/green]")
+    console.print("[dim]Press Ctrl+C to stop[/dim]\n")
+
+    # Run the bot
+    try:
+        asyncio.run(run_telegram_bot(bot_token, config, verbose))
+    except KeyboardInterrupt:
+        console.print("\n[cyan]Bot stopped.[/cyan]")
+
+
+@telegram_app.command("allowed-users")
+def telegram_allowed_users() -> None:
+    """Show configured allowed Telegram users.
+
+    Displays the list of Telegram user IDs that are authorized to access the bot.
+    If the list is empty, all users can access the bot (not recommended).
+    """
+    config = load_config()
+
+    if not config.telegram_allowed_users:
+        console.print("[yellow]No allowed users configured[/yellow]")
+        console.print("\nAll Telegram users can currently access the bot.")
+        console.print("\nTo add allowed users:")
+        console.print("  1. Edit config.yaml:")
+        console.print("     telegram_allowed_users: [123456789, 987654321]")
+        console.print("\n  2. Or set environment variable:")
+        console.print("     export ALETHEIA_TELEGRAM_ALLOWED_USERS=123456789,987654321")
+        console.print("\nTo find your Telegram user ID:")
+        console.print("  1. Message @userinfobot on Telegram")
+        console.print("  2. The bot will reply with your user ID")
+        return
+
+    console.print()
+    table = Table(title="Allowed Telegram Users")
+    table.add_column("User ID", style="cyan", no_wrap=True)
+    table.add_column("Index", style="dim")
+
+    for idx, user_id in enumerate(config.telegram_allowed_users, 1):
+        table.add_row(str(user_id), str(idx))
+
+    console.print(table)
+    console.print(
+        f"\n[green]Total: {len(config.telegram_allowed_users)} user(s)[/green]"
+    )
 
 
 def main() -> None:

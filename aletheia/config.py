@@ -103,6 +103,20 @@ class Config(BaseSettings):
     )
 
     # =================================================================
+    # Telegram Bot Configuration
+    # =================================================================
+    telegram_bot_token: str | None = Field(
+        default=None, description="Telegram bot API token from BotFather"
+    )
+    telegram_allowed_users: list[int] = Field(
+        default_factory=list,
+        description="List of allowed Telegram user IDs (integers)",
+    )
+    telegram_session_timeout: int = Field(
+        default=30, description="Inactive session timeout in minutes"
+    )
+
+    # =================================================================
     # Data Sources Configuration (flat)
     # =================================================================
 
