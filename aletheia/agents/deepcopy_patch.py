@@ -25,6 +25,24 @@ def _copy_method(x, memo):
     return x
 
 
+def _copy_with_logging(x, memo, deepcopy_func):
+    """Wrapper to log what's being deepcopied."""
+    # Check if this is a dict that might contain response_format
+    if isinstance(x, dict) and 'response_format' in x:
+        log_debug(f"deepcopy: Copying dict with response_format: {x.get('response_format')}")
+    
+    result = deepcopy_func(x, memo)
+    
+    # Check if response_format was lost
+    if isinstance(x, dict) and 'response_format' in x:
+        if isinstance(result, dict) and 'response_format' not in result:
+            log_debug(f"⚠️  deepcopy: response_format was LOST during deepcopy!")
+        elif isinstance(result, dict):
+            log_debug(f"deepcopy: response_format preserved: {result.get('response_format')}")
+    
+    return result
+
+
 def patch_deepcopy():
     """
     Monkey-patch copy.deepcopy to handle bound methods gracefully.
