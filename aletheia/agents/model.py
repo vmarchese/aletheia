@@ -33,6 +33,7 @@ class Decisions(BaseModel):
 class NextActions(BaseModel):
     """Holds the next actions to be taken by the agent."""
     steps: List[str]  # List of next action steps
+    next_requests: List[str]  # List of next requests to be made
     additional_output: str | None = None  # Any additional output or observations
 
 

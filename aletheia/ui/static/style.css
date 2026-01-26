@@ -729,6 +729,112 @@ textarea {
     cursor: not-allowed;
 }
 
+/* Next Request Suggestions */
+.suggestions-container {
+    max-width: 800px;
+    margin: 0 auto 1rem auto;
+    padding: 0 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.suggestions-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+}
+
+.suggestions-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.25rem 0;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.suggestions-pills::-webkit-scrollbar {
+    display: none;
+}
+
+.suggestion-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 0.875rem;
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+    max-width: 500px;
+    min-height: 36px;
+}
+
+.suggestion-pill:hover {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.suggestion-pill:active {
+    transform: translateY(0);
+}
+
+/* Mobile optimization */
+@media (max-width: 768px) {
+    .suggestions-container {
+        padding: 0 1rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .suggestions-pills {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+    }
+
+    .suggestion-pill {
+        flex-shrink: 0;
+        min-height: 44px;
+    }
+}
+
+/* Light theme */
+[data-theme="light"] .suggestion-pill {
+    background-color: #e0e7ff;
+    border-color: #c7d2fe;
+    color: #3730a3;
+}
+
+[data-theme="light"] .suggestion-pill:hover {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+}
+
 /* Modal */
 .modal {
     display: none;

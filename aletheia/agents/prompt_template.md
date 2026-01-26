@@ -85,6 +85,28 @@ If a tool output exceeds 500 lines:
 1. Output the entire result first.
 2. Provide a summary/analysis afterward.
 3. Reference line numbers as needed for substantiation.
+4. ALWAYS provide 2-5 contextual suggestions in the `next_actions.next_requests` field. These are displayed as clickable quick actions above the input box and should be **natural language requests** that users can send to the agent for further investigation.
+
+   **Requirements for Next Requests:**
+   - **NATURAL LANGUAGE**: Write as clear requests that the agent will interpret and execute
+   - **SPECIFIC**: Include exact resource names, IDs, namespaces, timestamps, paths
+   - **CONTEXTUAL**: Relate directly to findings and potential issues discovered
+   - **CONCISE**: Keep to 60-80 characters for better UI display
+   - **PRIORITIZED**: Order by diagnostic value (most important first)
+
+   **Examples:**
+   - ❌ BAD: "Check pod logs" (too vague, missing specifics)
+   - ✅ GOOD: "Get logs for pod payment-svc-7d9f8 in namespace prod"
+
+   - ❌ BAD: "Look at metrics" (too vague)
+   - ✅ GOOD: "Show CPU metrics for node ip-10-0-1-42 last 15 minutes"
+
+   - ❌ BAD: "Investigate the error" (too vague)
+   - ✅ GOOD: "Search logs for 'ConnectionTimeout' in auth-service"
+
+   - ✅ GOOD: "Check recent deployments in production namespace"
+   - ✅ GOOD: "Show memory usage for pod db-primary-0"
+
 
 ### Error Handling
 
