@@ -30,6 +30,7 @@ let thinkingInterval = null;
 let availableCommands = []; // Cache for available commands
 let commandCompletionVisible = false;
 let selectedCommandIndex = -1;
+let currentNextRequests = []; // Store current next request suggestions
 
 // DOM Elements
 const sessionsList = document.getElementById('sessions-list');
@@ -58,6 +59,7 @@ const scratchpadSessionName = document.getElementById('scratchpad-session-name')
 const scratchpadSessionId = document.getElementById('scratchpad-session-id');
 const timelineSessionName = document.getElementById('timeline-session-name');
 const timelineSessionId = document.getElementById('timeline-session-id');
+const suggestionsContainer = document.getElementById('suggestions-container');
 
 // Sidebar Info Elements
 const infoSessionName = document.getElementById('info-session-name');
@@ -207,6 +209,10 @@ function setupEventListeners() {
 
         // Add user message
         appendMessage(message, 'user');
+
+        // Clear next request suggestions when user sends a message
+        clearNextRequestSuggestions();
+
         messageInput.value = '';
         messageInput.style.height = 'auto';
         sendBtn.disabled = true;
@@ -1172,6 +1178,76 @@ function updateStructuredResponse(fieldType, content) {
     // Render the updated structured response
     renderStructuredMessage(msgDiv, data);
     console.log('[updateStructuredResponse] Rendered structured message');
+
+    // Update suggestions if next_actions contains next_requests
+    if (fieldType === 'next_actions' && content.next_requests && content.next_requests.length > 0) {
+        currentNextRequests = content.next_requests;
+        renderNextRequestSuggestions(currentNextRequests);
+    }
+}
+
+function renderNextRequestSuggestions(suggestions) {
+    console.log('[renderNextRequestSuggestions] Rendering suggestions:', suggestions);
+
+    if (!suggestionsContainer) {
+        console.warn('[renderNextRequestSuggestions] Suggestions container not found');
+        return;
+    }
+
+    // Clear existing suggestions
+    suggestionsContainer.innerHTML = '';
+
+    // If no suggestions, hide container
+    if (!suggestions || suggestions.length === 0) {
+        suggestionsContainer.style.display = 'none';
+        return;
+    }
+
+    // Show container and render suggestions
+    suggestionsContainer.style.display = 'flex';
+
+    // Create title
+    const title = document.createElement('span');
+    title.className = 'suggestions-title';
+    title.textContent = 'Quick actions:';
+    suggestionsContainer.appendChild(title);
+
+    // Create wrapper for pills
+    const pillsWrapper = document.createElement('div');
+    pillsWrapper.className = 'suggestions-pills';
+
+    // Create suggestion pills
+    suggestions.forEach((suggestion) => {
+        const pill = document.createElement('button');
+        pill.type = 'button'; // Prevent form submission
+        pill.className = 'suggestion-pill';
+        pill.textContent = suggestion;
+        pill.setAttribute('title', suggestion); // Tooltip for long text
+
+        // Click handler
+        pill.addEventListener('click', (e) => {
+            e.preventDefault(); // Extra safety to prevent form submission
+            if (messageInput && !messageInput.disabled) {
+                messageInput.value = suggestion;
+                messageInput.focus();
+                // Trigger input event to adjust height
+                messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+                // Auto-resize textarea
+                messageInput.style.height = 'auto';
+                messageInput.style.height = messageInput.scrollHeight + 'px';
+            }
+        });
+
+        pillsWrapper.appendChild(pill);
+    });
+
+    suggestionsContainer.appendChild(pillsWrapper);
+    scrollToBottom(); // Ensure suggestions are visible
+}
+
+function clearNextRequestSuggestions() {
+    currentNextRequests = [];
+    renderNextRequestSuggestions([]);
 }
 
 function createStructuredMessage() {
