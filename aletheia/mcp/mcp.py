@@ -11,7 +11,7 @@ class MCPServer:
     """Class representing an MCP server configuration."""
     def __init__(self,
                  name: str,
-                 agent: str,
+                 agents: str,
                  description: str,
                  server_type: str,
                  url: str = None,
@@ -23,7 +23,7 @@ class MCPServer:
         self.bearer = bearer
         self.description = description
         self.name = name
-        self.agent = agent
+        self.agents = agents
         self.server_type = server_type
         self.command = command
         self.args = args if args is not None else []
@@ -46,11 +46,12 @@ def load_mcp_tools(agent: str, yaml_file: str = None) -> list[MCPServer]:
         servers_data = yaml.safe_load(content)
         servers = []
         for server_info in servers_data.get("mcp_servers", []):
-            if server_info.get("agent") != agent:
+            allowed_agents = server_info.get("agents", "").split(",")
+            if agent not in allowed_agents:
                 continue
             server = MCPServer(
                 name=server_info.get("name"),
-                agent=server_info.get("agent"),
+                agents=server_info.get("agents"),
                 url=server_info.get("url"),
                 description=server_info.get("description"),
                 bearer=server_info.get("bearer"),

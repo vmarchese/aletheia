@@ -42,6 +42,7 @@ from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.kubernetes_data_fetcher.kubernetes_data_fetcher import (
     KubernetesDataFetcher,
 )
+from aletheia.agents.loader import load_user_agents
 from aletheia.agents.log_file_data_fetcher.log_file_data_fetcher import (
     LogFileDataFetcher,
 )
@@ -267,6 +268,22 @@ def _build_plugins(
         )
         agent_instances.append(code_analyzer)
         plugins.append(code_analyzer.agent.as_tool())
+
+    # Load user-defined agents
+    if config.user_agents_enabled:
+        user_tools, user_instances = load_user_agents(
+            agents_directory=config.user_agents_directory,
+            config=config,
+            session=session,
+            scratchpad=scratchpad,
+            additional_middleware=additional_middleware,
+        )
+        plugins.extend(user_tools)
+        agent_instances.extend(user_instances)
+
+    # Filter out disabled agents
+    if config.disabled_agents:
+        plugins = [p for p in plugins if p.name not in config.disabled_agents]
 
     COMMANDS["agents"] = AgentsInfo(agents=plugins)
 

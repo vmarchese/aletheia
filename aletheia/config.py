@@ -202,6 +202,24 @@ class Config(BaseSettings):
         description="Directory containing custom instructions for agents",
     )
 
+    # =================================================================
+    # User Agents Configuration
+    # =================================================================
+    user_agents_directory: str = Field(
+        default_factory=lambda: str(get_config_dir() / "agents"),
+        description="Directory containing user-defined agent packages",
+    )
+
+    user_agents_enabled: bool = Field(
+        default=True,
+        description="Enable loading of user-defined agents",
+    )
+
+    disabled_agents: list[str] = Field(
+        default_factory=list,
+        description="List of agent names to disable (both built-in and user-defined)",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,

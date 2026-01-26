@@ -133,7 +133,8 @@ DNS, IPs, ports, connectivity, network tools.
 httpx, sslscan
 
 
-If you are asked what a specific agent can or cannot do ALWAYS route the request to the agent
+If you are asked what a specific agent can or cannot do ALWAYS route the request to the agent.
+You might also have other user defined agents to which you can route the requests.
 
 ---
 
