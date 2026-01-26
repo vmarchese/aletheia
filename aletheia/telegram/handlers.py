@@ -1,0 +1,516 @@
+"""Telegram command handlers for Aletheia bot."""
+
+import html as html_module
+import json
+import logging
+
+from agent_framework import ChatMessage, Role, TextContent
+from telegram import Update
+from telegram.ext import ContextTypes
+
+from aletheia.agents.model import AgentResponse
+from aletheia.commands import COMMANDS, expand_custom_command
+from aletheia.config import Config
+from aletheia.session import Session, SessionNotFoundError
+
+from .formatter import format_agent_response, split_message
+from .session_manager import TelegramSessionManager
+
+logger = logging.getLogger(__name__)
+
+
+async def new_session_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /new_session command - create a new investigation session.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
+    config: Config = context.bot_data["config"]
+
+    # Check authorization
+    if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
+        await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
+        return
+
+    try:
+        # Create new session in unsafe mode (no password, plaintext storage)
+        session = Session.create(
+            name=f"Telegram-{user_id}",
+            password=None,
+            unsafe=True,
+            verbose=False,
+        )
+
+        # Set as active session
+        session_manager.set_active_session(user_id, session.session_id)
+
+        # Initialize orchestrator
+        from aletheia.cli import init_orchestrator
+
+        orchestrator = await init_orchestrator(session, config)
+        session_manager.set_orchestrator(session.session_id, orchestrator)
+
+        await update.message.reply_text(
+            f"✅ New session created: <code>{session.session_id}</code>\n\n"
+            f"You can now send messages to investigate issues.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.exception(f"Error creating session for user {user_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def session_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /session subcommands: list, resume, timeline, show.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    config: Config = context.bot_data["config"]
+
+    # Check authorization
+    if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
+        await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
+        return
+
+    args = context.args
+
+    if not args:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/session list\n"
+            "/session resume &lt;session-id&gt;\n"
+            "/session timeline &lt;session-id&gt;\n"
+            "/session show &lt;session-id&gt;",
+            parse_mode="HTML",
+        )
+        return
+
+    action = args[0].lower()
+
+    if action == "list":
+        await handle_session_list(update, context)
+    elif action == "resume" and len(args) >= 2:
+        await handle_session_resume(update, context, args[1])
+    elif action == "timeline" and len(args) >= 2:
+        await handle_session_timeline(update, context, args[1])
+    elif action == "show" and len(args) >= 2:
+        await handle_session_show(update, context, args[1])
+    else:
+        await update.message.reply_text("Unknown action or missing session ID")
+
+
+async def handle_session_list(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /session list - list all sessions.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message:
+        return
+
+    try:
+        sessions = Session.list_sessions()
+
+        if not sessions:
+            await update.message.reply_text("No sessions found.")
+            return
+
+        lines = ["<b>Available Sessions:</b>\n"]
+        for session in sessions[-10:]:  # Show last 10 sessions
+            session_id = session.get("id", "Unknown")
+            name = session.get("name", "No name")
+            created = session.get("created", "Unknown")
+            status = session.get("status", "Unknown")
+
+            lines.append(
+                f"• <code>{session_id}</code> - {name}\n"
+                f"  Created: {created}\n"
+                f"  Status: {status}"
+            )
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+    except Exception as e:
+        logger.exception("Error listing sessions")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def handle_session_resume(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, session_id: str
+) -> None:
+    """Handle /session resume - resume an existing session.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+        session_id: Session ID to resume
+    """
+    if not update.message or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
+    config: Config = context.bot_data["config"]
+
+    try:
+        # Resume session in unsafe mode (no password)
+        session = Session.resume(session_id=session_id, password=None, unsafe=True)
+
+        # Set as active session
+        session_manager.set_active_session(user_id, session.session_id)
+
+        # Initialize orchestrator
+        from aletheia.cli import init_orchestrator
+
+        orchestrator = await init_orchestrator(session, config)
+        session_manager.set_orchestrator(session.session_id, orchestrator)
+
+        metadata = session.get_metadata()
+        await update.message.reply_text(
+            f"✅ Resumed session: <code>{session.session_id}</code>\n"
+            f"Name: {metadata.name or 'N/A'}\n"
+            f"Created: {metadata.created}\n"
+            f"Status: {metadata.status}",
+            parse_mode="HTML",
+        )
+
+    except SessionNotFoundError:
+        await update.message.reply_text(f"❌ Session not found: {session_id}")
+    except Exception as e:
+        logger.exception(f"Error resuming session {session_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def handle_session_timeline(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, session_id: str
+) -> None:
+    """Handle /session timeline - show session timeline using TimelineAgent.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+        session_id: Session ID to show timeline for
+    """
+    if not update.message:
+        return
+
+    try:
+        # Resume session to read scratchpad
+        session = Session.resume(session_id=session_id, password=None, unsafe=True)
+
+        # Read scratchpad
+        from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+
+        scratchpad = Scratchpad(
+            session_dir=session.session_path, encryption_key=session.get_key()
+        )
+        journal = scratchpad.read_scratchpad()
+
+        if not journal or journal.strip() == "":
+            await update.message.reply_text(
+                f"Session <code>{session_id}</code> has no timeline entries yet.",
+                parse_mode="HTML",
+            )
+            return
+
+        # Use TimelineAgent to generate structured timeline
+        from agent_framework import ChatMessage, Role, TextContent
+        from aletheia.agents.model import Timeline
+        from aletheia.agents.instructions_loader import Loader
+        from aletheia.agents.timeline.timeline_agent import TimelineAgent
+
+        prompt_loader = Loader()
+        timeline_agent = TimelineAgent(
+            name="timeline_agent",
+            instructions=prompt_loader.load("timeline", "json_instructions"),
+            description="Timeline Agent for generating session timeline",
+        )
+
+        message = ChatMessage(
+            role=Role.USER,
+            contents=[
+                TextContent(
+                    text=f"Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal}\n\n"
+                )
+            ],
+        )
+
+        # Send "typing" while processing
+        await update.message.chat.send_action("typing")
+
+        # Generate timeline
+        response = await timeline_agent.agent.run(message, response_format=Timeline)
+
+        if response:
+            timeline_data = json.loads(str(response.text))
+
+            # Format timeline for Telegram
+            lines = [f"<b>📅 Timeline: {session_id}</b>\n"]
+
+            # Handle both Timeline model format and legacy format
+            entries = (
+                timeline_data.get("entries", timeline_data)
+                if isinstance(timeline_data, dict)
+                else timeline_data
+            )
+
+            for event in entries[:20]:  # Limit to 20 entries for Telegram
+                timestamp = event.get("timestamp", "")
+                event_type = event.get("entry_type", event.get("type", "INFO"))
+                content = event.get("content", event.get("description", ""))
+
+                # Format with emoji based on type
+                emoji = {
+                    "ACTION": "▶️",
+                    "OBSERVATION": "👁️",
+                    "DECISION": "🎯",
+                    "INFO": "ℹ️",
+                }.get(event_type.upper(), "•")
+
+                lines.append(
+                    f"{emoji} <b>{timestamp}</b> [{event_type}]\n{html_module.escape(content)}\n"
+                )
+
+            if len(entries) > 20:
+                lines.append(f"\n<i>... and {len(entries) - 20} more entries</i>")
+
+            # Send timeline in chunks
+            for chunk in split_message("\n".join(lines)):
+                await update.message.reply_text(chunk, parse_mode="HTML")
+        else:
+            await update.message.reply_text("❌ Failed to generate timeline")
+
+    except SessionNotFoundError:
+        await update.message.reply_text(f"❌ Session not found: {session_id}")
+    except Exception as e:
+        logger.exception(f"Error showing timeline for session {session_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def handle_session_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, session_id: str
+) -> None:
+    """Handle /session show - show session metadata and scratchpad.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+        session_id: Session ID to show scratchpad for
+    """
+    if not update.message:
+        return
+
+    try:
+        # Resume session to read metadata and scratchpad
+        session = Session.resume(session_id=session_id, password=None, unsafe=True)
+        metadata = session.get_metadata()
+
+        # Build metadata section
+        lines = [
+            f"<b>📋 Session: {metadata.name or session_id}</b>\n",
+            f"<b>Status:</b> {metadata.status}",
+            f"<b>Created:</b> {metadata.created}",
+            f"<b>Updated:</b> {metadata.updated}",
+        ]
+
+        # Add token usage if available
+        if metadata.total_input_tokens or metadata.total_output_tokens:
+            lines.append(
+                f"<b>Tokens:</b> {metadata.total_input_tokens} in / {metadata.total_output_tokens} out"
+            )
+
+        lines.append("\n<b>📝 Scratchpad Contents:</b>\n")
+
+        # Read scratchpad
+        from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+
+        scratchpad = Scratchpad(
+            session_dir=session.session_path, encryption_key=session.get_key()
+        )
+        content = scratchpad.read_scratchpad()
+
+        if not content or content.strip() == "":
+            lines.append("<i>(Scratchpad is empty)</i>")
+        else:
+            # Truncate content to avoid Telegram limits
+            truncated = content[:2500]
+            if len(content) > 2500:
+                truncated += "\n... (truncated)"
+            lines.append(f"<pre>{html_module.escape(truncated)}</pre>")
+
+        # Send in chunks if needed
+        for chunk in split_message("\n".join(lines)):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+
+    except SessionNotFoundError:
+        await update.message.reply_text(f"❌ Session not found: {session_id}")
+    except Exception as e:
+        logger.exception(f"Error showing session {session_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
+async def builtin_command_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle built-in commands like /help, /info, /agents, /cost, /version.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message or not update.message.text or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    config: Config = context.bot_data["config"]
+
+    # Check authorization
+    if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
+        await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
+        return
+
+    # Extract command name (remove leading /)
+    command = update.message.text[1:].split()[0].lower()
+
+    if command in COMMANDS:
+        try:
+            # Commands expect a console object for output
+            # For Telegram, we'll capture their output and send it
+            from io import StringIO
+
+            from rich.console import Console
+
+            # Create an in-memory console to capture output
+            buffer = StringIO()
+            temp_console = Console(file=buffer, force_terminal=False, width=80)
+
+            # Execute command
+            COMMANDS[command].execute(
+                temp_console,
+                completion_usage=None,
+                config=context.bot_data["config"],
+            )
+
+            # Get the output
+            output = buffer.getvalue()
+
+            if output:
+                # Convert to plain text (strip Rich markup)
+                # Simple approach: just send as-is, Telegram will ignore markup
+                await update.message.reply_text(output or "Command executed.")
+            else:
+                await update.message.reply_text("Command executed.")
+
+        except Exception as e:
+            logger.exception(f"Error executing command /{command}")
+            await update.message.reply_text(f"❌ Error: {str(e)}")
+    else:
+        await update.message.reply_text(
+            f"Unknown command: /{command}\n"
+            "Available commands: /help, /info, /agents, /cost, /version"
+        )
+
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle regular text messages - send to active session orchestrator.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message or not update.message.text or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
+    config: Config = context.bot_data["config"]
+
+    # Check authorization
+    if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
+        await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
+        return
+
+    # Check for active session
+    session_id = session_manager.get_active_session(user_id)
+    if not session_id:
+        await update.message.reply_text(
+            "⚠️ No active session. Start one with /new_session or /session resume &lt;id&gt;",
+            parse_mode="HTML",
+        )
+        return
+
+    # Get orchestrator
+    orchestrator = session_manager.get_orchestrator(session_id)
+    if not orchestrator:
+        await update.message.reply_text(
+            "❌ Session orchestrator not found. Please create a new session."
+        )
+        session_manager.clear_session(user_id)
+        return
+
+    user_message = update.message.text
+
+    # Check for custom command expansion
+    expanded, was_expanded = expand_custom_command(user_message, config)
+    if was_expanded:
+        user_message = expanded
+
+    # Send typing action
+    await update.message.chat.send_action("typing")
+
+    try:
+        # Stream response from orchestrator
+        json_buffer = ""
+
+        async for chunk in orchestrator.agent.run_stream(
+            messages=[
+                ChatMessage(role="user", contents=[TextContent(text=user_message)])
+            ],
+            thread=orchestrator.thread,
+            response_format=AgentResponse,
+        ):
+            if chunk and chunk.text:
+                json_buffer += chunk.text
+
+                try:
+                    # Try to parse complete JSON
+                    parsed = json.loads(json_buffer)
+                    agent_response = AgentResponse(**parsed)
+
+                    # Format for Telegram
+                    formatted = format_agent_response(agent_response)
+
+                    # Split and send messages
+                    chunks = split_message(formatted)
+                    for chunk_text in chunks:
+                        await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+                    break  # Successfully parsed and sent
+
+                except json.JSONDecodeError:
+                    # Not yet complete, continue buffering
+                    continue
+
+        # Update last activity
+        session_manager.update_activity(user_id)
+
+    except Exception as e:
+        logger.exception(f"Error processing message for user {user_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")

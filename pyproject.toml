@@ -55,6 +55,7 @@ dependencies = [
     "azure-keyvault-secrets>=4.10.0",
     "azure-mgmt-cdn>=13.1.1",
     "azure-monitor-query>=2.0.0",
+    "python-telegram-bot[all]>=21.0.0",
 ]
 
 [project.optional-dependencies]
