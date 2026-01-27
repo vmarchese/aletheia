@@ -399,6 +399,11 @@ async def _start_investigation(session: Session) -> None:
                 )
 
                 user_input = await prompt_session.prompt_async(prompt_formatted)
+
+                # Skip empty input
+                if not user_input or not user_input.strip():
+                    continue
+
                 if user_input.lower() in ["exit", "quit"]:
                     chatting = False
                     console.print("\n[cyan]Ending the investigation session.[/cyan]\n")
@@ -465,7 +470,34 @@ async def _start_investigation(session: Session) -> None:
 
                                 # Try to parse as structured JSON
                                 try:
+                                    # First try direct parsing (works for Sonnet)
                                     parsed_response = json.loads(json_buffer)
+                                    parsed_successfully = True  # Mark successful parse
+                                except json.JSONDecodeError:
+                                    # If that fails, try to extract JSON from mixed content (for Haiku)
+                                    try:
+                                        import re
+
+                                        # Look for JSON object in the buffer (handles text before/after JSON)
+                                        json_match = re.search(
+                                            r"\{.*\}", json_buffer, re.DOTALL
+                                        )
+                                        if json_match:
+                                            parsed_response = json.loads(
+                                                json_match.group(0)
+                                            )
+                                            parsed_successfully = True
+                                        else:
+                                            # No JSON found yet, continue buffering
+                                            raise json.JSONDecodeError(
+                                                "No JSON found", json_buffer, 0
+                                            )
+                                    except (json.JSONDecodeError, AttributeError):
+                                        # Not yet complete JSON, continue buffering
+                                        parsed_response = None
+
+                                # Only process if we successfully parsed
+                                if parsed_response is not None:
                                     parsed_successfully = True  # Mark successful parse
                                     # Successfully parsed structured response
                                     display_parts = []
@@ -608,10 +640,6 @@ async def _start_investigation(session: Session) -> None:
                                     display_text = "".join(display_parts)
                                     live.update(Markdown(display_text))
 
-                                except json.JSONDecodeError:
-                                    # Not yet complete JSON, continue buffering
-                                    pass
-
                             if response and response.contents:
                                 for content in response.contents:
                                     if isinstance(content, UsageContent):
@@ -678,6 +706,10 @@ async def _start_investigation(session: Session) -> None:
     except Exception as e:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
+        # Print full traceback for debugging
+        import traceback
+
+        traceback.print_exc()
         raise typer.Exit(1)
 
 
@@ -972,13 +1004,9 @@ def session_timeline(
 
         message = ChatMessage(
             role=Role.USER,
-            contents=[
-                TextContent(
-                    text=f"""
+            contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       """
-                )
-            ],
+                                       """)],
         )
         response = asyncio.run(
             timeline_agent.agent.run(message, response_format=Timeline)
