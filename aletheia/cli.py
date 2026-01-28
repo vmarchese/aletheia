@@ -56,9 +56,10 @@ from aletheia.agents.sysdiag.sysdiag import SysDiagAgent
 from aletheia.agents.timeline.timeline_agent import TimelineAgent
 from aletheia.commands import COMMANDS, AgentsInfo, expand_custom_command
 from aletheia.completion import CommandCompleter
-from aletheia.config import Config, load_config
+from aletheia.config import Config, get_config_dir, load_config
 from aletheia.console import get_console_wrapper
 from aletheia.encryption import DecryptionError, decrypt_file
+from aletheia.engram.tools import Engram
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session, SessionNotFoundError
 from aletheia.utils import enable_trace_logging, set_verbose_commands
@@ -146,6 +147,7 @@ def _build_plugins(
     session: Session,
     scratchpad: Scratchpad,
     additional_middleware=None,
+    engram: Engram | None = None,
 ) -> tuple[list[BaseAgent], list[BaseAgent]]:
     """Build and return the list of available agent plugins.
 
@@ -169,6 +171,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(kubernetes_fetcher)
     plugins.append(kubernetes_fetcher.agent.as_tool())
@@ -180,6 +183,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(log_file_fetcher)
     plugins.append(log_file_fetcher.agent.as_tool())
@@ -191,6 +195,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(sysdiag_agent)
     plugins.append(sysdiag_agent.agent.as_tool())
@@ -202,6 +207,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(pcap_file_fetcher)
     plugins.append(pcap_file_fetcher.agent.as_tool())
@@ -213,6 +219,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(aws_amp_agent)
     plugins.append(aws_amp_agent.agent.as_tool())
@@ -224,6 +231,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(aws_agent)
     plugins.append(aws_agent.agent.as_tool())
@@ -235,6 +243,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(azure_agent)
     plugins.append(azure_agent.agent.as_tool())
@@ -246,6 +255,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     agent_instances.append(network_agent)
     plugins.append(network_agent.agent.as_tool())
@@ -257,6 +267,7 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
+        engram=engram,
     )
     plugins.append(security_agent.agent.as_tool())
 
@@ -271,6 +282,7 @@ def _build_plugins(
             session=session,
             scratchpad=scratchpad,
             additional_middleware=additional_middleware,
+            engram=engram,
         )
         agent_instances.append(code_analyzer)
         plugins.append(code_analyzer.agent.as_tool())
@@ -283,6 +295,7 @@ def _build_plugins(
             session=session,
             scratchpad=scratchpad,
             additional_middleware=additional_middleware,
+            engram=engram,
         )
         plugins.extend(user_tools)
         agent_instances.extend(user_instances)
@@ -305,7 +318,9 @@ async def show_thinking_animation(live, stop_event):
         await asyncio.sleep(1)
 
 
-async def init_orchestrator(session: Session, config: Config) -> Orchestrator:
+async def init_orchestrator(
+    session: Session, config: Config, engram: Engram | None = None
+) -> Orchestrator:
     """Initialize orchestrator for a session.
 
     This is a reusable function for CLI, Telegram, and API modes.
@@ -313,6 +328,7 @@ async def init_orchestrator(session: Session, config: Config) -> Orchestrator:
     Args:
         session: Active session
         config: Aletheia configuration
+        engram: Optional Engram memory instance
 
     Returns:
         Initialized Orchestrator instance with thread
@@ -331,6 +347,7 @@ async def init_orchestrator(session: Session, config: Config) -> Orchestrator:
         prompt_loader=prompt_loader,
         session=session,
         scratchpad=scratchpad,
+        engram=engram,
     )
 
     # Create orchestrator
@@ -342,29 +359,41 @@ async def init_orchestrator(session: Session, config: Config) -> Orchestrator:
         sub_agents=tools,
         scratchpad=scratchpad,
         config=config,
+        engram=engram,
     )
 
     # Initialize thread
     orchestrator.thread = orchestrator.agent.get_new_thread()
 
+    # Store for cleanup
+    orchestrator.sub_agent_instances = agent_instances
+
     return orchestrator
 
 
-async def _start_investigation(session: Session) -> None:
+async def _start_investigation(
+    session: Session, enable_memory: bool = True
+) -> None:
     """
     Start the investigation workflow for a session.
 
     Args:
         session: Active session to investigate
-        console: Rich console for output
+        enable_memory: Whether to enable Engram memory
     """
 
+    engram_instance: Engram | None = None
     try:
         # Load configuration
         config = load_config()
 
+        # Initialize Engram memory
+        if enable_memory:
+            engram_instance = Engram(identity=str(get_config_dir()))
+            engram_instance.start_watcher()
+
         # Initialize orchestrator using helper function
-        entry = await init_orchestrator(session, config)
+        entry = await init_orchestrator(session, config, engram=engram_instance)
 
         chatting = True
 
@@ -688,7 +717,7 @@ async def _start_investigation(session: Session) -> None:
                 pass  # Ignore cleanup errors
 
             # Clean up all sub-agents
-            for agent in agent_instances:
+            for agent in getattr(entry, "sub_agent_instances", []):
                 try:
                     await agent.cleanup()
                 except Exception:
@@ -702,7 +731,8 @@ async def _start_investigation(session: Session) -> None:
     except KeyboardInterrupt:
         console.print("\n[yellow]Investigation interrupted. Session saved.[/yellow]")
         # Save scratchpad before exiting
-        scratchpad.save()
+        if session.scratchpad:
+            session.scratchpad.save()
     except Exception as e:
         console.print(f"[red]Error during investigation: {e}[/red]")
         typer.echo(f"Error: {e}", err=True)
@@ -711,6 +741,9 @@ async def _start_investigation(session: Session) -> None:
 
         traceback.print_exc()
         raise typer.Exit(1)
+    finally:
+        if engram_instance is not None:
+            engram_instance.stop_watcher()
 
 
 def safe_md(s: str) -> str:
@@ -741,6 +774,11 @@ def session_open(
         False,
         "--unsafe",
         help="Use plaintext storage (skips encryption - NOT RECOMMENDED)",
+    ),
+    enable_memory: bool = typer.Option(
+        True,
+        "--enable-memory/--disable-memory",
+        help="Enable or disable Engram memory",
     ),
 ) -> None:
     """Open a new troubleshooting session in conversational mode."""
@@ -804,7 +842,7 @@ def session_open(
         console.print(f"Session ID: {session.session_id}")
 
         # Start investigation workflow
-        asyncio.run(_start_investigation(session))
+        asyncio.run(_start_investigation(session, enable_memory=enable_memory))
 
     except FileExistsError as e:
         typer.echo(f"Error: {e}", err=True)
@@ -889,6 +927,11 @@ def session_resume(
     unsafe: bool = typer.Option(
         False, "--unsafe", help="Session uses plaintext storage (skips encryption)"
     ),
+    enable_memory: bool = typer.Option(
+        True,
+        "--enable-memory/--disable-memory",
+        help="Enable or disable Engram memory",
+    ),
 ) -> None:
     """Resume an existing troubleshooting session."""
     # Enable very-verbose mode (implies verbose)
@@ -939,7 +982,7 @@ def session_resume(
         console.print(f"Session ID: {session.session_id}")
 
         # Start investigation workflow
-        asyncio.run(_start_investigation(session))
+        asyncio.run(_start_investigation(session, enable_memory=enable_memory))
 
     except SessionNotFoundError as exc:
         typer.echo(f"Error: Session '{session_id}' not found", err=True)
@@ -1260,10 +1303,20 @@ def serve(
     host: str = typer.Option("127.0.0.1", help="Host to bind the server to"),
     port: int = typer.Option(8000, help="Port to bind the server to"),
     reload: bool = typer.Option(False, help="Enable auto-reload"),
+    enable_memory: bool = typer.Option(
+        True,
+        "--enable-memory/--disable-memory",
+        help="Enable or disable Engram memory",
+    ),
 ) -> None:
     """Start the Aletheia REST API server."""
     try:
         import uvicorn
+
+        # Pass memory flag to API module
+        import aletheia.api as api_module
+
+        api_module.MEMORY_ENABLED = enable_memory
 
         get_console_wrapper().disable_output_functions()
         console = get_console_wrapper().get_console()
@@ -1376,6 +1429,11 @@ def telegram_serve(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose logging"
     ),
+    enable_memory: bool = typer.Option(
+        True,
+        "--enable-memory/--disable-memory",
+        help="Enable or disable Engram memory",
+    ),
 ) -> None:
     """Start the Telegram bot server with polling.
 
@@ -1428,7 +1486,7 @@ def telegram_serve(
 
     # Run the bot
     try:
-        asyncio.run(run_telegram_bot(bot_token, config, verbose))
+        asyncio.run(run_telegram_bot(bot_token, config, verbose, enable_memory=enable_memory))
     except KeyboardInterrupt:
         console.print("\n[cyan]Bot stopped.[/cyan]")
 

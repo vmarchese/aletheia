@@ -1,5 +1,6 @@
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,8 @@ from aletheia.agents.instructions_loader import Loader
 from aletheia.agents.model import AgentResponse, Timeline
 from aletheia.cli import _build_plugins
 from aletheia.commands import COMMANDS, expand_custom_command, get_custom_commands
-from aletheia.config import load_config
+from aletheia.config import get_config_dir, load_config
+from aletheia.engram.tools import Engram
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import (
     Session,
@@ -24,8 +26,26 @@ from aletheia.session import (
     SessionNotFoundError,
 )
 
+_engram_instance: Engram | None = None
+MEMORY_ENABLED: bool = True
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _engram_instance
+    if MEMORY_ENABLED:
+        _engram_instance = Engram(identity=str(get_config_dir()))
+        _engram_instance.start_watcher()
+    yield
+    if _engram_instance is not None:
+        _engram_instance.stop_watcher()
+        _engram_instance = None
+
+
 app = FastAPI(
-    title="Aletheia API", description="REST API for Aletheia Troubleshooting Tool"
+    title="Aletheia API",
+    description="REST API for Aletheia Troubleshooting Tool",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -411,6 +431,7 @@ async def get_or_create_orchestrator(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=webui_middlewares if webui_middlewares else None,
+        engram=_engram_instance,
     )
 
     orchestrator = Orchestrator(
@@ -422,6 +443,7 @@ async def get_or_create_orchestrator(
         scratchpad=scratchpad,
         config=config,
         additional_middleware=webui_middlewares if webui_middlewares else None,
+        engram=_engram_instance,
     )
     print(
         f"[DEBUG API] Orchestrator created with additional_middleware: {webui_middlewares if webui_middlewares else None}"
