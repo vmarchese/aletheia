@@ -55,7 +55,8 @@ async def new_session_handler(
         # Initialize orchestrator
         from aletheia.cli import init_orchestrator
 
-        orchestrator = await init_orchestrator(session, config)
+        engram = context.bot_data.get("engram")
+        orchestrator = await init_orchestrator(session, config, engram=engram)
         session_manager.set_orchestrator(session.session_id, orchestrator)
 
         await update.message.reply_text(
@@ -179,7 +180,8 @@ async def handle_session_resume(
         # Initialize orchestrator
         from aletheia.cli import init_orchestrator
 
-        orchestrator = await init_orchestrator(session, config)
+        engram = context.bot_data.get("engram")
+        orchestrator = await init_orchestrator(session, config, engram=engram)
         session_manager.set_orchestrator(session.session_id, orchestrator)
 
         metadata = session.get_metadata()

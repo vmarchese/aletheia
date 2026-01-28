@@ -12,7 +12,8 @@ from telegram.ext import (
     filters,
 )
 
-from aletheia.config import Config
+from aletheia.config import Config, get_config_dir
+from aletheia.engram.tools import Engram
 
 from .handlers import (
     builtin_command_handler,
@@ -67,7 +68,9 @@ def is_authorized(user_id: int, config: Config) -> bool:
     return user_id in config.telegram_allowed_users
 
 
-async def run_telegram_bot(token: str, config: Config, verbose: bool) -> None:
+async def run_telegram_bot(
+    token: str, config: Config, verbose: bool, *, enable_memory: bool = True
+) -> None:
     """Main entry point for the Telegram bot server.
 
     Initializes the bot application, registers all handlers, and starts polling.
@@ -76,6 +79,7 @@ async def run_telegram_bot(token: str, config: Config, verbose: bool) -> None:
         token: Telegram bot API token
         config: Aletheia configuration
         verbose: Enable verbose logging
+        enable_memory: Whether to enable Engram memory
     """
     # Configure logging
     if verbose:
@@ -95,10 +99,17 @@ async def run_telegram_bot(token: str, config: Config, verbose: bool) -> None:
     # Create application
     app = Application.builder().token(token).build()
 
+    # Initialize Engram memory
+    engram_instance: Engram | None = None
+    if enable_memory:
+        engram_instance = Engram(identity=str(get_config_dir()))
+        engram_instance.start_watcher()
+
     # Store config and session manager in bot_data for handlers
     app.bot_data["config"] = config
     app.bot_data["session_manager"] = session_manager
     app.bot_data["verbose"] = verbose
+    app.bot_data["engram"] = engram_instance
 
     # Register handlers
     # All handlers check authorization internally
@@ -132,6 +143,8 @@ async def run_telegram_bot(token: str, config: Config, verbose: bool) -> None:
         logger.info("Shutting down bot...")
     finally:
         # Cleanup
+        if engram_instance is not None:
+            engram_instance.stop_watcher()
         await app.stop()
         await app.shutdown()
         logger.info("Bot stopped.")

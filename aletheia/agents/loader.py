@@ -192,6 +192,7 @@ class UserAgentLoader:
         session: "Session",
         scratchpad: "Scratchpad",
         additional_middleware: Sequence[Any] | None = None,
+        engram: Any | None = None,
     ) -> BaseAgent:
         """Load and instantiate a user agent.
 
@@ -226,6 +227,8 @@ class UserAgentLoader:
             }
             if additional_middleware is not None:
                 kwargs["additional_middleware"] = additional_middleware
+            if engram is not None:
+                kwargs["engram"] = engram
 
             agent = agent_class(**kwargs)
             log_debug(
@@ -245,6 +248,7 @@ def load_user_agents(
     session: "Session",
     scratchpad: "Scratchpad",
     additional_middleware: Sequence[Any] | None = None,
+    engram: Any | None = None,
 ) -> tuple[list[Any], list[BaseAgent]]:
     """Load all user agents from a directory.
 
@@ -279,6 +283,7 @@ def load_user_agents(
                 session=session,
                 scratchpad=scratchpad,
                 additional_middleware=additional_middleware,
+                engram=engram,
             )
             agent_instances.append(agent)
             tools.append(agent.agent.as_tool())

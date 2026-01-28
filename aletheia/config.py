@@ -352,6 +352,31 @@ class Config(BaseSettings):
     #     }
 
 
+def sync_openai_env_vars() -> None:
+    """Sync equivalent OpenAI and Azure OpenAI environment variables.
+
+    Ensures that setting either the OPENAI_* or AZURE_OPENAI_* variants
+    automatically populates the other, so users only need to configure one set.
+
+    Mappings:
+        OPENAI_API_KEY  <-> AZURE_OPENAI_API_KEY
+        OPENAI_BASE_URL <-> AZURE_OPENAI_ENDPOINT
+    """
+    import os
+
+    pairs = [
+        ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY"),
+        ("OPENAI_BASE_URL", "AZURE_OPENAI_ENDPOINT"),
+    ]
+    for openai_var, azure_var in pairs:
+        openai_val = os.environ.get(openai_var)
+        azure_val = os.environ.get(azure_var)
+        if openai_val and not azure_val:
+            os.environ[azure_var] = openai_val
+        elif azure_val and not openai_val:
+            os.environ[openai_var] = azure_val
+
+
 def load_config() -> Config:
     """
     Load configuration from all sources with proper precedence.
@@ -407,4 +432,5 @@ def load_config() -> Config:
         >>> print(config.skills_directory)
         '/my/custom/skills'
     """
+    sync_openai_env_vars()
     return Config()

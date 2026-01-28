@@ -2,11 +2,12 @@
 from typing import List
 
 from agent_framework import ToolProtocol
+from aletheia.engram.tools import Engram
 
-from aletheia.plugins.scratchpad.scratchpad import Scratchpad
-from aletheia.utils.logging import log_debug
-from aletheia.session import Session
 from aletheia.agents.base import BaseAgent
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.session import Session
+from aletheia.utils.logging import log_debug
 
 
 class Orchestrator(BaseAgent):
@@ -22,7 +23,8 @@ class Orchestrator(BaseAgent):
                  scratchpad: Scratchpad,
                  sub_agents: List[ToolProtocol],
                  config=None,
-                 additional_middleware=None):
+                 additional_middleware=None,
+                 engram: Engram | None = None):
         tools = []
         tools.extend(sub_agents)
         tools.extend(scratchpad.get_tools())
@@ -35,5 +37,6 @@ class Orchestrator(BaseAgent):
                          tools=tools,
                          render_instructions=True,
                          config=config,
-                         additional_middleware=additional_middleware
+                         additional_middleware=additional_middleware,
+                         engram=engram,
                          )

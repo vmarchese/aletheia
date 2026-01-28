@@ -1,27 +1,31 @@
 """Base agent class for all specialist agents."""
 import os
 from abc import ABC
-from typing import Sequence
 from pathlib import Path
-from jinja2 import Template
+from typing import Sequence
 
 import yaml
-
 from agent_framework import ChatAgent, ToolProtocol
+from aletheia.engram.tools import Engram
+from jinja2 import Template
 
-from aletheia.plugins.scratchpad.scratchpad import Scratchpad
-from aletheia.session import Session
-from aletheia.agents.middleware import LoggingAgentMiddleware, LoggingFunctionMiddleware, ConsoleFunctionMiddleware
+from aletheia.agents.bedrock_chat_client_wrapper import wrap_bedrock_chat_client
 from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
+from aletheia.agents.client import LLMClient
+from aletheia.agents.deepcopy_patch import patch_deepcopy
+from aletheia.agents.middleware import (
+    ConsoleFunctionMiddleware,
+    LoggingAgentMiddleware,
+    LoggingFunctionMiddleware,
+)
+from aletheia.agents.skills import SkillLoader
+from aletheia.knowledge import ChromaKnowledge, KnowledgePlugin
+from aletheia.mcp.mcp import load_mcp_tools
 from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
-from aletheia.agents.skills import SkillLoader
-from aletheia.agents.client import LLMClient
-from aletheia.mcp.mcp import load_mcp_tools
-from aletheia.utils.logging import log_error, log_debug
-from aletheia.knowledge import KnowledgePlugin, ChromaKnowledge
-from aletheia.agents.bedrock_chat_client_wrapper import wrap_bedrock_chat_client
-from aletheia.agents.deepcopy_patch import patch_deepcopy
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.session import Session
+from aletheia.utils.logging import log_debug, log_error
 
 # Apply the deepcopy patch to handle bound methods in tools
 patch_deepcopy()
@@ -76,6 +80,7 @@ class BaseAgent(ABC):
         config=None,
         additional_middleware: Sequence = None,
         prompts_dir: Path | None = None,
+        engram: Engram | None = None,
     ):
         """Initialize the base agent.
 
@@ -100,6 +105,9 @@ class BaseAgent(ABC):
         if scratchpad:
             scratchpad_tools = scratchpad.get_tools()
             _tools.append(scratchpad_tools)
+
+        if engram:
+            _tools.extend(engram.get_tools())
 
         _tools.extend(tools or [])
 
@@ -143,14 +151,14 @@ class BaseAgent(ABC):
             rendered_instructions = instructions
             if render_instructions:
                 template = Template(instructions)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client, custom_instructions=custom_instructions)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client, custom_instructions=custom_instructions, memory_enabled=(engram is not None))
         else:
             prompt_template = self.load_prompt_template()
             agent_info = AgentInfo(self.name, prompts_dir=prompts_dir)
             rendered_instructions = prompt_template
             if render_instructions:
                 template = Template(prompt_template)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client, custom_instructions=custom_instructions)
+                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client, custom_instructions=custom_instructions, memory_enabled=(engram is not None))
 
         console_function_middleware = ConsoleFunctionMiddleware()
         logging_agent_middleware = LoggingAgentMiddleware()
