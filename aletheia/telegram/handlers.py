@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from agent_framework import ChatMessage, TextContent
+from agent_framework import ChatMessage, TextContent, UsageContent, UsageDetails
 from telegram import Chat, Update
 from telegram.ext import ContextTypes
 
@@ -410,6 +410,14 @@ async def handle_session_show(
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
+class SessionUsage:
+    """Simple wrapper to provide completion_usage interface from session metadata."""
+
+    def __init__(self, input_tokens: int, output_tokens: int):
+        self.input_token_count = input_tokens
+        self.output_token_count = output_tokens
+
+
 async def builtin_command_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -424,6 +432,7 @@ async def builtin_command_handler(
 
     user_id = update.effective_user.id
     config: Config = context.bot_data["config"]
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
 
     # Check authorization
     if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
@@ -445,10 +454,28 @@ async def builtin_command_handler(
             buffer = StringIO()
             temp_console = Console(file=buffer, force_terminal=False, width=80)
 
+            # For /cost command, try to get usage from active session
+            completion_usage = None
+            if command == "cost":
+                session_id = session_manager.get_active_session(user_id)
+                if session_id:
+                    try:
+                        session = Session.resume(
+                            session_id=session_id, password=None, unsafe=True
+                        )
+                        metadata = session.get_metadata()
+                        if metadata.total_input_tokens or metadata.total_output_tokens:
+                            completion_usage = SessionUsage(
+                                metadata.total_input_tokens,
+                                metadata.total_output_tokens,
+                            )
+                    except Exception:
+                        pass  # Fall back to no usage data
+
             # Execute command
             COMMANDS[command].execute(
                 temp_console,
-                completion_usage=None,
+                completion_usage=completion_usage,
                 config=context.bot_data["config"],
             )
 
@@ -523,6 +550,9 @@ async def custom_command_handler(
         return
 
     try:
+        # Track token usage
+        completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
+
         # Use continuous typing indicator while processing
         async with continuous_typing(update.message.chat):
             # Stream response from orchestrator
@@ -535,6 +565,12 @@ async def custom_command_handler(
                 thread=orchestrator.thread,
                 response_format=AgentResponse,
             ):
+                # Track usage from response contents
+                if chunk and chunk.contents:
+                    for content in chunk.contents:
+                        if isinstance(content, UsageContent):
+                            completion_usage += content.details
+
                 if chunk and chunk.text:
                     json_buffer += chunk.text
 
@@ -558,6 +594,12 @@ async def custom_command_handler(
                     except json.JSONDecodeError:
                         # Not yet complete, continue buffering
                         continue
+
+        # Update session usage if we tracked any tokens
+        input_tokens = completion_usage.input_token_count or 0
+        output_tokens = completion_usage.output_token_count or 0
+        if input_tokens > 0 or output_tokens > 0:
+            orchestrator.session.update_usage(input_tokens, output_tokens)
 
         # Update last activity
         session_manager.update_activity(user_id)
@@ -612,6 +654,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         user_message = expanded
 
     try:
+        # Track token usage
+        completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
+
         # Use continuous typing indicator while processing
         async with continuous_typing(update.message.chat):
             # Stream response from orchestrator
@@ -624,6 +669,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 thread=orchestrator.thread,
                 response_format=AgentResponse,
             ):
+                # Track usage from response contents
+                if chunk and chunk.contents:
+                    for content in chunk.contents:
+                        if isinstance(content, UsageContent):
+                            completion_usage += content.details
+
                 if chunk and chunk.text:
                     json_buffer += chunk.text
 
@@ -647,6 +698,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     except json.JSONDecodeError:
                         # Not yet complete, continue buffering
                         continue
+
+        # Update session usage if we tracked any tokens
+        input_tokens = completion_usage.input_token_count or 0
+        output_tokens = completion_usage.output_token_count or 0
+        if input_tokens > 0 or output_tokens > 0:
+            orchestrator.session.update_usage(input_tokens, output_tokens)
 
         # Update last activity
         session_manager.update_activity(user_id)
