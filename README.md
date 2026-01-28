@@ -383,6 +383,89 @@ During investigations, agents can query the knowledge base to:
 
 The knowledge base uses semantic search, so agents can find relevant documents even when exact keywords don't match.
 
+## Memory (Engram)
+
+Aletheia provides an optional multi-layered memory system called **Engram** that enables agents to persist knowledge across investigation sessions. The memory system uses hybrid vector + full-text search for semantic retrieval.
+
+### Memory Layers
+
+Memory is organized into two layers:
+
+| Layer | File | Purpose | Persistence |
+|-------|------|---------|-------------|
+| **Long-term** | `MEMORY.md` | Important patterns, learned insights, persistent knowledge | Permanent |
+| **Daily** | `memory/{YYYY-MM-DD}.md` | Session-specific findings, daily observations | Organized by date |
+
+### Enabling/Disabling Memory
+
+Memory is **enabled by default**. To disable it, use the `--disable-memory` flag:
+
+```bash
+# Disable memory for interactive sessions
+aletheia session open --disable-memory
+
+# Disable memory for API server
+aletheia serve --disable-memory
+
+# Disable memory for Telegram bot
+aletheia telegram serve --disable-memory
+```
+
+To explicitly enable (if previously disabled):
+
+```bash
+aletheia session open --enable-memory
+```
+
+### How It Works
+
+When memory is enabled:
+
+1. **Orchestrator reads memory first** - On every request, the orchestrator reads both long-term and daily memories before routing to agents
+2. **Agents can search memory** - Hybrid search combines semantic similarity (70%) with keyword matching (30%)
+3. **Agents write discoveries** - Important findings are persisted to appropriate memory layer
+4. **Background indexing** - A file watcher automatically re-indexes memories when files change
+
+### Memory Storage Location
+
+Memory files are stored in your config directory:
+
+- **Linux**: `~/.config/aletheia/`
+- **macOS**: `~/Library/Application Support/aletheia/`
+- **Windows**: `%LOCALAPPDATA%\aletheia\`
+
+```
+{config_dir}/
+├── MEMORY.md              # Long-term memory
+├── memory/                # Daily memories folder
+│   ├── 2026-01-28.md     # Today's memories
+│   └── 2026-01-27.md     # Yesterday's memories
+└── .engram/
+    └── index.db          # SQLite index (vector + FTS)
+```
+
+### Memory Tools Available to Agents
+
+When memory is enabled, agents have access to these tools:
+
+| Tool | Description |
+|------|-------------|
+| `long_term_memory_write(memory)` | Write to persistent long-term memory |
+| `daily_memory_write(memory)` | Write to today's daily memory |
+| `read_long_term_memory()` | Read full long-term memory contents |
+| `read_daily_memories(n_of_days)` | Read memories from last N days |
+| `memory_search(query, max_results, min_score)` | Hybrid semantic + keyword search |
+| `memory_get(path, from_line, lines)` | Retrieve specific memory file lines |
+
+### Embedding Configuration
+
+Memory search uses OpenAI embeddings by default (`text-embedding-3-small`). For Azure OpenAI:
+
+```bash
+export OPENAI_BASE_URL=https://YOUR-RESOURCE.openai.azure.com/openai/v1/
+export OPENAI_API_KEY=your_azure_openai_key
+```
+
 ## In-Session Commands
 
 While in an active troubleshooting session, you can use these slash commands:
