@@ -1,11 +1,14 @@
 """Telegram command handlers for Aletheia bot."""
 
+import asyncio
 import html as html_module
 import json
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
-from agent_framework import ChatMessage, Role, TextContent
-from telegram import Update
+from agent_framework import ChatMessage, TextContent
+from telegram import Chat, Update
 from telegram.ext import ContextTypes
 
 from aletheia.agents.model import AgentResponse
@@ -17,6 +20,45 @@ from .formatter import format_agent_response, split_message
 from .session_manager import TelegramSessionManager
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def continuous_typing(chat: Chat, interval: float = 4.0) -> AsyncIterator[None]:
+    """Context manager that continuously sends typing indicator.
+
+    Telegram's typing indicator only lasts ~5 seconds, so for longer
+    operations we need to periodically refresh it.
+
+    Args:
+        chat: Telegram chat to send typing action to
+        interval: Seconds between typing actions (default 4s, indicator lasts ~5s)
+
+    Yields:
+        None - use as async context manager
+    """
+    stop_event = asyncio.Event()
+
+    async def send_typing() -> None:
+        while not stop_event.is_set():
+            try:
+                await chat.send_action("typing")
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # Don't let typing errors break the main flow
+                break
+
+    task = asyncio.create_task(send_typing())
+    try:
+        yield
+    finally:
+        stop_event.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 async def new_session_handler(
@@ -430,6 +472,101 @@ async def builtin_command_handler(
         )
 
 
+async def custom_command_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle custom commands - expand and send to orchestrator.
+
+    Custom commands are user-defined in markdown files. When invoked,
+    their instructions are expanded and sent to the active session.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message or not update.message.text or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
+    config: Config = context.bot_data["config"]
+
+    # Check authorization
+    if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
+        await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
+        return
+
+    # Check for active session
+    session_id = session_manager.get_active_session(user_id)
+    if not session_id:
+        await update.message.reply_text(
+            "⚠️ No active session. Start one with /new_session or /session resume &lt;id&gt;",
+            parse_mode="HTML",
+        )
+        return
+
+    # Get orchestrator
+    orchestrator = session_manager.get_orchestrator(session_id)
+    if not orchestrator:
+        await update.message.reply_text(
+            "❌ Session orchestrator not found. Please create a new session."
+        )
+        session_manager.clear_session(user_id)
+        return
+
+    # Expand the custom command
+    user_message = update.message.text
+    expanded, was_expanded = expand_custom_command(user_message, config)
+
+    if not was_expanded:
+        await update.message.reply_text(f"❌ Custom command not found: {user_message}")
+        return
+
+    try:
+        # Use continuous typing indicator while processing
+        async with continuous_typing(update.message.chat):
+            # Stream response from orchestrator
+            json_buffer = ""
+
+            async for chunk in orchestrator.agent.run_stream(
+                messages=[
+                    ChatMessage(role="user", contents=[TextContent(text=expanded)])
+                ],
+                thread=orchestrator.thread,
+                response_format=AgentResponse,
+            ):
+                if chunk and chunk.text:
+                    json_buffer += chunk.text
+
+                    try:
+                        # Try to parse complete JSON
+                        parsed = json.loads(json_buffer)
+                        agent_response = AgentResponse(**parsed)
+
+                        # Format for Telegram with session header
+                        formatted = format_agent_response(
+                            agent_response, session_id=session_id
+                        )
+
+                        # Split and send messages
+                        chunks = split_message(formatted)
+                        for chunk_text in chunks:
+                            await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+                        break  # Successfully parsed and sent
+
+                    except json.JSONDecodeError:
+                        # Not yet complete, continue buffering
+                        continue
+
+        # Update last activity
+        session_manager.update_activity(user_id)
+
+    except Exception as e:
+        logger.exception(f"Error processing custom command for user {user_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle regular text messages - send to active session orchestrator.
 
@@ -474,41 +611,42 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if was_expanded:
         user_message = expanded
 
-    # Send typing action
-    await update.message.chat.send_action("typing")
-
     try:
-        # Stream response from orchestrator
-        json_buffer = ""
+        # Use continuous typing indicator while processing
+        async with continuous_typing(update.message.chat):
+            # Stream response from orchestrator
+            json_buffer = ""
 
-        async for chunk in orchestrator.agent.run_stream(
-            messages=[
-                ChatMessage(role="user", contents=[TextContent(text=user_message)])
-            ],
-            thread=orchestrator.thread,
-            response_format=AgentResponse,
-        ):
-            if chunk and chunk.text:
-                json_buffer += chunk.text
+            async for chunk in orchestrator.agent.run_stream(
+                messages=[
+                    ChatMessage(role="user", contents=[TextContent(text=user_message)])
+                ],
+                thread=orchestrator.thread,
+                response_format=AgentResponse,
+            ):
+                if chunk and chunk.text:
+                    json_buffer += chunk.text
 
-                try:
-                    # Try to parse complete JSON
-                    parsed = json.loads(json_buffer)
-                    agent_response = AgentResponse(**parsed)
+                    try:
+                        # Try to parse complete JSON
+                        parsed = json.loads(json_buffer)
+                        agent_response = AgentResponse(**parsed)
 
-                    # Format for Telegram
-                    formatted = format_agent_response(agent_response)
+                        # Format for Telegram with session header
+                        formatted = format_agent_response(
+                            agent_response, session_id=session_id
+                        )
 
-                    # Split and send messages
-                    chunks = split_message(formatted)
-                    for chunk_text in chunks:
-                        await update.message.reply_text(chunk_text, parse_mode="HTML")
+                        # Split and send messages
+                        chunks = split_message(formatted)
+                        for chunk_text in chunks:
+                            await update.message.reply_text(chunk_text, parse_mode="HTML")
 
-                    break  # Successfully parsed and sent
+                        break  # Successfully parsed and sent
 
-                except json.JSONDecodeError:
-                    # Not yet complete, continue buffering
-                    continue
+                    except json.JSONDecodeError:
+                        # Not yet complete, continue buffering
+                        continue
 
         # Update last activity
         session_manager.update_activity(user_id)

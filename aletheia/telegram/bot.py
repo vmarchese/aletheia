@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from telegram import Update
+from telegram import BotCommand, MenuButtonCommands, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,11 +12,13 @@ from telegram.ext import (
     filters,
 )
 
+from aletheia.commands import COMMANDS, get_custom_commands
 from aletheia.config import Config, get_config_dir
 from aletheia.engram.tools import Engram
 
 from .handlers import (
     builtin_command_handler,
+    custom_command_handler,
     message_handler,
     new_session_handler,
     session_handler,
@@ -66,6 +68,41 @@ def is_authorized(user_id: int, config: Config) -> bool:
         # This should be warned about in the CLI startup
         return True
     return user_id in config.telegram_allowed_users
+
+
+def get_bot_commands(config: Config) -> list[BotCommand]:
+    """Build list of bot commands for Telegram menu.
+
+    Collects all available commands:
+    - Telegram-specific commands (start, new_session, session)
+    - Built-in commands from COMMANDS dict
+    - Custom commands from user config
+
+    Args:
+        config: Aletheia configuration
+
+    Returns:
+        List of BotCommand objects for set_my_commands()
+    """
+    commands = [
+        # Telegram-specific commands
+        BotCommand("start", "Welcome to Aletheia"),
+        BotCommand("new_session", "Create new investigation session"),
+        BotCommand("session", "Manage sessions (list/resume/show/timeline)"),
+    ]
+
+    # Built-in commands from COMMANDS dict
+    for cmd_name, builtin_cmd in COMMANDS.items():
+        commands.append(BotCommand(cmd_name, builtin_cmd.description))
+
+    # Custom commands from config
+    custom_cmds = get_custom_commands(config)
+    for cmd_name, custom_cmd in custom_cmds.items():
+        # Telegram limits description to 256 chars
+        desc = custom_cmd.description[:256] if len(custom_cmd.description) > 256 else custom_cmd.description
+        commands.append(BotCommand(cmd_name, desc))
+
+    return commands
 
 
 async def run_telegram_bot(
@@ -121,6 +158,13 @@ async def run_telegram_bot(
     for cmd_name in ["help", "info", "agents", "cost", "version"]:
         app.add_handler(CommandHandler(cmd_name, builtin_command_handler))
 
+    # Custom commands from config
+    custom_cmds = get_custom_commands(config)
+    for cmd_name in custom_cmds:
+        app.add_handler(CommandHandler(cmd_name, custom_command_handler))
+    if custom_cmds:
+        logger.info(f"Registered {len(custom_cmds)} custom command handlers")
+
     # Regular text messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
@@ -128,6 +172,13 @@ async def run_telegram_bot(
     logger.info("Starting Telegram bot...")
     await app.initialize()
     await app.start()
+
+    # Set up bot command menu
+    bot_commands = get_bot_commands(config)
+    await app.bot.set_my_commands(bot_commands)
+    # Enable the menu button (hamburger icon) next to message input
+    await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    logger.info(f"Registered {len(bot_commands)} commands in bot menu")
 
     # Start polling
     logger.info("Bot is running. Press Ctrl+C to stop.")

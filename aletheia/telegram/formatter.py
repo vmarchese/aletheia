@@ -5,7 +5,24 @@ import html as html_module
 from aletheia.agents.model import AgentResponse
 
 
-def format_agent_response(response: AgentResponse) -> str:
+def format_session_header(session_id: str) -> str:
+    """Create a pleasant session header for Telegram messages.
+
+    Displays the session ID in a subtle, informative format at the top
+    of messages so users always know which session they're working in.
+
+    Args:
+        session_id: The current session identifier
+
+    Returns:
+        HTML-formatted session header string
+    """
+    # Use a subtle format with monospace for the ID
+    # The 🔗 emoji suggests connection/context without being intrusive
+    return f"<code>🔗 {html_module.escape(session_id)}</code>\n{'─' * 20}\n"
+
+
+def format_agent_response(response: AgentResponse, session_id: str | None = None) -> str:
     """Convert AgentResponse to Telegram HTML format.
 
     Telegram HTML supports:
@@ -16,11 +33,16 @@ def format_agent_response(response: AgentResponse) -> str:
 
     Args:
         response: Structured agent response
+        session_id: Optional session ID to include as header
 
     Returns:
         HTML-formatted string ready for Telegram (respects 4096 char limit)
     """
     parts = []
+
+    # Add session header if provided
+    if session_id:
+        parts.append(format_session_header(session_id))
 
     # Agent and confidence
     parts.append(f"<b>Agent:</b> {html_escape(response.agent)}")

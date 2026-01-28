@@ -153,8 +153,8 @@ class CostInfo(Command):
 
     def execute(self, console, *args, **kwargs):
         """
-        Help command to display available commands.
-        :param console: Description
+        Display cost information for token usage.
+        :param console: Console for output
         """
         completion_usage = kwargs.get("completion_usage")
         config = kwargs.get("config")
@@ -176,6 +176,8 @@ class CostInfo(Command):
             )
             cost_table += f"| Cost (€) | €{total_cost:.6f} | €{input_token * config.cost_per_input_token:.6f} | €{output_token * config.cost_per_output_token:.6f} |\n"
             console.print(Markdown(cost_table))
+        else:
+            console.print("No usage data available yet. Send a message first.")
 
 
 COMMANDS["help"] = Help()
