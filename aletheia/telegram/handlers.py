@@ -1,11 +1,14 @@
 """Telegram command handlers for Aletheia bot."""
 
+import asyncio
 import html as html_module
 import json
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
-from agent_framework import ChatMessage, Role, TextContent
-from telegram import Update
+from agent_framework import ChatMessage, TextContent, UsageContent, UsageDetails
+from telegram import Chat, Update
 from telegram.ext import ContextTypes
 
 from aletheia.agents.model import AgentResponse
@@ -17,6 +20,45 @@ from .formatter import format_agent_response, split_message
 from .session_manager import TelegramSessionManager
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def continuous_typing(chat: Chat, interval: float = 4.0) -> AsyncIterator[None]:
+    """Context manager that continuously sends typing indicator.
+
+    Telegram's typing indicator only lasts ~5 seconds, so for longer
+    operations we need to periodically refresh it.
+
+    Args:
+        chat: Telegram chat to send typing action to
+        interval: Seconds between typing actions (default 4s, indicator lasts ~5s)
+
+    Yields:
+        None - use as async context manager
+    """
+    stop_event = asyncio.Event()
+
+    async def send_typing() -> None:
+        while not stop_event.is_set():
+            try:
+                await chat.send_action("typing")
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # Don't let typing errors break the main flow
+                break
+
+    task = asyncio.create_task(send_typing())
+    try:
+        yield
+    finally:
+        stop_event.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 async def new_session_handler(
@@ -368,6 +410,14 @@ async def handle_session_show(
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
+class SessionUsage:
+    """Simple wrapper to provide completion_usage interface from session metadata."""
+
+    def __init__(self, input_tokens: int, output_tokens: int):
+        self.input_token_count = input_tokens
+        self.output_token_count = output_tokens
+
+
 async def builtin_command_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -382,6 +432,7 @@ async def builtin_command_handler(
 
     user_id = update.effective_user.id
     config: Config = context.bot_data["config"]
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
 
     # Check authorization
     if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
@@ -403,10 +454,28 @@ async def builtin_command_handler(
             buffer = StringIO()
             temp_console = Console(file=buffer, force_terminal=False, width=80)
 
+            # For /cost command, try to get usage from active session
+            completion_usage = None
+            if command == "cost":
+                session_id = session_manager.get_active_session(user_id)
+                if session_id:
+                    try:
+                        session = Session.resume(
+                            session_id=session_id, password=None, unsafe=True
+                        )
+                        metadata = session.get_metadata()
+                        if metadata.total_input_tokens or metadata.total_output_tokens:
+                            completion_usage = SessionUsage(
+                                metadata.total_input_tokens,
+                                metadata.total_output_tokens,
+                            )
+                    except Exception:
+                        pass  # Fall back to no usage data
+
             # Execute command
             COMMANDS[command].execute(
                 temp_console,
-                completion_usage=None,
+                completion_usage=completion_usage,
                 config=context.bot_data["config"],
             )
 
@@ -428,6 +497,116 @@ async def builtin_command_handler(
             f"Unknown command: /{command}\n"
             "Available commands: /help, /info, /agents, /cost, /version"
         )
+
+
+async def custom_command_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle custom commands - expand and send to orchestrator.
+
+    Custom commands are user-defined in markdown files. When invoked,
+    their instructions are expanded and sent to the active session.
+
+    Args:
+        update: Telegram update object
+        context: Telegram context with bot_data
+    """
+    if not update.message or not update.message.text or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    session_manager: TelegramSessionManager = context.bot_data["session_manager"]
+    config: Config = context.bot_data["config"]
+
+    # Check authorization
+    if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
+        await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
+        return
+
+    # Check for active session
+    session_id = session_manager.get_active_session(user_id)
+    if not session_id:
+        await update.message.reply_text(
+            "⚠️ No active session. Start one with /new_session or /session resume &lt;id&gt;",
+            parse_mode="HTML",
+        )
+        return
+
+    # Get orchestrator
+    orchestrator = session_manager.get_orchestrator(session_id)
+    if not orchestrator:
+        await update.message.reply_text(
+            "❌ Session orchestrator not found. Please create a new session."
+        )
+        session_manager.clear_session(user_id)
+        return
+
+    # Expand the custom command
+    user_message = update.message.text
+    expanded, was_expanded = expand_custom_command(user_message, config)
+
+    if not was_expanded:
+        await update.message.reply_text(f"❌ Custom command not found: {user_message}")
+        return
+
+    try:
+        # Track token usage
+        completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
+
+        # Use continuous typing indicator while processing
+        async with continuous_typing(update.message.chat):
+            # Stream response from orchestrator
+            json_buffer = ""
+
+            async for chunk in orchestrator.agent.run_stream(
+                messages=[
+                    ChatMessage(role="user", contents=[TextContent(text=expanded)])
+                ],
+                thread=orchestrator.thread,
+                response_format=AgentResponse,
+            ):
+                # Track usage from response contents
+                if chunk and chunk.contents:
+                    for content in chunk.contents:
+                        if isinstance(content, UsageContent):
+                            completion_usage += content.details
+
+                if chunk and chunk.text:
+                    json_buffer += chunk.text
+
+                    try:
+                        # Try to parse complete JSON
+                        parsed = json.loads(json_buffer)
+                        agent_response = AgentResponse(**parsed)
+
+                        # Format for Telegram with session header
+                        formatted = format_agent_response(
+                            agent_response, session_id=session_id
+                        )
+
+                        # Split and send messages
+                        chunks = split_message(formatted)
+                        for chunk_text in chunks:
+                            await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+                        break  # Successfully parsed and sent
+
+                    except json.JSONDecodeError:
+                        # Not yet complete, continue buffering
+                        continue
+
+        # Update session usage if we tracked any tokens
+        input_tokens = completion_usage.input_token_count or 0
+        output_tokens = completion_usage.output_token_count or 0
+        if input_tokens > 0 or output_tokens > 0:
+            orchestrator.session.update_usage(input_tokens, output_tokens)
+
+        # Update last activity
+        session_manager.update_activity(user_id)
+
+    except Exception as e:
+        logger.exception(f"Error processing custom command for user {user_id}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -474,41 +653,57 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if was_expanded:
         user_message = expanded
 
-    # Send typing action
-    await update.message.chat.send_action("typing")
-
     try:
-        # Stream response from orchestrator
-        json_buffer = ""
+        # Track token usage
+        completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
 
-        async for chunk in orchestrator.agent.run_stream(
-            messages=[
-                ChatMessage(role="user", contents=[TextContent(text=user_message)])
-            ],
-            thread=orchestrator.thread,
-            response_format=AgentResponse,
-        ):
-            if chunk and chunk.text:
-                json_buffer += chunk.text
+        # Use continuous typing indicator while processing
+        async with continuous_typing(update.message.chat):
+            # Stream response from orchestrator
+            json_buffer = ""
 
-                try:
-                    # Try to parse complete JSON
-                    parsed = json.loads(json_buffer)
-                    agent_response = AgentResponse(**parsed)
+            async for chunk in orchestrator.agent.run_stream(
+                messages=[
+                    ChatMessage(role="user", contents=[TextContent(text=user_message)])
+                ],
+                thread=orchestrator.thread,
+                response_format=AgentResponse,
+            ):
+                # Track usage from response contents
+                if chunk and chunk.contents:
+                    for content in chunk.contents:
+                        if isinstance(content, UsageContent):
+                            completion_usage += content.details
 
-                    # Format for Telegram
-                    formatted = format_agent_response(agent_response)
+                if chunk and chunk.text:
+                    json_buffer += chunk.text
 
-                    # Split and send messages
-                    chunks = split_message(formatted)
-                    for chunk_text in chunks:
-                        await update.message.reply_text(chunk_text, parse_mode="HTML")
+                    try:
+                        # Try to parse complete JSON
+                        parsed = json.loads(json_buffer)
+                        agent_response = AgentResponse(**parsed)
 
-                    break  # Successfully parsed and sent
+                        # Format for Telegram with session header
+                        formatted = format_agent_response(
+                            agent_response, session_id=session_id
+                        )
 
-                except json.JSONDecodeError:
-                    # Not yet complete, continue buffering
-                    continue
+                        # Split and send messages
+                        chunks = split_message(formatted)
+                        for chunk_text in chunks:
+                            await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+                        break  # Successfully parsed and sent
+
+                    except json.JSONDecodeError:
+                        # Not yet complete, continue buffering
+                        continue
+
+        # Update session usage if we tracked any tokens
+        input_tokens = completion_usage.input_token_count or 0
+        output_tokens = completion_usage.output_token_count or 0
+        if input_tokens > 0 or output_tokens > 0:
+            orchestrator.session.update_usage(input_tokens, output_tokens)
 
         # Update last activity
         session_manager.update_activity(user_id)
