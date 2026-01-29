@@ -31,6 +31,7 @@ let availableCommands = []; // Cache for available commands
 let commandCompletionVisible = false;
 let selectedCommandIndex = -1;
 let currentNextRequests = []; // Store current next request suggestions
+let isProcessing = false; // Track if agent is currently processing
 
 // DOM Elements
 const sessionsList = document.getElementById('sessions-list');
@@ -215,7 +216,9 @@ function setupEventListeners() {
 
         messageInput.value = '';
         messageInput.style.height = 'auto';
-        sendBtn.disabled = true;
+
+        // Disable input while processing
+        setProcessing(true);
 
         // Show thinking animation
         showThinking();
@@ -235,6 +238,7 @@ function setupEventListeners() {
             if (!response.ok) throw new Error('Failed to send message');
         } catch (error) {
             stopThinking();
+            setProcessing(false);
             appendMessage(`Error: ${error.message}`, 'bot'); // Show error as bot message
         }
     });
@@ -446,6 +450,7 @@ async function loadSession(sessionId, force = false) {
         eventSource = null;
     }
     stopThinking();
+    setProcessing(false);
 
     currentSessionId = sessionId;
 
@@ -454,8 +459,7 @@ async function loadSession(sessionId, force = false) {
     // Re-render list to update active state (lazy way)
     fetchSessions(); // Or just find the element and add class
 
-    // Enable inputs
-    messageInput.disabled = false;
+    // Enable inputs (setProcessing already handles messageInput)
     exportBtn.disabled = false;
     timelineBtn.disabled = false;
     scratchpadBtn.disabled = false;
@@ -666,6 +670,7 @@ function connectStream(sessionId) {
             }
         } else if (data.type === 'done') {
             stopThinking();
+            setProcessing(false);
 
             // Calculate elapsed times
             const messageElapsedMs = messageStartTime ? Date.now() - messageStartTime : 0;
@@ -692,6 +697,7 @@ function connectStream(sessionId) {
 
         } else if (data.type === 'error') {
             stopThinking();
+            setProcessing(false);
             appendMessage(`Error: ${data.content}`, 'bot');
         } else if (data.type === 'usage') {
             // Update the last bot message with usage info
@@ -797,6 +803,17 @@ function stopThinking() {
         thinkingInterval = null;
     }
     // Don't remove the bubble anymore - it will be converted to the function calls summary
+}
+
+function setProcessing(processing) {
+    isProcessing = processing;
+    messageInput.disabled = processing;
+    sendBtn.disabled = processing;
+    if (processing) {
+        messageInput.placeholder = "Agent is processing...";
+    } else {
+        messageInput.placeholder = "Describe the issue or ask a question...";
+    }
 }
 
 function addFunctionCallToThinking(callData) {
