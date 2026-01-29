@@ -579,9 +579,15 @@ async def custom_command_handler(
                         parsed = json.loads(json_buffer)
                         agent_response = AgentResponse(**parsed)
 
+                        # Check if this is a direct orchestrator response (case-insensitive)
+                        agent_name = parsed.get("agent", "").lower()
+                        is_orchestrator = agent_name in ("orchestrator", "aletheia")
+
                         # Format for Telegram with session header
                         formatted = format_agent_response(
-                            agent_response, session_id=session_id
+                            agent_response,
+                            session_id=session_id,
+                            is_orchestrator=is_orchestrator,
                         )
 
                         # Split and send messages
@@ -683,9 +689,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         parsed = json.loads(json_buffer)
                         agent_response = AgentResponse(**parsed)
 
+                        # Check if this is a direct orchestrator response (case-insensitive)
+                        agent_name = parsed.get("agent", "").lower()
+                        is_orchestrator = agent_name in ("orchestrator", "aletheia")
+
                         # Format for Telegram with session header
                         formatted = format_agent_response(
-                            agent_response, session_id=session_id
+                            agent_response,
+                            session_id=session_id,
+                            is_orchestrator=is_orchestrator,
                         )
 
                         # Split and send messages

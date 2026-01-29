@@ -508,6 +508,10 @@ async def run_agent_step(
                         await queue.put({"type": "agent", "content": parsed["agent"]})
                         last_sent_data["agent"] = parsed["agent"]
 
+                    # Check if this is a direct orchestrator response (case-insensitive)
+                    agent_name = parsed.get("agent", "").lower()
+                    is_orchestrator = agent_name in ("orchestrator", "aletheia")
+
                     if "findings" in parsed and parsed.get(
                         "findings"
                     ) != last_sent_data.get("findings"):
@@ -522,21 +526,23 @@ async def run_agent_step(
                         await queue.put({"type": "findings", "content": findings_data})
                         last_sent_data["findings"] = findings_data
 
-                    if "decisions" in parsed and parsed.get(
-                        "decisions"
-                    ) != last_sent_data.get("decisions"):
-                        await queue.put(
-                            {"type": "decisions", "content": parsed["decisions"]}
-                        )
-                        last_sent_data["decisions"] = parsed["decisions"]
+                    # Skip decisions and next_actions for orchestrator direct responses
+                    if not is_orchestrator:
+                        if "decisions" in parsed and parsed.get(
+                            "decisions"
+                        ) != last_sent_data.get("decisions"):
+                            await queue.put(
+                                {"type": "decisions", "content": parsed["decisions"]}
+                            )
+                            last_sent_data["decisions"] = parsed["decisions"]
 
-                    if "next_actions" in parsed and parsed.get(
-                        "next_actions"
-                    ) != last_sent_data.get("next_actions"):
-                        await queue.put(
-                            {"type": "next_actions", "content": parsed["next_actions"]}
-                        )
-                        last_sent_data["next_actions"] = parsed["next_actions"]
+                        if "next_actions" in parsed and parsed.get(
+                            "next_actions"
+                        ) != last_sent_data.get("next_actions"):
+                            await queue.put(
+                                {"type": "next_actions", "content": parsed["next_actions"]}
+                            )
+                            last_sent_data["next_actions"] = parsed["next_actions"]
 
                     if (
                         "errors" in parsed

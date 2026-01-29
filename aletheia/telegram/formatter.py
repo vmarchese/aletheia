@@ -22,7 +22,11 @@ def format_session_header(session_id: str) -> str:
     return f"<code>🔗 {html_module.escape(session_id)}</code>\n{'─' * 20}\n"
 
 
-def format_agent_response(response: AgentResponse, session_id: str | None = None) -> str:
+def format_agent_response(
+    response: AgentResponse,
+    session_id: str | None = None,
+    is_orchestrator: bool = False,
+) -> str:
     """Convert AgentResponse to Telegram HTML format.
 
     Telegram HTML supports:
@@ -34,6 +38,7 @@ def format_agent_response(response: AgentResponse, session_id: str | None = None
     Args:
         response: Structured agent response
         session_id: Optional session ID to include as header
+        is_orchestrator: If True, use simplified format for orchestrator direct responses
 
     Returns:
         HTML-formatted string ready for Telegram (respects 4096 char limit)
@@ -44,60 +49,76 @@ def format_agent_response(response: AgentResponse, session_id: str | None = None
     if session_id:
         parts.append(format_session_header(session_id))
 
-    # Agent and confidence
-    parts.append(f"<b>Agent:</b> {html_escape(response.agent)}")
-    if response.confidence:
-        confidence_pct = int(response.confidence * 100)
-        parts.append(f"<b>Confidence:</b> {confidence_pct}%")
+    if is_orchestrator:
+        # Simplified format for orchestrator direct responses
+        if response.findings:
+            if response.findings.summary:
+                parts.append(html_escape(response.findings.summary))
+            if response.findings.details:
+                details = truncate(response.findings.details, 1000)
+                parts.append(html_escape(details))
 
-    # Findings
-    if response.findings:
-        parts.append("\n<b>🔍 Findings</b>")
-        if response.findings.summary:
-            parts.append(html_escape(response.findings.summary))
-        if response.findings.details:
-            details = truncate(response.findings.details, 500)
-            parts.append(html_escape(details))
-        if response.findings.tool_outputs:
-            parts.append("\n<b>Tool Outputs:</b>")
-            # Limit to 3 tool outputs to avoid overwhelming the message
-            for tool in response.findings.tool_outputs[:3]:
-                parts.append(f"<i>{html_escape(tool.tool_name)}</i>")
-                if tool.command:
-                    parts.append(f"<code>{html_escape(tool.command)}</code>")
-                if tool.output:
-                    output = truncate(tool.output, 300)
-                    parts.append(f"<pre>{html_escape(output)}</pre>")
+        # Errors (always show if present)
+        if response.errors:
+            parts.append("\n<b>⚠️ Errors</b>")
+            for error in response.errors[:3]:
+                parts.append(f"• {html_escape(error)}")
+    else:
+        # Full structured format for agent responses
+        # Agent and confidence
+        parts.append(f"<b>Agent:</b> {html_escape(response.agent)}")
+        if response.confidence:
+            confidence_pct = int(response.confidence * 100)
+            parts.append(f"<b>Confidence:</b> {confidence_pct}%")
 
-    # Decisions
-    if response.decisions:
-        parts.append("\n<b>🎯 Decisions</b>")
-        if response.decisions.approach:
-            parts.append(html_escape(response.decisions.approach))
-        if response.decisions.tools_used:
-            tools_str = ", ".join(response.decisions.tools_used[:5])
-            parts.append(f"<b>Tools Used:</b> {html_escape(tools_str)}")
-        if response.decisions.skills_loaded:
-            skills_str = ", ".join(response.decisions.skills_loaded[:5])
-            parts.append(f"<b>Skills Loaded:</b> {html_escape(skills_str)}")
-        if response.decisions.checklist:
-            # Limit to 5 checklist items
-            for item in response.decisions.checklist[:5]:
-                parts.append(f"• {html_escape(item)}")
+        # Findings
+        if response.findings:
+            parts.append("\n<b>🔍 Findings</b>")
+            if response.findings.summary:
+                parts.append(html_escape(response.findings.summary))
+            if response.findings.details:
+                details = truncate(response.findings.details, 500)
+                parts.append(html_escape(details))
+            if response.findings.tool_outputs:
+                parts.append("\n<b>Tool Outputs:</b>")
+                # Limit to 3 tool outputs to avoid overwhelming the message
+                for tool in response.findings.tool_outputs[:3]:
+                    parts.append(f"<i>{html_escape(tool.tool_name)}</i>")
+                    if tool.command:
+                        parts.append(f"<code>{html_escape(tool.command)}</code>")
+                    if tool.output:
+                        output = truncate(tool.output, 300)
+                        parts.append(f"<pre>{html_escape(output)}</pre>")
 
-    # Next Actions
-    if response.next_actions and response.next_actions.steps:
-        parts.append("\n<b>📋 Next Actions</b>")
-        # Limit to 5 steps
-        for i, step in enumerate(response.next_actions.steps[:5], 1):
-            parts.append(f"{i}. {html_escape(step)}")
+        # Decisions
+        if response.decisions:
+            parts.append("\n<b>🎯 Decisions</b>")
+            if response.decisions.approach:
+                parts.append(html_escape(response.decisions.approach))
+            if response.decisions.tools_used:
+                tools_str = ", ".join(response.decisions.tools_used[:5])
+                parts.append(f"<b>Tools Used:</b> {html_escape(tools_str)}")
+            if response.decisions.skills_loaded:
+                skills_str = ", ".join(response.decisions.skills_loaded[:5])
+                parts.append(f"<b>Skills Loaded:</b> {html_escape(skills_str)}")
+            if response.decisions.checklist:
+                # Limit to 5 checklist items
+                for item in response.decisions.checklist[:5]:
+                    parts.append(f"• {html_escape(item)}")
 
-    # Errors
-    if response.errors:
-        parts.append("\n<b>⚠️ Errors</b>")
-        # Limit to 3 errors
-        for error in response.errors[:3]:
-            parts.append(f"• {html_escape(error)}")
+        # Next Actions
+        if response.next_actions and response.next_actions.steps:
+            parts.append("\n<b>📋 Next Actions</b>")
+            # Limit to 5 steps
+            for i, step in enumerate(response.next_actions.steps[:5], 1):
+                parts.append(f"{i}. {html_escape(step)}")
+
+        # Errors
+        if response.errors:
+            parts.append("\n<b>⚠️ Errors</b>")
+            # Limit to 3 errors
+            for error in response.errors[:3]:
+                parts.append(f"• {html_escape(error)}")
 
     result = "\n".join(parts)
 

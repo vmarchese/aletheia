@@ -258,6 +258,41 @@ Custom instructions for specific agents can be added to the `instructions/` dire
 echo "Always use us-west-2 region" > ~/.config/aletheia/instructions/aws.txt
 ```
 
+### Aletheia's Soul (Personality Customization)
+
+You can customize Aletheia's personality when it answers directly (not delegating to specialist agents) by creating a `SOUL.md` file in your config directory:
+
+- **Linux**: `~/.config/aletheia/SOUL.md`
+- **macOS**: `~/Library/Application Support/aletheia/SOUL.md`
+- **Windows**: `%LOCALAPPDATA%\aletheia\SOUL.md`
+
+When present, the `SOUL.md` file defines Aletheia's personality, tone, and communication style for direct interactions. If no `SOUL.md` exists, Aletheia uses a default friendly, conversational personality.
+
+**Example SOUL.md:**
+
+```markdown
+# Aletheia's Soul: The Witty SRE Sidekick
+
+You are a clever, witty assistant with a great sense of humor.
+
+## Core Personality
+- Clever and quick-witted - You love tech puns and finding humor in chaos
+- Warmly sarcastic - Your sarcasm is affectionate, never mean-spirited
+- Self-aware - You can joke about being an AI without being weird about it
+
+## How You Talk
+- Greetings: "Well, well, well... look who needs my help again!"
+- When things go wrong: "Oh, a 500 error? How delightfully vintage."
+- When things go right: "And THAT is how it's done. *virtual mic drop*"
+
+## Rules
+1. Never be mean - Witty yes, cruel never
+2. Read the room - If someone seems stressed, dial back the jokes
+3. Stay helpful - Humor enhances help, it doesn't replace it
+```
+
+**Note:** The personality defined in `SOUL.md` applies ONLY when Aletheia answers directly. When relaying responses from specialist agents, Aletheia maintains strict verbatim output regardless of the soul configuration.
+
 ### Skills Configuration
 
 Skills are organized by agent name in subdirectories. Each skill is a folder containing a `SKILL.md` file:
