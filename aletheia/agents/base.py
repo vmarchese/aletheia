@@ -146,19 +146,43 @@ class BaseAgent(ABC):
         # loading custom instructions
         custom_instructions = self.load_custom_instructions()
 
+        # Load soul for orchestrator personality
+        soul_content = None
+        has_soul = False
+        if self.name == "orchestrator":
+            soul_content = self.load_soul()
+            has_soul = soul_content is not None
+
         rendered_instructions = ""
         if instructions:
             rendered_instructions = instructions
             if render_instructions:
                 template = Template(instructions)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, llm_client=client, custom_instructions=custom_instructions, memory_enabled=(engram is not None))
+                rendered_instructions = template.render(
+                    skills=_skills,
+                    plugins=plugins,
+                    llm_client=client,
+                    custom_instructions=custom_instructions,
+                    memory_enabled=(engram is not None),
+                    soul=soul_content,
+                    has_soul=has_soul
+                )
         else:
             prompt_template = self.load_prompt_template()
             agent_info = AgentInfo(self.name, prompts_dir=prompts_dir)
             rendered_instructions = prompt_template
             if render_instructions:
                 template = Template(prompt_template)
-                rendered_instructions = template.render(skills=_skills, plugins=plugins, agent_info=agent_info, llm_client=client, custom_instructions=custom_instructions, memory_enabled=(engram is not None))
+                rendered_instructions = template.render(
+                    skills=_skills,
+                    plugins=plugins,
+                    agent_info=agent_info,
+                    llm_client=client,
+                    custom_instructions=custom_instructions,
+                    memory_enabled=(engram is not None),
+                    soul=soul_content,
+                    has_soul=has_soul
+                )
 
         console_function_middleware = ConsoleFunctionMiddleware()
         logging_agent_middleware = LoggingAgentMiddleware()
@@ -226,4 +250,16 @@ class BaseAgent(ABC):
                 return content
         except (OSError, FileNotFoundError, IsADirectoryError, PermissionError) as e:
             log_error(f"BaseAgent::load_custom_instructions:: Error loading custom instructions for agent {self.name}: {e}")
+            return None
+
+    def load_soul(self) -> str | None:
+        """Load SOUL.md for personality/tone configuration from the config directory."""
+        try:
+            from aletheia.config import get_config_dir
+            soul_file = get_config_dir() / "SOUL.md"
+            if soul_file.exists():
+                with open(soul_file, encoding="utf-8") as file:
+                    return file.read()
+            return None
+        except (OSError, FileNotFoundError, PermissionError):
             return None

@@ -534,140 +534,162 @@ async def _start_investigation(
                                     # Agent and confidence
                                     if "agent" in parsed_response:
                                         current_agent_name = parsed_response["agent"]
-                                    if "confidence" in parsed_response:
-                                        confidence_pct = int(
-                                            parsed_response["confidence"] * 100
-                                        )
-                                        display_parts.append(
-                                            f"**Agent:** {current_agent_name} | **Confidence:** {confidence_pct}%\n"
-                                        )
+
+                                    # Check if this is a direct orchestrator response (case-insensitive)
+                                    agent_lower = current_agent_name.lower() if current_agent_name else ""
+                                    is_orchestrator = agent_lower in ("orchestrator", "aletheia")
+
+                                    if is_orchestrator:
+                                        # Simplified rendering for orchestrator direct responses
+                                        if "findings" in parsed_response:
+                                            findings = parsed_response["findings"]
+                                            if "summary" in findings and findings["summary"]:
+                                                display_parts.append(f"{findings['summary']}\n")
+                                            if "details" in findings and findings["details"]:
+                                                display_parts.append(f"\n{findings['details']}\n")
+                                        # Show errors if any
+                                        if "errors" in parsed_response and parsed_response["errors"]:
+                                            display_parts.append("\n⚠️ **Errors:**\n")
+                                            for error in parsed_response["errors"]:
+                                                display_parts.append(f"- {error}\n")
+                                        display_text = "".join(display_parts)
+                                        live.update(Markdown(display_text))
                                     else:
-                                        display_parts.append(
-                                            f"**Agent:** {current_agent_name}\n"
-                                        )
-
-                                    # Findings
-                                    if "findings" in parsed_response:
-                                        findings = parsed_response["findings"]
-                                        display_parts.append("\n## 🔍 Findings\n")
-                                        if (
-                                            "summary" in findings
-                                            and findings["summary"]
-                                        ):
-                                            display_parts.append(
-                                                f"**Summary:** {findings['summary']}\n\n"
+                                        # Full structured rendering for agent responses
+                                        if "confidence" in parsed_response:
+                                            confidence_pct = int(
+                                                parsed_response["confidence"] * 100
                                             )
-                                        if (
-                                            "details" in findings
-                                            and findings["details"]
-                                        ):
                                             display_parts.append(
-                                                f"{findings['details']}\n\n"
+                                                f"**Agent:** {current_agent_name} | **Confidence:** {confidence_pct}%\n"
                                             )
-                                        if (
-                                            "tool_outputs" in findings
-                                            and findings["tool_outputs"]
-                                        ):
-                                            display_parts.append("**Tool Outputs:**\n")
-                                            for tool_output in findings["tool_outputs"]:
-                                                display_parts.append(
-                                                    f"\n*{tool_output['tool_name']}*\n"
-                                                )
-                                                display_parts.append(
-                                                    f"Command: `{tool_output['command']}`\n"
-                                                )
-                                                display_parts.append(
-                                                    f"```\n{tool_output['output']}\n```\n"
-                                                )
-                                        if (
-                                            "additional_output" in findings
-                                            and findings["additional_output"]
-                                        ):
+                                        else:
                                             display_parts.append(
-                                                f"**Additional Output:**\n{findings['additional_output']}\n\n"
+                                                f"**Agent:** {current_agent_name}\n"
                                             )
 
-                                    # Decisions
-                                    if "decisions" in parsed_response:
-                                        decisions = parsed_response["decisions"]
-                                        display_parts.append("\n## 🎯 Decisions\n")
-                                        if (
-                                            "approach" in decisions
-                                            and decisions["approach"]
-                                        ):
-                                            display_parts.append(
-                                                f"**Approach:** {decisions['approach']}\n\n"
-                                            )
-                                        if (
-                                            "tools_used" in decisions
-                                            and decisions["tools_used"]
-                                        ):
-                                            display_parts.append(
-                                                f"**Tools Used:** {', '.join(decisions['tools_used'])}\n\n"
-                                            )
-                                        if (
-                                            "skills_loaded" in decisions
-                                            and decisions["skills_loaded"]
-                                        ):
-                                            display_parts.append(
-                                                f"**Skills Loaded:** {', '.join(decisions['skills_loaded'])}\n\n"
-                                            )
-                                        if (
-                                            "rationale" in decisions
-                                            and decisions["rationale"]
-                                        ):
-                                            display_parts.append(
-                                                f"**Rationale:** {decisions['rationale']}\n\n"
-                                            )
-                                        if (
-                                            "checklist" in decisions
-                                            and decisions["checklist"]
-                                        ):
-                                            display_parts.append("**Checklist:**\n")
-                                            for item in decisions["checklist"]:
-                                                display_parts.append(f"- {item}\n")
-                                            display_parts.append("\n")
-                                        if (
-                                            "additional_output" in decisions
-                                            and decisions["additional_output"]
-                                        ):
-                                            display_parts.append(
-                                                f"**Additional Output:**\n{decisions['additional_output']}\n\n"
-                                            )
-
-                                    # Next Actions
-                                    if "next_actions" in parsed_response:
-                                        next_actions = parsed_response["next_actions"]
-                                        display_parts.append("\n## 📋 Next Actions\n")
-                                        if (
-                                            "steps" in next_actions
-                                            and next_actions["steps"]
-                                        ):
-                                            for i, step in enumerate(
-                                                next_actions["steps"], 1
+                                        # Findings
+                                        if "findings" in parsed_response:
+                                            findings = parsed_response["findings"]
+                                            display_parts.append("\n## 🔍 Findings\n")
+                                            if (
+                                                "summary" in findings
+                                                and findings["summary"]
                                             ):
-                                                display_parts.append(f"{i}. {step}\n")
-                                            display_parts.append("\n")
+                                                display_parts.append(
+                                                    f"**Summary:** {findings['summary']}\n\n"
+                                                )
+                                            if (
+                                                "details" in findings
+                                                and findings["details"]
+                                            ):
+                                                display_parts.append(
+                                                    f"{findings['details']}\n\n"
+                                                )
+                                            if (
+                                                "tool_outputs" in findings
+                                                and findings["tool_outputs"]
+                                            ):
+                                                display_parts.append("**Tool Outputs:**\n")
+                                                for tool_output in findings["tool_outputs"]:
+                                                    display_parts.append(
+                                                        f"\n*{tool_output['tool_name']}*\n"
+                                                    )
+                                                    display_parts.append(
+                                                        f"Command: `{tool_output['command']}`\n"
+                                                    )
+                                                    display_parts.append(
+                                                        f"```\n{tool_output['output']}\n```\n"
+                                                    )
+                                            if (
+                                                "additional_output" in findings
+                                                and findings["additional_output"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Additional Output:**\n{findings['additional_output']}\n\n"
+                                                )
+
+                                        # Decisions
+                                        if "decisions" in parsed_response:
+                                            decisions = parsed_response["decisions"]
+                                            display_parts.append("\n## 🎯 Decisions\n")
+                                            if (
+                                                "approach" in decisions
+                                                and decisions["approach"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Approach:** {decisions['approach']}\n\n"
+                                                )
+                                            if (
+                                                "tools_used" in decisions
+                                                and decisions["tools_used"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Tools Used:** {', '.join(decisions['tools_used'])}\n\n"
+                                                )
+                                            if (
+                                                "skills_loaded" in decisions
+                                                and decisions["skills_loaded"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Skills Loaded:** {', '.join(decisions['skills_loaded'])}\n\n"
+                                                )
+                                            if (
+                                                "rationale" in decisions
+                                                and decisions["rationale"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Rationale:** {decisions['rationale']}\n\n"
+                                                )
+                                            if (
+                                                "checklist" in decisions
+                                                and decisions["checklist"]
+                                            ):
+                                                display_parts.append("**Checklist:**\n")
+                                                for item in decisions["checklist"]:
+                                                    display_parts.append(f"- {item}\n")
+                                                display_parts.append("\n")
+                                            if (
+                                                "additional_output" in decisions
+                                                and decisions["additional_output"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Additional Output:**\n{decisions['additional_output']}\n\n"
+                                                )
+
+                                        # Next Actions
+                                        if "next_actions" in parsed_response:
+                                            next_actions = parsed_response["next_actions"]
+                                            display_parts.append("\n## 📋 Next Actions\n")
+                                            if (
+                                                "steps" in next_actions
+                                                and next_actions["steps"]
+                                            ):
+                                                for i, step in enumerate(
+                                                    next_actions["steps"], 1
+                                                ):
+                                                    display_parts.append(f"{i}. {step}\n")
+                                                display_parts.append("\n")
+                                            if (
+                                                "additional_output" in next_actions
+                                                and next_actions["additional_output"]
+                                            ):
+                                                display_parts.append(
+                                                    f"**Additional Output:**\n{next_actions['additional_output']}\n\n"
+                                                )
+
+                                        # Errors
                                         if (
-                                            "additional_output" in next_actions
-                                            and next_actions["additional_output"]
+                                            "errors" in parsed_response
+                                            and parsed_response["errors"]
                                         ):
-                                            display_parts.append(
-                                                f"**Additional Output:**\n{next_actions['additional_output']}\n\n"
-                                            )
+                                            display_parts.append("\n## ⚠️ Errors\n")
+                                            for error in parsed_response["errors"]:
+                                                display_parts.append(f"- {error}\n")
+                                            display_parts.append("\n")
 
-                                    # Errors
-                                    if (
-                                        "errors" in parsed_response
-                                        and parsed_response["errors"]
-                                    ):
-                                        display_parts.append("\n## ⚠️ Errors\n")
-                                        for error in parsed_response["errors"]:
-                                            display_parts.append(f"- {error}\n")
-                                        display_parts.append("\n")
-
-                                    display_text = "".join(display_parts)
-                                    live.update(Markdown(display_text))
+                                        display_text = "".join(display_parts)
+                                        live.update(Markdown(display_text))
 
                             if response and response.contents:
                                 for content in response.contents:
