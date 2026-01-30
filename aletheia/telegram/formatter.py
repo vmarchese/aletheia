@@ -50,19 +50,10 @@ def format_agent_response(
         parts.append(format_session_header(session_id))
 
     if is_orchestrator:
-        # Simplified format for orchestrator direct responses
-        if response.findings:
-            if response.findings.summary:
-                parts.append(html_escape(response.findings.summary))
-            if response.findings.details:
-                details = truncate(response.findings.details, 1000)
-                parts.append(html_escape(details))
-
-        # Errors (always show if present)
-        if response.errors:
-            parts.append("\n<b>⚠️ Errors</b>")
-            for error in response.errors[:3]:
-                parts.append(f"• {html_escape(error)}")
+        # Simplified format for orchestrator direct responses - just details
+        if response.findings and response.findings.details:
+            details = truncate(response.findings.details, 3000)
+            parts.append(html_escape(details))
     else:
         # Full structured format for agent responses
         # Agent and confidence
