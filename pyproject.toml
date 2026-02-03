@@ -58,6 +58,8 @@ dependencies = [
     "azure-mgmt-cdn>=13.1.1",
     "azure-monitor-query>=2.0.0",
     "python-telegram-bot[all]>=21.0.0",
+    "websockets>=12.0",
+    "black>=25.12.0",
 ]
 
 [project.optional-dependencies]

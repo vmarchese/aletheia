@@ -76,3 +76,4 @@ Use the following frameworks:
 
 # IMPORTANT
 - ALWAYS activate the virtual environment before running the agent
+- ALWAYS keep the code simple and readable. DO NOT overengineer

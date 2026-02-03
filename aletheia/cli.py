@@ -1549,6 +1549,176 @@ def telegram_allowed_users() -> None:
     )
 
 
+@app.command("start")
+def start_daemon(
+    host: str = typer.Option(None, "--host", help="Host to bind (overrides config)"),
+    port: int = typer.Option(None, "--port", help="Port to bind (overrides config)"),
+    enable_memory: bool = typer.Option(
+        True,
+        "--enable-memory/--disable-memory",
+        help="Enable or disable Engram memory",
+    ),
+) -> None:
+    """Start the Aletheia gateway daemon.
+
+    The gateway daemon manages sessions and provides WebSocket connectivity
+    for all channels (TUI, Web, Telegram).
+    """
+    try:
+        from aletheia.daemon import AletheiaGateway
+
+        # Load configuration
+        config = load_config()
+
+        # Use config values or override with CLI args
+        daemon_host = host or config.daemon_host
+        daemon_port = port or config.daemon_port
+
+        console.print(
+            f"[green]Starting Aletheia gateway on ws://{daemon_host}:{daemon_port}[/green]"
+        )
+        console.print("[dim]Press Ctrl+C to stop[/dim]\n")
+
+        # Create and start gateway
+        gateway = AletheiaGateway(config, enable_memory=enable_memory)
+        asyncio.run(gateway.start(daemon_host, daemon_port))
+
+    except KeyboardInterrupt:
+        console.print("\n[cyan]Gateway stopped.[/cyan]")
+    except Exception as e:
+        console.print(f"[red]Error starting gateway: {e}[/red]")
+        import traceback
+
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command("status")
+def daemon_status() -> None:
+    """Check the status of the Aletheia gateway daemon."""
+    config = load_config()
+    host = config.daemon_host
+    port = config.daemon_port
+
+    console.print(f"[cyan]Checking gateway status at ws://{host}:{port}[/cyan]\n")
+
+    try:
+        import websockets
+
+        async def check_status():
+            try:
+                uri = f"ws://{host}:{port}"
+                async with websockets.connect(uri) as websocket:
+                    # Send ping
+                    from aletheia.daemon.protocol import ProtocolMessage
+
+                    ping_msg = ProtocolMessage.create("ping", {})
+                    await websocket.send(ping_msg.to_json())
+
+                    # Wait for pong
+                    response = await asyncio.wait_for(websocket.recv(), timeout=5)
+                    msg = ProtocolMessage.from_json(response)
+
+                    if msg.type == "pong":
+                        return True
+            except Exception:
+                return False
+
+        is_running = asyncio.run(check_status())
+
+        if is_running:
+            console.print("[green]✓ Gateway is running[/green]")
+        else:
+            console.print("[yellow]✗ Gateway is not running[/yellow]")
+            console.print("\nStart the gateway with:")
+            console.print("  aletheia start")
+
+    except ImportError:
+        console.print(
+            "[red]Error: 'websockets' not found. Please install it with 'pip install websockets'.[/red]"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error checking status: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("stop")
+def daemon_stop() -> None:
+    """Stop the Aletheia gateway daemon gracefully."""
+    config = load_config()
+    host = config.daemon_host
+    port = config.daemon_port
+
+    console.print(f"[cyan]Stopping gateway at ws://{host}:{port}[/cyan]\n")
+
+    try:
+        import websockets
+
+        async def stop_gateway():
+            try:
+                uri = f"ws://{host}:{port}"
+                async with websockets.connect(uri) as websocket:
+                    from aletheia.daemon.protocol import ProtocolMessage
+                    import uuid
+
+                    # Register as a channel first
+                    channel_id = f"cli-stop-{uuid.uuid4().hex[:8]}"
+                    register_msg = ProtocolMessage.create(
+                        "channel_register",
+                        {"channel_type": "cli", "channel_id": channel_id},
+                    )
+                    await websocket.send(register_msg.to_json())
+
+                    # Wait for registration confirmation
+                    response = await asyncio.wait_for(websocket.recv(), timeout=5)
+                    msg = ProtocolMessage.from_json(response)
+                    if msg.type != "channel_registered":
+                        return False, f"Channel registration failed: {msg.type}"
+
+                    # Now send shutdown
+                    shutdown_msg = ProtocolMessage.create("shutdown", {})
+                    await websocket.send(shutdown_msg.to_json())
+
+                    # Wait for acknowledgment
+                    try:
+                        response = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        msg = ProtocolMessage.from_json(response)
+
+                        if msg.type == "shutdown_ack":
+                            return True, msg.payload.get("message", "Gateway stopped")
+                        elif msg.type == "error":
+                            error_code = msg.payload.get("code", "UNKNOWN")
+                            error_message = msg.payload.get("message", "No error message")
+                            return False, f"Gateway error ({error_code}): {error_message}"
+                        else:
+                            return False, f"Unexpected response type: {msg.type}"
+                    except asyncio.TimeoutError:
+                        return True, "Shutdown command sent (no acknowledgment received)"
+            except Exception as e:
+                return False, str(e)
+
+        success, message = asyncio.run(stop_gateway())
+
+        if success:
+            console.print(f"[green]✓ {message}[/green]")
+        else:
+            console.print(f"[red]✗ Failed to stop gateway: {message}[/red]")
+            console.print("\nThe gateway may not be running, or:")
+            console.print("  - Check if the gateway is running: aletheia status")
+            console.print("  - Try manually: pkill -f 'aletheia start'")
+            raise typer.Exit(1)
+
+    except ImportError:
+        console.print(
+            "[red]Error: 'websockets' not found. Please install it with 'pip install websockets'.[/red]"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error stopping gateway: {e}[/red]")
+        raise typer.Exit(1)
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()

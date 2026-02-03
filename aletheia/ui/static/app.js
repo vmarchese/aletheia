@@ -24,6 +24,7 @@ const THINKING_MESSAGES = [
 
 // State
 const sessionPasswords = {}; // Cache for session passwords
+const sessionMetadata = {}; // Cache for session metadata (including unsafe status)
 let currentSessionId = null;
 let eventSource = null;
 let thinkingInterval = null;
@@ -74,9 +75,13 @@ const getAuthParams = (sessionId) => {
     const pwd = getSessionPassword(sessionId);
     const params = new URLSearchParams();
     if (pwd) params.append('password', pwd);
-    // Only append unsafe=true if we KNOW it's unsafe? 
-    // Actually, backend needs either password OR unsafe=true.
-    // We should probably store unsafe status in sessionPasswords or separate map.
+
+    // Append unsafe=true if we know the session is unsafe
+    const metadata = sessionMetadata[sessionId];
+    if (metadata && (metadata.unsafe === true || metadata.unsafe === "True")) {
+        params.append('unsafe', 'true');
+    }
+
     return params;
 };
 
@@ -297,15 +302,26 @@ function setupEventListeners() {
 
         timelineContainer.innerHTML = '<div class="loading-state">Generating timeline...</div>';
 
-        timelineContainer.innerHTML = '<div class="loading-state">Generating timeline...</div>';
-
         try {
             const params = getAuthParams(currentSessionId);
-            const response = await fetch(`/sessions/${currentSessionId}/timeline?${params.toString()}`);
-            if (!response.ok) throw new Error('Unauthorized or failed');
+            const url = `/sessions/${currentSessionId}/timeline?${params.toString()}`;
+            console.log('[Timeline] Fetching timeline from:', url);
+            console.log('[Timeline] Auth params:', params.toString());
+            console.log('[Timeline] Session metadata:', sessionMetadata[currentSessionId]);
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[Timeline] Response not OK:', response.status, errorText);
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
             const data = await response.json();
+            console.log('[Timeline] Received data:', data);
+            console.log('[Timeline] Timeline array:', data.timeline);
+
             renderTimeline(data.timeline, timelineContainer);
         } catch (e) {
+            console.error('[Timeline] Error:', e);
             timelineContainer.innerHTML = `<div class="loading-state" style="color: red">Error fetching timeline: ${e.message}</div>`;
         }
     });
@@ -514,6 +530,9 @@ async function loadSession(sessionId, force = false) {
 
         const session = await response.json();
 
+        // Cache session metadata (including unsafe status)
+        sessionMetadata[sessionId] = session;
+
         // Success! If we were forcing (modal open), close it now.
         if (force) {
             passwordModal.classList.remove('show');
@@ -668,6 +687,22 @@ function connectStream(sessionId) {
                     `, 'bot');
                 }
             }
+        } else if (data.type === 'response_complete') {
+            // Structured response completed successfully
+            stopThinking();
+            console.log('[SSE] Structured response complete');
+            // Ensure the last bot message is marked as complete and visible
+            const lastMsg = chatContainer.lastElementChild;
+            if (lastMsg && lastMsg.classList.contains('bot')) {
+                lastMsg.dataset.complete = "true";
+                // If message is empty or hidden, log warning
+                const contentDiv = lastMsg.querySelector('.message-content');
+                if (contentDiv && !contentDiv.innerHTML.trim()) {
+                    console.warn('[SSE] Response complete but message content is empty');
+                }
+            } else {
+                console.warn('[SSE] Response complete but no bot message found in DOM');
+            }
         } else if (data.type === 'done') {
             stopThinking();
             setProcessing(false);
@@ -731,6 +766,11 @@ async function fetchSessionMetadata(sessionId) {
 }
 
 function updateSessionSidebar(session) {
+    // Cache session metadata for auth params
+    if (session.id) {
+        sessionMetadata[session.id] = session;
+    }
+
     if (infoSessionName) infoSessionName.textContent = session.name || session.id;
     if (infoSessionId) infoSessionId.textContent = session.id;
     if (infoSessionCost) infoSessionCost.textContent = `€${(session.total_cost || 0).toFixed(6)}`;
@@ -1847,24 +1887,37 @@ function extractSkillUsage(text) {
 }
 
 function renderTimeline(timelineData, container) {
+    console.log('[renderTimeline] Called with timelineData:', timelineData);
+    console.log('[renderTimeline] Container:', container);
+
     // Handle Timeline model format (with 'entries' field) or legacy array format
     let entries = timelineData;
-    if (timelineData && typeof timelineData === 'object' && timelineData.entries) {
+    if (timelineData && typeof timelineData === 'object' && !Array.isArray(timelineData) && timelineData.entries) {
+        console.log('[renderTimeline] Using entries field from timelineData');
         entries = timelineData.entries;
     }
 
+    console.log('[renderTimeline] entries:', entries);
+    console.log('[renderTimeline] Is Array?', Array.isArray(entries));
+    console.log('[renderTimeline] Length:', entries ? entries.length : 'N/A');
+
     if (!Array.isArray(entries) || entries.length === 0) {
+        console.log('[renderTimeline] No entries found, showing empty state');
         container.innerHTML = '<div class="loading-state">No timeline events found.</div>';
         return;
     }
 
     let html = '';
-    entries.forEach(event => {
+    entries.forEach((event, index) => {
+        console.log(`[renderTimeline] Processing event ${index}:`, event);
+
         // Support both 'entry_type' (TimelineEntry model) and 'type' (legacy)
         const eventType = event.entry_type || event.type || 'INFO';
         const typeClass = `type-${eventType.toLowerCase()}`;
         // Support both 'content' (TimelineEntry model) and 'description' (legacy)
         const content = event.content || event.description || '';
+
+        console.log(`[renderTimeline] Event ${index} - Type: ${eventType}, Content: ${content.substring(0, 50)}`);
 
         html += `
             <div class="timeline-item ${typeClass}">
@@ -1879,7 +1932,12 @@ function renderTimeline(timelineData, container) {
             </div>
         `;
     });
+
+    console.log('[renderTimeline] Generated HTML length:', html.length);
+    console.log('[renderTimeline] HTML preview:', html.substring(0, 200));
+    console.log('[renderTimeline] Setting container innerHTML');
     container.innerHTML = html;
+    console.log('[renderTimeline] Done! Container innerHTML length:', container.innerHTML.length);
 }
 
 async function fetchSessionMetadata(sessionId) {

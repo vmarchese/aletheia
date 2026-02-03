@@ -234,6 +234,26 @@ class Config(BaseSettings):
         description="List of agent names to disable (both built-in and user-defined)",
     )
 
+    # =================================================================
+    # Daemon Configuration
+    # =================================================================
+    daemon_host: str = Field(
+        default="127.0.0.1",
+        description="Gateway daemon bind address",
+    )
+    daemon_port: int = Field(
+        default=8765,
+        description="Gateway daemon WebSocket port",
+    )
+    daemon_pid_file: str | None = Field(
+        default=None,
+        description="PID file location for daemon mode",
+    )
+    daemon_log_file: str | None = Field(
+        default=None,
+        description="Log file location for daemon mode",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,
