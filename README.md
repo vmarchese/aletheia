@@ -14,37 +14,9 @@ Aletheia provides an interactive, agent-based workflow for troubleshooting distr
 
 Aletheia uses a **daemon-based architecture** with a central gateway that manages sessions and coordinates communication between channels and agents:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Interfaces                         │
-│  ┌──────────┐    ┌──────────┐    ┌──────────────────┐      │
-│  │   TUI    │    │  Web UI  │    │  Telegram Bot    │      │
-│  └────┬─────┘    └────┬─────┘    └────────┬─────────┘      │
-│       │               │                    │                │
-│       └───────────────┴────────────────────┘                │
-│                       │                                     │
-│                WebSocket (ws://127.0.0.1:8765)             │
-│                       │                                     │
-│       ┌───────────────▼───────────────┐                    │
-│       │    Aletheia Gateway Daemon    │                    │
-│       │  - Session Management         │                    │
-│       │  - Agent Orchestration        │                    │
-│       │  - Chat History Logging       │                    │
-│       │  - Response Streaming         │                    │
-│       └───────────────┬───────────────┘                    │
-│                       │                                     │
-│       ┌───────────────▼───────────────┐                    │
-│       │       Specialized Agents       │                    │
-│       │  • Orchestrator                │                    │
-│       │  • Kubernetes Data Fetcher     │                    │
-│       │  • AWS Agent                   │                    │
-│       │  • Azure Agent                 │                    │
-│       │  • Code Analyzer               │                    │
-│       │  • Network Agent               │                    │
-│       │  • And more...                 │                    │
-│       └────────────────────────────────┘                    │
-└─────────────────────────────────────────────────────────────┘
-```
+
+![aletheia-arc](./docs/images/aletheia-arch.png)
+
 
 ### Key Features
 
@@ -54,7 +26,7 @@ Aletheia uses a **daemon-based architecture** with a central gateway that manage
 - **Chat History**: All interactions logged in JSONL format per session
 - **Extensible Channels**: Plugin-based channel system for easy integration of new interfaces
 
-### Available Agents
+### Available  built-in Agents
 
 - **Orchestrator** - Routes requests to appropriate specialist agents and relays their output
 - **Kubernetes Data Fetcher** - Collects Kubernetes logs, pod information, and cluster health data
@@ -505,7 +477,6 @@ agent:
     - Always add a joke about kittens after greeting
 ```    
 
-
 ## Advanced Configuration
 
 ### Complete Configuration Options
@@ -526,7 +497,9 @@ agent:
 
 ### Personality Customization (SOUL.md)
 
-Customize Aletheia's personality by creating `SOUL.md` in your config directory:
+You can specify a set of instructions that will be injected in Aletheiaìs system prompt to define its "soul", i.e.: it's way of answering you. The orchestrator agent will try to follow the instructions as closely as possible.
+
+The instructions file must be named `SOUL.md` and placed in the root of aletheia configuration folder.
 
 ```markdown
 # Aletheia's Soul
@@ -592,7 +565,8 @@ The gateway uses JSON-based WebSocket messages:
 - `response_complete` - Response completion
 - `error` - Error message
 
-### Channel Capabilities
+### Channel Capabilities (WIP)
+
 
 Channels declare capabilities via manifest:
 
