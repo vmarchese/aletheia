@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import random
 from typing import Any
 
@@ -172,6 +173,16 @@ class TUIChannelConnector(BaseChannelConnector):
 
     async def on_connected(self, payload: dict[str, Any]) -> None:
         """Display welcome message on connection."""
+        # Show Aletheia banner
+        banner_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "banner.txt"
+        )
+        try:
+            with open(banner_path, encoding="utf-8") as f:
+                self.console.print(f.read())
+        except OSError:
+            pass
+
         # Check if there's already an active session
         session_info = payload.get("session")
         if session_info:
@@ -354,6 +365,25 @@ class TUIChannelConnector(BaseChannelConnector):
 
                 self._current_response = content
                 self._live.update(self._current_response)
+
+        elif chunk_type == "function_call":
+            # Show function call events from the gateway middleware
+            content = payload.get("content", {})
+            func_name = content.get("function_name", "unknown")
+            arguments = content.get("arguments", {})
+
+            # Format arguments as a compact string
+            args_parts = [f"{k}={v}" for k, v in arguments.items()]
+            args_str = ", ".join(args_parts) if args_parts else ""
+
+            # Print as a persistent line above the live animated line
+            func_display = f"[dim]⚙ {func_name}({args_str})[/dim]"
+            if self._live:
+                # console.print inside a Live context prints above the
+                # animated line, keeping the thinking animation in place
+                self._live.console.print(func_display)
+            else:
+                self.console.print(func_display)
 
         # json_chunk doesn't need handling for TUI - we wait for json_complete
 

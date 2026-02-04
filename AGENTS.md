@@ -4,6 +4,16 @@
 
 Aletheia is a modular, AI-powered troubleshooting framework for SREs and system administrators. It orchestrates specialized LLM agents to collect and analyze observability data (logs, metrics, traces), inspect code, and generate actionable root cause hypotheses.
 
+Aletheia is composed by the following architectural components:
+- Gateway (in @aletheia/daemon): manages the messages from/to the channels and orchestrates the agents
+- Channels: ways to interact with the gateway, in particular:
+  - TUI ( @aletheia/channels/tui.py): TUI channel
+  - Web ( @aletheia/channels/web): Web channel, the frontend is in @aletheia/ui
+  - Telegram ( @alethia/channels/telegram): Telegram channel
+
+The gateway and the channel communicate over websocket on localhost
+
+
 ---
 
 # Python Project Guidelines
