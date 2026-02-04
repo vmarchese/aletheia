@@ -23,6 +23,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "sqlite-vec>=0.1.6",
     "typer>=0.9.0",
     "pyyaml>=6.0",
     "pycryptodome>=3.19",
