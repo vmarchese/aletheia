@@ -34,7 +34,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "platformdirs>=4.0.0",
     "dateparser>=1.2.2",
-    "agent-framework>=1.0.0b260107",
+    "agent-framework==1.0.0b260114",
     "agent-framework-bedrock>=1.0.0b260107",
     "azure-ai-agents==1.2.0b5",
     "jinja2>=3.1.6",
