@@ -6,8 +6,9 @@ import sqlite3
 from pathlib import Path
 
 import sqlite_vec
+import structlog
 
-from aletheia.utils.logging import log_debug, log_info
+logger = structlog.get_logger(__name__)
 
 from .models import ChunkRecord, SearchHit
 
@@ -51,7 +52,7 @@ class MemoryDB:
         self._db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = self._connect()
-        log_info(f"database_opened path={db_path}")
+        logger.info(f"database_opened path={db_path}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
@@ -80,7 +81,7 @@ class MemoryDB:
         embeddings: list[list[float]],
     ) -> None:
         """Delete old chunks for path and insert new ones."""
-        log_debug(f"index_file_start path={path} num_chunks={len(chunks)}")
+        logger.debug(f"index_file_start path={path} num_chunks={len(chunks)}")
         cur = self._conn.cursor()
 
         # Get existing IDs for this path to clean up vector/fts tables
@@ -92,7 +93,7 @@ class MemoryDB:
         ]
 
         if existing_ids:
-            log_debug(f"removing_old_chunks path={path} count={len(existing_ids)}")
+            logger.debug(f"removing_old_chunks path={path} count={len(existing_ids)}")
             placeholders = ",".join("?" for _ in existing_ids)
             cur.execute(
                 f"DELETE FROM chunks_vector WHERE id IN ({placeholders})",
@@ -137,7 +138,7 @@ class MemoryDB:
             )
 
         self._conn.commit()
-        log_info(f"file_indexed path={path} chunks_inserted={len(chunks)}")
+        logger.info(f"file_indexed path={path} chunks_inserted={len(chunks)}")
 
     def vector_search(
         self, embedding: list[float], limit: int = 20
@@ -180,10 +181,14 @@ class MemoryDB:
         min_score: float = 0.35,
     ) -> list[SearchHit]:
         """Combine vector and FTS results: 0.7*vec_score + 0.3*fts_score."""
-        log_debug(f"hybrid_search_start query={query_text[:80]} max_results={max_results}")
+        logger.debug(
+            f"hybrid_search_start query={query_text[:80]} max_results={max_results}"
+        )
         vec_results = self.vector_search(query_embedding, limit=max_results * 3)
         fts_results = self.fts_search(query_text, limit=max_results * 3)
-        log_debug(f"hybrid_search_raw vec_hits={len(vec_results)} fts_hits={len(fts_results)}")
+        logger.debug(
+            f"hybrid_search_raw vec_hits={len(vec_results)} fts_hits={len(fts_results)}"
+        )
 
         # Normalize vector scores: distance -> similarity (1 - distance for cosine)
         # sqlite-vec returns cosine distance in [0, 2]
@@ -191,34 +196,42 @@ class MemoryDB:
         for cid, dist in vec_results:
             similarity = max(0.0, 1.0 - dist / 2.0)
             vec_scores[cid] = similarity
-            log_debug(f"vec_score chunk_id={cid} distance={round(dist, 4)} similarity={round(similarity, 4)}")
+            logger.debug(
+                f"vec_score chunk_id={cid} distance={round(dist, 4)} similarity={round(similarity, 4)}"
+            )
 
         # Normalize FTS scores: rank is negative, more negative = better
         fts_scores: dict[int, float] = {}
         if fts_results:
             min_rank = min(r for _, r in fts_results)
-            log_debug(f"fts_min_rank min_rank={round(min_rank, 4)}")
+            logger.debug(f"fts_min_rank min_rank={round(min_rank, 4)}")
             for cid, rank in fts_results:
                 # Normalize to [0, 1] where 1 is best
                 normalized = rank / min_rank if min_rank != 0 else 0.0
                 fts_scores[cid] = normalized
-                log_debug(f"fts_score chunk_id={cid} raw_rank={round(rank, 4)} normalized={round(normalized, 4)}")
+                logger.debug(
+                    f"fts_score chunk_id={cid} raw_rank={round(rank, 4)} normalized={round(normalized, 4)}"
+                )
 
         # Combine scores
         all_ids = set(vec_scores.keys()) | set(fts_scores.keys())
-        log_debug(f"hybrid_candidate_ids total={len(all_ids)}")
+        logger.debug(f"hybrid_candidate_ids total={len(all_ids)}")
         scored: list[tuple[int, float]] = []
         for cid in all_ids:
             vs = vec_scores.get(cid, 0.0)
             fs = fts_scores.get(cid, 0.0)
             combined = 0.7 * vs + 0.3 * fs
-            log_debug(f"hybrid_combine chunk_id={cid} vec={round(vs, 4)} fts={round(fs, 4)} combined={round(combined, 4)} above_min={combined >= min_score}")
+            logger.debug(
+                f"hybrid_combine chunk_id={cid} vec={round(vs, 4)} fts={round(fs, 4)} combined={round(combined, 4)} above_min={combined >= min_score}"
+            )
             if combined >= min_score:
                 scored.append((cid, combined))
 
         scored.sort(key=lambda x: x[1], reverse=True)
         scored = scored[:max_results]
-        log_debug(f"hybrid_filtered above_threshold={len(scored)} min_score={min_score}")
+        logger.debug(
+            f"hybrid_filtered above_threshold={len(scored)} min_score={min_score}"
+        )
 
         # Fetch chunk details
         hits: list[SearchHit] = []
@@ -229,7 +242,9 @@ class MemoryDB:
             ).fetchone()
             if row:
                 source = "long_term" if row[0].endswith("MEMORY.md") else "memory"
-                log_debug(f"hybrid_hit chunk_id={cid} path={row[0]} lines={row[1]}-{row[2]} score={round(score, 4)} source={source}")
+                logger.debug(
+                    f"hybrid_hit chunk_id={cid} path={row[0]} lines={row[1]}-{row[2]} score={round(score, 4)} source={source}"
+                )
                 hits.append(
                     SearchHit(
                         path=row[0],
@@ -241,7 +256,9 @@ class MemoryDB:
                     )
                 )
 
-        log_info(f"hybrid_search_done query={query_text[:80]} results={len(hits)} candidates={len(all_ids)} vec_hits={len(vec_results)} fts_hits={len(fts_results)}")
+        logger.info(
+            f"hybrid_search_done query={query_text[:80]} results={len(hits)} candidates={len(all_ids)} vec_hits={len(vec_results)} fts_hits={len(fts_results)}"
+        )
         return hits
 
     def get_chunk(self, chunk_id: int) -> ChunkRecord | None:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import structlog
+
 from aletheia.config import sync_openai_env_vars
-from aletheia.utils.logging import log_debug, log_info
+
+logger = structlog.get_logger(__name__)
 
 
 class EmbeddingProvider:
@@ -23,7 +26,7 @@ class EmbeddingProvider:
         sync_openai_env_vars()
         self._model = model
         self._client = OpenAI()
-        log_info(f"embedding_provider_initialized model={model}")
+        logger.info(f"embedding_provider_initialized model={model}")
 
     @property
     def model_name(self) -> str:
@@ -31,7 +34,7 @@ class EmbeddingProvider:
 
     def embed(self, text: str) -> list[float]:
         """Get embedding for a single text."""
-        log_debug(f"embed_single model={self._model}")
+        logger.debug(f"embed_single model={self._model}")
         resp = self._client.embeddings.create(
             model=self._model,
             input=text,
@@ -42,7 +45,7 @@ class EmbeddingProvider:
         """Get embeddings for multiple texts."""
         if not texts:
             return []
-        log_debug(f"embed_batch model={self._model} count={len(texts)}")
+        logger.debug(f"embed_batch model={self._model} count={len(texts)}")
         resp = self._client.embeddings.create(
             model=self._model,
             input=texts,

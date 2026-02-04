@@ -4,9 +4,9 @@ This module provides Rich-based formatting functions for chat messages
 to create clear visual distinction between user and bot messages.
 """
 
-from rich.panel import Panel
-from rich.markdown import Markdown
 from rich import box
+from rich.markdown import Markdown
+from rich.panel import Panel
 
 
 def format_user_message(message: str, session_id: str) -> str:

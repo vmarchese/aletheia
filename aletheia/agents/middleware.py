@@ -1,17 +1,24 @@
 """Middleware implementations for logging agent activities."""
+
 import asyncio
-import json
-from typing import Awaitable, Callable
-from rich.syntax import Syntax
+from collections.abc import Awaitable, Callable
 
-from agent_framework import FunctionMiddleware, FunctionInvocationContext
-from agent_framework import AgentMiddleware, AgentRunContext
-from agent_framework import ChatMiddleware, ChatContext
+import structlog
+from agent_framework import (
+    AgentMiddleware,
+    AgentRunContext,
+    ChatContext,
+    ChatMiddleware,
+    FunctionInvocationContext,
+    FunctionMiddleware,
+)
 
-from aletheia.utils.logging import log_debug
 from aletheia.console import get_console_wrapper
+
 # Lazy import to avoid circular dependency
 # from aletheia.commands import COMMANDS
+
+logger = structlog.get_logger(__name__)
 
 
 class ConsoleFunctionMiddleware(FunctionMiddleware):
@@ -28,10 +35,10 @@ class ConsoleFunctionMiddleware(FunctionMiddleware):
         console = get_console_wrapper().get_console()
 
         # Pre-processing: Log before function execution
-        skipped_functions = ["write_journal_entry",
-                             "read_scratchpad"]
+        skipped_functions = ["write_journal_entry", "read_scratchpad"]
         try:
             from aletheia.commands import COMMANDS
+
             for agent in COMMANDS["agents"].agents:
                 skipped_functions.append(agent.name)
         except (ImportError, KeyError):
@@ -40,9 +47,11 @@ class ConsoleFunctionMiddleware(FunctionMiddleware):
         if context.function.name not in skipped_functions:
             arguments = ""
             for arg_key, arg_value in context.arguments.model_dump().items():
-                arguments += f"{arg_key}=\"{arg_value}\" "
+                arguments += f'{arg_key}="{arg_value}" '
 
-            console.print(f" • [cyan][bold]{context.function.name}[/bold][/cyan]({arguments})")
+            console.print(
+                f" • [cyan][bold]{context.function.name}[/bold][/cyan]({arguments})"
+            )
 
         # Continue to next middleware or function execution
         await next(context)
@@ -57,13 +66,15 @@ class LoggingFunctionMiddleware(FunctionMiddleware):
         next: Callable[[FunctionInvocationContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before function execution
-        log_debug(f"[Function::{context.function.name}] Calling function: {context.arguments}")
+        logger.debug(
+            f"[Function::{context.function.name}] Calling function: {context.arguments}"
+        )
 
         # Continue to next middleware or function execution
         await next(context)
 
         # Post-processing: Log after function execution
-        log_debug(f"[Function::{context.function.name}] Function completed")
+        logger.debug(f"[Function::{context.function.name}] Function completed")
 
 
 class LoggingAgentMiddleware(AgentMiddleware):
@@ -75,13 +86,17 @@ class LoggingAgentMiddleware(AgentMiddleware):
         next: Callable[[AgentRunContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before agent execution
-        log_debug(f"[Agent::{context.agent.name}] Starting execution {context.metadata}")
+        logger.debug(
+            f"[Agent::{context.agent.name}] Starting execution {context.metadata}"
+        )
 
         # Continue to next middleware or agent execution
         await next(context)
 
         # Post-processing: Log after agent execution
-        log_debug(f"[Agent::{context.agent.name}] Execution completed: {context.result}")
+        logger.debug(
+            f"[Agent::{context.agent.name}] Execution completed: {context.result}"
+        )
 
 
 class LoggingChatMiddleware(ChatMiddleware):
@@ -122,14 +137,12 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
     ) -> None:
         # Pre-processing: Send function call event
         # Skip functions we don't want to show
-        skipped_functions = [
-            "write_journal_entry",
-            "read_scratchpad"
-        ]
+        skipped_functions = ["write_journal_entry", "read_scratchpad"]
 
         # Also skip agent tool calls
         try:
             from aletheia.commands import COMMANDS
+
             if "agents" in COMMANDS:
                 for agent in COMMANDS["agents"].agents:
                     skipped_functions.append(agent.name)
@@ -137,10 +150,12 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
             # COMMANDS might not be available, just skip this
             pass
 
-        log_debug(f"[WebUIFunctionMiddleware] Function called: {context.function.name}")
+        logger.debug(
+            f"[WebUIFunctionMiddleware] Function called: {context.function.name}"
+        )
 
         if context.function.name not in skipped_functions:
-            log_debug("function not in skipped list, preparing to send event")
+            logger.debug("function not in skipped list, preparing to send event")
             # Format arguments
             arguments = {}
             for arg_key, arg_value in context.arguments.model_dump().items():
@@ -152,17 +167,21 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
 
             # Send event to queue
             try:
-                log_debug(f"[WebUIFunctionMiddleware] Sending function_call event for {context.function.name}")
-                await self.event_queue.put({
-                    "type": "function_call",
-                    "content": {
-                        "function_name": context.function.name,
-                        "arguments": arguments
+                logger.debug(
+                    f"[WebUIFunctionMiddleware] Sending function_call event for {context.function.name}"
+                )
+                await self.event_queue.put(
+                    {
+                        "type": "function_call",
+                        "content": {
+                            "function_name": context.function.name,
+                            "arguments": arguments,
+                        },
                     }
-                })
-                log_debug(f"[WebUIFunctionMiddleware] Event sent successfully")
+                )
+                logger.debug("[WebUIFunctionMiddleware] Event sent successfully")
             except Exception as e:
-                log_debug(f"[WebUIFunctionMiddleware] Error sending event: {e}")
+                logger.debug(f"[WebUIFunctionMiddleware] Error sending event: {e}")
 
         # Continue to next middleware or function execution
         await next(context)

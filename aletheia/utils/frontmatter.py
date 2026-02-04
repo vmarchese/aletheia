@@ -1,7 +1,9 @@
 """
 Frontmatter parsing utilities for agent responses.
 """
-from typing import Optional, Dict, Any, Tuple
+
+from typing import Any
+
 import yaml
 
 
@@ -9,7 +11,7 @@ class FrontmatterParser:
     """Parser for agent responses with YAML frontmatter."""
 
     @staticmethod
-    def parse_incremental(buffer: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    def parse_incremental(buffer: str) -> tuple[bool, dict[str, Any] | None, str]:
         """
         Parse YAML frontmatter from an incremental buffer.
 
@@ -42,7 +44,7 @@ class FrontmatterParser:
             return True, None, buffer
 
     @staticmethod
-    def parse(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
+    def parse(text: str) -> tuple[dict[str, Any] | None, str]:
         """
         Parse YAML frontmatter from complete text.
 

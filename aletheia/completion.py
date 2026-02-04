@@ -5,11 +5,11 @@ This module provides autocomplete functionality for slash commands,
 including both built-in and custom commands.
 """
 
-import logging
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from prompt_toolkit.completion import Completer, Completion, CompleteEvent
+import structlog
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 
 from aletheia.commands import COMMANDS, get_custom_commands
@@ -17,7 +17,7 @@ from aletheia.commands import COMMANDS, get_custom_commands
 if TYPE_CHECKING:
     from aletheia.config import Config
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CommandCompleter(Completer):

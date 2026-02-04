@@ -2,13 +2,13 @@
 
 import functools
 import time
-from typing import Callable, Optional, Tuple, Type
+from collections.abc import Callable
 
 
 def retry_with_backoff(
     retries: int = 3,
-    delays: Optional[Tuple[float, ...]] = None,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
+    delays: tuple[float, ...] | None = None,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable:
     """
     Decorator for retrying a function with exponential backoff.

@@ -5,13 +5,13 @@ to the session's data directory with consistent naming and structure.
 """
 
 import json
-import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def sanitize_filename(name: str, max_length: int = 50) -> str:
@@ -48,10 +48,10 @@ def generate_timestamp() -> str:
 
 def save_logs_to_session(
     session_data_dir: Path,
-    logs: List[Dict[str, Any]],
-    metadata: Dict[str, Any],
+    logs: list[dict[str, Any]],
+    metadata: dict[str, Any],
     source: str = "kubernetes",
-    identifier: Optional[str] = None,
+    identifier: str | None = None,
 ) -> Path:
     """Save logs to the session's data/logs directory.
 
@@ -105,10 +105,10 @@ def save_logs_to_session(
 
 def save_metrics_to_session(
     session_data_dir: Path,
-    metrics: List[Dict[str, Any]],
-    metadata: Dict[str, Any],
+    metrics: list[dict[str, Any]],
+    metadata: dict[str, Any],
     source: str = "prometheus",
-    query: Optional[str] = None,
+    query: str | None = None,
 ) -> Path:
     """Save metrics to the session's data/metrics directory.
 
@@ -163,10 +163,10 @@ def save_metrics_to_session(
 
 def save_traces_to_session(
     session_data_dir: Path,
-    traces: List[Dict[str, Any]],
-    metadata: Dict[str, Any],
+    traces: list[dict[str, Any]],
+    metadata: dict[str, Any],
     source: str = "jaeger",
-    identifier: Optional[str] = None,
+    identifier: str | None = None,
 ) -> Path:
     """Save traces to the session's data/traces directory.
 

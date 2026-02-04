@@ -6,7 +6,9 @@ import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from aletheia.utils.logging import log_debug, log_info
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 from .db import MemoryDB
 from .embeddings import EmbeddingProvider
@@ -38,7 +40,7 @@ class Engram:
         db_path = self._root / ".engram" / "index.db"
         self._db = MemoryDB(db_path)
         self._watcher: MemoryWatcher | None = None
-        log_info(
+        logger.info(
             f"engram_initialized root={self._root} provider={type(self._embedder).__name__} model={self._embedder.model_name}"
         )
 
@@ -66,8 +68,8 @@ class Engram:
         """
         with open(self._memory_file, "a", encoding="utf-8") as f:
             f.write(f"\n{memory}\n")
-        log_info(f"long_term_write file={self._memory_file}")
-        log_debug(f"long_term_write_content memory={memory[:100]}")
+        logger.info(f"long_term_write file={self._memory_file}")
+        logger.debug(f"long_term_write_content memory={memory[:100]}")
         return f"Appended to {self._memory_file}"
 
     def daily_memory_write(self, memory: str) -> str:
@@ -83,8 +85,8 @@ class Engram:
         daily_file = self._memory_dir / f"{today}.md"
         with open(daily_file, "a", encoding="utf-8") as f:
             f.write(f"\n{memory}\n")
-        log_info(f"daily_write file={daily_file}")
-        log_debug(f"daily_write_content memory={memory[:100]}")
+        logger.info(f"daily_write file={daily_file}")
+        logger.debug(f"daily_write_content memory={memory[:100]}")
         return f"Appended to {daily_file}"
 
     def read_daily_memories(self, n_of_days: int = 1) -> str:
@@ -104,7 +106,9 @@ class Engram:
             if daily_file.exists():
                 text = daily_file.read_text(encoding="utf-8")
                 result_parts.append(f"## {day.isoformat()}\n{text}")
-        log_debug(f"read_daily n_of_days={n_of_days} files_found={len(result_parts)}")
+        logger.debug(
+            f"read_daily n_of_days={n_of_days} files_found={len(result_parts)}"
+        )
         return "\n\n".join(result_parts) if result_parts else "No memories found."
 
     def read_long_term_memory(self) -> str:
@@ -118,7 +122,7 @@ class Engram:
         text = self._memory_file.read_text(encoding="utf-8")
         if not text.strip():
             return "No long-term memories found."
-        log_debug(f"read_long_term length={len(text)}")
+        logger.debug(f"read_long_term length={len(text)}")
         return text
 
     def memory_search(
@@ -137,10 +141,10 @@ class Engram:
         Returns:
             SearchResponse with ranked results.
         """
-        log_info(f"memory_search query={query[:80]} max_results={max_results}")
+        logger.info(f"memory_search query={query[:80]} max_results={max_results}")
         embedding = self._embedder.embed(query)
         hits = self._db.hybrid_search(embedding, query, max_results, min_score)
-        log_debug(f"memory_search_done results={len(hits)}")
+        logger.debug(f"memory_search_done results={len(hits)}")
         return SearchResponse(
             results=hits,
             provider=type(self._embedder).__name__,
@@ -173,10 +177,10 @@ class Engram:
         if self._memory_file.exists():
             files_to_index.append(self._memory_file)
         files_to_index.extend(sorted(self._memory_dir.glob("*.md")))
-        log_info(f"index_all_start file_count={len(files_to_index)}")
+        logger.info(f"index_all_start file_count={len(files_to_index)}")
         for file_path in files_to_index:
             self._index_file(file_path)
-        log_info(f"index_all_done file_count={len(files_to_index)}")
+        logger.info(f"index_all_done file_count={len(files_to_index)}")
 
     def start_watcher(self) -> None:
         """Start the background file watcher."""
@@ -184,28 +188,28 @@ class Engram:
             return
         self._watcher = MemoryWatcher(self._root, self._index_file)
         self._watcher.start()
-        log_info(f"watcher_started root={self._root}")
+        logger.info(f"watcher_started root={self._root}")
 
     def stop_watcher(self) -> None:
         """Stop the background file watcher."""
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None
-            log_info("watcher_stopped")
+            logger.info("watcher_stopped")
 
     def _index_file(self, file_path: Path) -> None:
         """Chunk, embed, and index a single file."""
         from chonkie import TokenChunker
 
-        log_debug(f"indexing_file path={file_path}")
+        logger.debug(f"indexing_file path={file_path}")
         text = file_path.read_text(encoding="utf-8")
         if not text.strip():
-            log_debug(f"indexing_skipped_empty path={file_path}")
+            logger.debug(f"indexing_skipped_empty path={file_path}")
             return
 
         chunker = TokenChunker(chunk_size=400, chunk_overlap=80)
         raw_chunks = chunker.chunk(text)
-        log_debug(f"chunking_done path={file_path} chunks={len(raw_chunks)}")
+        logger.debug(f"chunking_done path={file_path} chunks={len(raw_chunks)}")
 
         lines = text.splitlines()
         from .models import ChunkRecord
@@ -226,7 +230,7 @@ class Engram:
             )
 
         # Get embeddings for all chunks in one batch
-        log_debug(f"embedding_batch count={len(chunks)}")
+        logger.debug(f"embedding_batch count={len(chunks)}")
         embeddings = self._embedder.embed_batch([c.text for c in chunks])
 
         rel_path = str(file_path.relative_to(self._root))
@@ -242,7 +246,6 @@ class Engram:
             self.memory_search,
             self.memory_get,
         ]
-
 
 
 def _find_line_number(lines: list[str], chunk_text: str) -> int:

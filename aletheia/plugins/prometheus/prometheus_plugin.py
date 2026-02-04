@@ -12,15 +12,17 @@ The plugin provides synchronous functions for:
 
 import json
 from datetime import datetime, timedelta
-from typing import Annotated, Any, Dict, Optional, List
+from typing import Annotated, Any
 
 import requests
+import structlog
 from agent_framework import ToolProtocol
 
 from aletheia.config import Config
-from aletheia.utils.logging import log_debug, log_error
-from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
+from aletheia.plugins.loader import PluginInfoLoader
+
+logger = structlog.get_logger(__name__)
 
 # PromQL query templates for common use cases
 PROMQL_TEMPLATES = {
@@ -58,11 +60,11 @@ class PrometheusPlugin(BasePlugin):
         Raises:
             ValueError: If required configuration is missing
         """
-        log_debug("PrometheusPlugin::__init__:: called")
+        logger.debug("PrometheusPlugin::__init__:: called")
         self.name = "PrometheusPlugin"
 
         if config.prometheus_endpoint:
-            self.endpoint = config.prometheus_endpoint.rstrip('/')
+            self.endpoint = config.prometheus_endpoint.rstrip("/")
         self.timeout = config.prometheus_timeout_seconds
         self.session = requests.Session()
 
@@ -71,7 +73,7 @@ class PrometheusPlugin(BasePlugin):
         loader = PluginInfoLoader()
         self.instructions = loader.load("prometheus")
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get HTTP headers for authentication.
 
         Returns:
@@ -80,15 +82,15 @@ class PrometheusPlugin(BasePlugin):
         headers = {"Accept": "application/json"}
 
         # MUST HANDLE AUTHENTICATION IF NEEDED
-#        auth_type = self.auth_config.get("type")
-#        if auth_type == "bearer":
-#            token = self.auth_config.get("token")
-#            if token:
-#                headers["Authorization"] = f"Bearer {token}"
+        #        auth_type = self.auth_config.get("type")
+        #        if auth_type == "bearer":
+        #            token = self.auth_config.get("token")
+        #            if token:
+        #                headers["Authorization"] = f"Bearer {token}"
 
         return headers
 
-    def _make_request(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _make_request(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         """Make HTTP request to Prometheus API.
 
         Args:
@@ -101,44 +103,59 @@ class PrometheusPlugin(BasePlugin):
         Raises:
             Exception: If request fails
         """
-        log_debug(f"PrometheusPlugin::_make_request:: URL={url} PARAMS={params}")
+        logger.debug(f"PrometheusPlugin::_make_request:: URL={url} PARAMS={params}")
         headers = self._get_headers()
 
         try:
             response = self.session.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=self.timeout
+                url, params=params, headers=headers, timeout=self.timeout
             )
 
-            log_debug(f"PrometheusPlugin::_make_request:: HTTP Status={response.status_code}")
+            logger.debug(
+                f"PrometheusPlugin::_make_request:: HTTP Status={response.status_code}"
+            )
             if response.status_code == 401:
-                log_error("PrometheusPlugin::_make_request:: Authentication failed with 401")
-                raise requests.exceptions.HTTPError("Authentication failed: Invalid credentials")
+                logger.error(
+                    "PrometheusPlugin::_make_request:: Authentication failed with 401"
+                )
+                raise requests.exceptions.HTTPError(
+                    "Authentication failed: Invalid credentials"
+                )
 
             response.raise_for_status()
             data = response.json()
-            log_debug(f"PrometheusPlugin::_make_request:: Response Data={data}")
+            logger.debug(f"PrometheusPlugin::_make_request:: Response Data={data}")
 
             if data.get("status") != "success":
-                log_error(f"PrometheusPlugin::_make_request:: Query failed: {data}")
+                logger.error(f"PrometheusPlugin::_make_request:: Query failed: {data}")
                 error_msg = data.get("error", "Unknown error")
                 raise RuntimeError(f"Prometheus query failed: {error_msg}")
 
             return data
 
         except requests.RequestException as e:
-            log_error(f"PrometheusPlugin::_make_request:: HTTP request error: {str(e)}")
-            raise requests.exceptions.RequestException(f"HTTP request failed: {str(e)}") from e
+            logger.error(
+                f"PrometheusPlugin::_make_request:: HTTP request error: {str(e)}"
+            )
+            raise requests.exceptions.RequestException(
+                f"HTTP request failed: {str(e)}"
+            ) from e
 
     def fetch_prometheus_metrics(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
-        start_time: Annotated[Optional[str], "Start time in ISO format (e.g., '2024-10-15T10:00:00')"] = None,
-        end_time: Annotated[Optional[str], "End time in ISO format (e.g., '2024-10-15T12:00:00')"] = None,
-        step: Annotated[Optional[str], "Query resolution step (e.g., '1m', '5m', '1h')"] = None,
-        since_hours: Annotated[int, "If start_time/end_time not provided, hours to look back (default: 2)"] = 2,
+        start_time: Annotated[
+            str | None, "Start time in ISO format (e.g., '2024-10-15T10:00:00')"
+        ] = None,
+        end_time: Annotated[
+            str | None, "End time in ISO format (e.g., '2024-10-15T12:00:00')"
+        ] = None,
+        step: Annotated[
+            str | None, "Query resolution step (e.g., '1m', '5m', '1h')"
+        ] = None,
+        since_hours: Annotated[
+            int, "If start_time/end_time not provided, hours to look back (default: 2)"
+        ] = 2,
     ) -> Annotated[str, "JSON string containing metrics, summary, and metadata"]:
         """Fetch metrics from Prometheus using a PromQL query.
 
@@ -163,16 +180,16 @@ class PrometheusPlugin(BasePlugin):
                 "metadata": {...}
             }
         """
-        log_debug("PrometheusPlugin::fetch_prometheus_metrics:: called")
+        logger.debug("PrometheusPlugin::fetch_prometheus_metrics:: called")
         try:
             # Calculate time window
             if end_time:
-                end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
             else:
                 end_dt = datetime.now()
 
             if start_time:
-                start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
             else:
                 start_dt = end_dt - timedelta(hours=since_hours)
 
@@ -194,7 +211,7 @@ class PrometheusPlugin(BasePlugin):
                 "query": query,
                 "start": start_dt.timestamp(),
                 "end": end_dt.timestamp(),
-                "step": step
+                "step": step,
             }
 
             data = self._make_request(url, params)
@@ -209,11 +226,15 @@ class PrometheusPlugin(BasePlugin):
                 values = series.get("values", [])
 
                 for timestamp, value in values:
-                    all_values.append({
-                        "timestamp": datetime.fromtimestamp(float(timestamp)).isoformat(),
-                        "value": float(value) if value != "NaN" else None,
-                        "metric": metric_labels
-                    })
+                    all_values.append(
+                        {
+                            "timestamp": datetime.fromtimestamp(
+                                float(timestamp)
+                            ).isoformat(),
+                            "value": float(value) if value != "NaN" else None,
+                            "metric": metric_labels,
+                        }
+                    )
 
             # Generate summary
             valid_values = [v["value"] for v in all_values if v["value"] is not None]
@@ -226,32 +247,36 @@ class PrometheusPlugin(BasePlugin):
             else:
                 summary = f"No valid data points returned from {series_count} series"
 
-            return json.dumps({
-                "data": all_values,
-                "summary": summary,
-                "count": len(all_values),
-                "series_count": series_count,
-                "query": query,
-                "step": step,
-                "time_range": [start_dt.isoformat(), end_dt.isoformat()],
-                "metadata": {
-                    "endpoint": self.endpoint,
-                    "query_type": "range"
+            return json.dumps(
+                {
+                    "data": all_values,
+                    "summary": summary,
+                    "count": len(all_values),
+                    "series_count": series_count,
+                    "query": query,
+                    "step": step,
+                    "time_range": [start_dt.isoformat(), end_dt.isoformat()],
+                    "metadata": {"endpoint": self.endpoint, "query_type": "range"},
+                    "timestamp": datetime.now().isoformat(),
                 },
-                "timestamp": datetime.now().isoformat()
-            }, indent=2)
+                indent=2,
+            )
 
         except (ValueError, KeyError, TypeError, requests.RequestException) as e:
-            return json.dumps({
-                "error": f"Failed to fetch metrics: {str(e)}",
-                "query": query,
-                "endpoint": self.endpoint
-            })
+            return json.dumps(
+                {
+                    "error": f"Failed to fetch metrics: {str(e)}",
+                    "query": query,
+                    "endpoint": self.endpoint,
+                }
+            )
 
     def execute_promql_query(
         self,
         query: Annotated[str, "The PromQL query string to execute"],
-        time: Annotated[Optional[str], "Time for query evaluation in ISO format (default: now)"] = None,
+        time: Annotated[
+            str | None, "Time for query evaluation in ISO format (default: now)"
+        ] = None,
     ) -> Annotated[str, "JSON string containing instant query results"]:
         """Execute an instant PromQL query against Prometheus.
 
@@ -264,20 +289,17 @@ class PrometheusPlugin(BasePlugin):
         Returns:
             JSON string with query results
         """
-        log_debug("PrometheusPlugin::execute_promql_query:: called")
+        logger.debug("PrometheusPlugin::execute_promql_query:: called")
         try:
             # Calculate evaluation time
             if time:
-                eval_time = datetime.fromisoformat(time.replace('Z', '+00:00'))
+                eval_time = datetime.fromisoformat(time.replace("Z", "+00:00"))
             else:
                 eval_time = datetime.now()
 
             # Make instant query to Prometheus
             url = f"{self.endpoint}/api/v1/query"
-            params = {
-                "query": query,
-                "time": eval_time.timestamp()
-            }
+            params = {"query": query, "time": eval_time.timestamp()}
 
             data = self._make_request(url, params)
 
@@ -291,14 +313,20 @@ class PrometheusPlugin(BasePlugin):
 
                 if len(value_data) >= 2:
                     timestamp, value = value_data
-                    instant_values.append({
-                        "timestamp": datetime.fromtimestamp(float(timestamp)).isoformat(),
-                        "value": float(value) if value != "NaN" else None,
-                        "metric": metric_labels
-                    })
+                    instant_values.append(
+                        {
+                            "timestamp": datetime.fromtimestamp(
+                                float(timestamp)
+                            ).isoformat(),
+                            "value": float(value) if value != "NaN" else None,
+                            "metric": metric_labels,
+                        }
+                    )
 
             # Generate summary
-            valid_values = [v["value"] for v in instant_values if v["value"] is not None]
+            valid_values = [
+                v["value"] for v in instant_values if v["value"] is not None
+            ]
             if valid_values:
                 summary = f"{len(instant_values)} instant values. "
                 if len(valid_values) > 1:
@@ -309,36 +337,47 @@ class PrometheusPlugin(BasePlugin):
             else:
                 summary = "No valid instant values returned"
 
-            return json.dumps({
-                "data": instant_values,
-                "summary": summary,
-                "count": len(instant_values),
-                "query": query,
-                "evaluation_time": eval_time.isoformat(),
-                "metadata": {
-                    "endpoint": self.endpoint,
-                    "query_type": "instant"
+            return json.dumps(
+                {
+                    "data": instant_values,
+                    "summary": summary,
+                    "count": len(instant_values),
+                    "query": query,
+                    "evaluation_time": eval_time.isoformat(),
+                    "metadata": {"endpoint": self.endpoint, "query_type": "instant"},
+                    "timestamp": datetime.now().isoformat(),
                 },
-                "timestamp": datetime.now().isoformat()
-            }, indent=2)
+                indent=2,
+            )
 
         except (ValueError, KeyError, TypeError, requests.RequestException) as e:
-            return json.dumps({
-                "error": f"Failed to execute query: {str(e)}",
-                "query": query,
-                "endpoint": self.endpoint
-            })
+            return json.dumps(
+                {
+                    "error": f"Failed to execute query: {str(e)}",
+                    "query": query,
+                    "endpoint": self.endpoint,
+                }
+            )
 
     def build_promql_from_template(
         self,
         template: Annotated[
             str,
-            "Template name. Available: error_rate, latency_p95, latency_p99, request_rate, cpu_usage, memory_usage"
+            "Template name. Available: error_rate, latency_p95, latency_p99, request_rate, cpu_usage, memory_usage",
         ],
-        params: Annotated[str, "JSON string with template parameters (e.g., '{\"service\": \"payments-svc\", \"window\": \"5m\"}')"],
-        execute: Annotated[bool, "Whether to execute the query immediately (default: False)"] = False,
-        since_hours: Annotated[int, "If execute=True, number of hours to look back (default: 2)"] = 2,
-    ) -> Annotated[str, "The built PromQL query string, or JSON with query results if execute=True"]:
+        params: Annotated[
+            str,
+            'JSON string with template parameters (e.g., \'{"service": "payments-svc", "window": "5m"}\')',
+        ],
+        execute: Annotated[
+            bool, "Whether to execute the query immediately (default: False)"
+        ] = False,
+        since_hours: Annotated[
+            int, "If execute=True, number of hours to look back (default: 2)"
+        ] = 2,
+    ) -> Annotated[
+        str, "The built PromQL query string, or JSON with query results if execute=True"
+    ]:
         """Build a PromQL query from a template.
 
         Available templates:
@@ -359,7 +398,7 @@ class PrometheusPlugin(BasePlugin):
             If execute=False: The built PromQL query string
             If execute=True: JSON string with query results
         """
-        log_debug("PrometheusPlugin::build_promql_from_template:: called")
+        logger.debug("PrometheusPlugin::build_promql_from_template:: called")
         try:
             # Parse parameters
             try:
@@ -370,34 +409,39 @@ class PrometheusPlugin(BasePlugin):
             # Check if template exists
             if template not in PROMQL_TEMPLATES:
                 available = list(PROMQL_TEMPLATES.keys())
-                return json.dumps({
-                    "error": f"Unknown template: {template}",
-                    "available_templates": available
-                })
+                return json.dumps(
+                    {
+                        "error": f"Unknown template: {template}",
+                        "available_templates": available,
+                    }
+                )
 
             # Build query from template
             template_pattern = PROMQL_TEMPLATES[template]
             try:
                 query = template_pattern.format(**template_params)
             except KeyError as e:
-                return json.dumps({
-                    "error": f"Missing required parameter: {str(e)}",
-                    "template": template,
-                    "template_pattern": template_pattern
-                })
+                return json.dumps(
+                    {
+                        "error": f"Missing required parameter: {str(e)}",
+                        "template": template,
+                        "template_pattern": template_pattern,
+                    }
+                )
 
             # If not executing, just return the query
             if not execute:
-                return json.dumps({
-                    "query": query,
-                    "template": template,
-                    "parameters": template_params
-                })
+                return json.dumps(
+                    {
+                        "query": query,
+                        "template": template,
+                        "parameters": template_params,
+                    }
+                )
 
             # Execute the query using fetch_prometheus_metrics
             result_json = self.fetch_prometheus_metrics(
-                query=query,
-                since_hours=since_hours
+                query=query, since_hours=since_hours
             )
 
             # Parse and enhance the result
@@ -408,18 +452,22 @@ class PrometheusPlugin(BasePlugin):
             return json.dumps(result, indent=2)
 
         except (KeyError, ValueError, TypeError) as e:
-            return json.dumps({
-                "error": f"Failed to build/execute template query: {str(e)}",
-                "template": template
-            })
+            return json.dumps(
+                {
+                    "error": f"Failed to build/execute template query: {str(e)}",
+                    "template": template,
+                }
+            )
 
-    def list_promql_templates(self) -> Annotated[str, "JSON object mapping template names to their descriptions"]:
+    def list_promql_templates(
+        self,
+    ) -> Annotated[str, "JSON object mapping template names to their descriptions"]:
         """List available PromQL query templates.
 
         Returns:
             JSON string with template names, patterns, and descriptions
         """
-        log_debug("PrometheusPlugin::list_promql_templates:: called")
+        logger.debug("PrometheusPlugin::list_promql_templates:: called")
         templates_with_descriptions = {
             "error_rate": {
                 "pattern": PROMQL_TEMPLATES["error_rate"],
@@ -428,8 +476,8 @@ class PrometheusPlugin(BasePlugin):
                 "example_params": {
                     "metric_name": "http_requests_total",
                     "service": "payments-svc",
-                    "window": "5m"
-                }
+                    "window": "5m",
+                },
             },
             "latency_p95": {
                 "pattern": PROMQL_TEMPLATES["latency_p95"],
@@ -438,8 +486,8 @@ class PrometheusPlugin(BasePlugin):
                 "example_params": {
                     "metric_name": "http_request_duration_seconds",
                     "service": "payments-svc",
-                    "window": "5m"
-                }
+                    "window": "5m",
+                },
             },
             "latency_p99": {
                 "pattern": PROMQL_TEMPLATES["latency_p99"],
@@ -448,8 +496,8 @@ class PrometheusPlugin(BasePlugin):
                 "example_params": {
                     "metric_name": "http_request_duration_seconds",
                     "service": "payments-svc",
-                    "window": "5m"
-                }
+                    "window": "5m",
+                },
             },
             "request_rate": {
                 "pattern": PROMQL_TEMPLATES["request_rate"],
@@ -458,41 +506,41 @@ class PrometheusPlugin(BasePlugin):
                 "example_params": {
                     "metric_name": "http_requests_total",
                     "service": "payments-svc",
-                    "window": "5m"
-                }
+                    "window": "5m",
+                },
             },
             "cpu_usage": {
                 "pattern": PROMQL_TEMPLATES["cpu_usage"],
                 "description": "Container CPU usage rate",
                 "required_params": ["pod_pattern", "window"],
-                "example_params": {
-                    "pod_pattern": "payments-.*",
-                    "window": "5m"
-                }
+                "example_params": {"pod_pattern": "payments-.*", "window": "5m"},
             },
             "memory_usage": {
                 "pattern": PROMQL_TEMPLATES["memory_usage"],
                 "description": "Container memory working set bytes",
                 "required_params": ["pod_pattern"],
-                "example_params": {
-                    "pod_pattern": "payments-.*"
-                }
-            }
+                "example_params": {"pod_pattern": "payments-.*"},
+            },
         }
 
-        return json.dumps({
-            "templates": templates_with_descriptions,
-            "count": len(templates_with_descriptions),
-            "usage": "Use build_promql_from_template to create queries from these templates"
-        }, indent=2)
+        return json.dumps(
+            {
+                "templates": templates_with_descriptions,
+                "count": len(templates_with_descriptions),
+                "usage": "Use build_promql_from_template to create queries from these templates",
+            },
+            indent=2,
+        )
 
-    def test_prometheus_connection(self) -> Annotated[str, "Connection test result message"]:
+    def test_prometheus_connection(
+        self,
+    ) -> Annotated[str, "Connection test result message"]:
         """Test connection to Prometheus server.
 
         Returns:
             Success message if connection works, error message otherwise
         """
-        log_debug("PrometheusPlugin::test_prometheus_connection:: called")
+        logger.debug("PrometheusPlugin::test_prometheus_connection:: called")
         try:
             url = f"{self.endpoint}/api/v1/query"
             params = {"query": "up"}
@@ -501,33 +549,37 @@ class PrometheusPlugin(BasePlugin):
 
             # If we get here, the connection worked
             result_count = len(data.get("data", {}).get("result", []))
-            return json.dumps({
-                "success": True,
-                "message": "Successfully connected to Prometheus server",
-                "endpoint": self.endpoint,
-                "test_query_results": result_count,
-                "timestamp": datetime.now().isoformat()
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "message": "Successfully connected to Prometheus server",
+                    "endpoint": self.endpoint,
+                    "test_query_results": result_count,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
         except (requests.RequestException, ValueError) as e:
-            return json.dumps({
-                "success": False,
-                "message": f"Failed to connect to Prometheus server: {str(e)}",
-                "endpoint": self.endpoint,
-                "timestamp": datetime.now().isoformat()
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "message": f"Failed to connect to Prometheus server: {str(e)}",
+                    "endpoint": self.endpoint,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
     def __del__(self):
         """Cleanup session on deletion."""
-        if hasattr(self, 'session'):
+        if hasattr(self, "session"):
             self.session.close()
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
         return [
             self.fetch_prometheus_metrics,
             self.execute_promql_query,
             self.build_promql_from_template,
             self.list_promql_templates,
-            self.test_prometheus_connection
+            self.test_prometheus_connection,
         ]

@@ -1,8 +1,8 @@
 """Main Telegram bot logic and entry point."""
 
 import asyncio
-import logging
 
+import structlog
 from telegram import BotCommand, MenuButtonCommands, Update
 from telegram.ext import (
     Application,
@@ -25,7 +25,7 @@ from .handlers import (
 )
 from .session_manager import TelegramSessionManager
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -99,7 +99,11 @@ def get_bot_commands(config: Config) -> list[BotCommand]:
     custom_cmds = get_custom_commands(config)
     for cmd_name, custom_cmd in custom_cmds.items():
         # Telegram limits description to 256 chars
-        desc = custom_cmd.description[:256] if len(custom_cmd.description) > 256 else custom_cmd.description
+        desc = (
+            custom_cmd.description[:256]
+            if len(custom_cmd.description) > 256
+            else custom_cmd.description
+        )
         commands.append(BotCommand(cmd_name, desc))
 
     return commands
@@ -119,16 +123,9 @@ async def run_telegram_bot(
         enable_memory: Whether to enable Engram memory
     """
     # Configure logging
-    if verbose:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
-    else:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+    from aletheia.utils.logging import setup_logging
+
+    setup_logging(level="DEBUG" if verbose else "INFO")
 
     # Initialize session manager
     session_manager = TelegramSessionManager()

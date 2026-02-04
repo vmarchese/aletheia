@@ -4,17 +4,14 @@ This module provides utilities for executing external commands (kubectl, curl, g
 with optional verbose output for debugging.
 """
 
+import shlex
 import subprocess
 import time
-import shlex
-from typing import List, Optional, Dict
+
+import structlog
 from rich.console import Console
 
-from aletheia.utils.logging import (
-    is_trace_enabled,
-    log_command,
-    log_command_result,
-)
+logger = structlog.get_logger(__name__)
 
 
 # Global flag for verbose command output
@@ -42,14 +39,14 @@ def is_verbose_commands() -> bool:
 
 
 def run_command(
-    cmd: List[str],
+    cmd: list[str],
     capture_output: bool = True,
     text: bool = True,
     check: bool = True,
-    timeout: Optional[float] = None,
-    cwd: Optional[str] = None,
-    env: Optional[Dict[str, str]] = None,
-    **kwargs
+    timeout: float | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    **kwargs,
 ) -> subprocess.CompletedProcess:
     """Run an external command with optional verbose output.
 
@@ -73,10 +70,9 @@ def run_command(
         subprocess.CalledProcessError: If command fails and check=True
         subprocess.TimeoutExpired: If command times out
     """
-    # Log to trace file if enabled
+    # Log command execution
     cmd_str = " ".join(cmd)
-    if is_trace_enabled():
-        log_command(cmd_str, cwd=cwd)
+    logger.debug(f"Executing command: {cmd_str}", cwd=cwd)
 
     if _VERBOSE_COMMANDS:
         # Print command being executed
@@ -96,7 +92,7 @@ def run_command(
         timeout=timeout,
         cwd=cwd,
         env=env,
-        **kwargs
+        **kwargs,
     )
     duration = time.time() - start_time
 
@@ -107,11 +103,13 @@ def run_command(
         if result.stdout:
             _console.print("[bold green]  stdout:[/bold green]")
             # Truncate very long output
-            stdout_lines = result.stdout.split('\n')
+            stdout_lines = result.stdout.split("\n")
             if len(stdout_lines) > 50:
                 for line in stdout_lines[:25]:
                     _console.print(f"    {line}")
-                _console.print(f"    [dim]... ({len(stdout_lines) - 50} lines omitted) ...[/dim]")
+                _console.print(
+                    f"    [dim]... ({len(stdout_lines) - 50} lines omitted) ...[/dim]"
+                )
                 for line in stdout_lines[-25:]:
                     _console.print(f"    {line}")
             else:
@@ -120,11 +118,13 @@ def run_command(
 
         if result.stderr:
             _console.print("[bold red]  stderr:[/bold red]")
-            stderr_lines = result.stderr.split('\n')
+            stderr_lines = result.stderr.split("\n")
             if len(stderr_lines) > 50:
                 for line in stderr_lines[:25]:
                     _console.print(f"    {line}")
-                _console.print(f"    [dim]... ({len(stderr_lines) - 50} lines omitted) ...[/dim]")
+                _console.print(
+                    f"    [dim]... ({len(stderr_lines) - 50} lines omitted) ...[/dim]"
+                )
                 for line in stderr_lines[-25:]:
                     _console.print(f"    {line}")
             else:
@@ -133,23 +133,17 @@ def run_command(
 
         _console.print()  # Blank line after command output
 
-    # Log result to trace file
-    if is_trace_enabled():
-        log_command_result(
-            cmd_str,
-            result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            duration_seconds=duration
-        )
+    # Log command result
+    logger.debug(
+        f"Command completed: {cmd_str}",
+        returncode=result.returncode,
+        duration_seconds=round(duration, 3),
+    )
 
     # Now check for errors if requested
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(
-            result.returncode,
-            cmd,
-            output=result.stdout,
-            stderr=result.stderr
+            result.returncode, cmd, output=result.stdout, stderr=result.stderr
         )
 
     return result

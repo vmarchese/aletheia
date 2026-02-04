@@ -2,11 +2,11 @@
 Docstring for aletheia.commands
 """
 
-import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import structlog
 import yaml
 from pydantic import BaseModel, Field
 from rich.markdown import Markdown
@@ -17,7 +17,7 @@ from aletheia.agents.client import LLMClient
 if TYPE_CHECKING:
     from aletheia.config import Config
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 COMMANDS = {}
@@ -42,7 +42,9 @@ class CustomCommand(BaseModel):
     """Custom command loaded from markdown file with frontmatter."""
 
     name: str = Field(..., description="Display name of the command")
-    description: str = Field(..., description="Brief description of what the command does")
+    description: str = Field(
+        ..., description="Brief description of what the command does"
+    )
     instructions: str = Field(..., description="The actual command instructions/prompt")
     file_path: Path = Field(..., description="Path to the command file")
 
@@ -72,7 +74,9 @@ class Help(Command):
             if custom_commands:
                 console.print("\n[bold cyan]Custom Commands:[/bold cyan]")
                 for command_name, command in sorted(custom_commands.items()):
-                    console.print(f"  /{command_name} - {command.name}: {command.description}")
+                    console.print(
+                        f"  /{command_name} - {command.name}: {command.description}"
+                    )
             else:
                 console.print(
                     f"\n[dim]No custom commands found in {config.commands_directory}[/dim]"

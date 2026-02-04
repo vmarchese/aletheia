@@ -8,36 +8,33 @@ Handles session lifecycle operations including:
 - Deleting sessions and their data
 - Exporting/importing sessions for sharing
 """
-import json
+
 import base64
+import json
 import secrets
 import shutil
 import tarfile
 import tempfile
-import logging # Added for logging warning
-
-from enum import Enum
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from aletheia.encryption import encrypt_file, decrypt_file
-from aletheia.plugins.scratchpad.scratchpad import ScratchpadFileName
-from aletheia.plugins.scratchpad.scratchpad import Scratchpad
-from aletheia.utils.logging import log_debug, enable_trace_logging
+import structlog
 
 from aletheia.encryption import (
     create_session_encryption,
+    decrypt_data,
+    decrypt_file,
     decrypt_json_file,
     derive_session_key,
-    encrypt_json_file,
     encrypt_data,
-    decrypt_data
+    encrypt_file,
 )
-
-
 from aletheia.enums import SessionDataType
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad, ScratchpadFileName
+
+logger = structlog.get_logger(__name__)
 
 
 class SessionError(Exception):
@@ -57,7 +54,7 @@ class SessionMetadata:
     """Metadata for a session."""
 
     id: str
-    name: Optional[str]
+    name: str | None
     created: str  # ISO format datetime
     updated: str  # ISO format datetime
     status: str  # active | completed | failed
@@ -67,12 +64,12 @@ class SessionMetadata:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SessionMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> "SessionMetadata":
         """Create from dictionary."""
         # Handle backwards compatibility for sessions without verbose field
         if "verbose" not in data:
@@ -85,7 +82,7 @@ class SessionMetadata:
             data["total_input_tokens"] = 0
         if "total_output_tokens" not in data:
             data["total_output_tokens"] = 0
-            
+
         return cls(**data)
 
 
@@ -105,9 +102,9 @@ class Session:
     def __init__(
         self,
         session_id: str,
-        scratchpad: Optional[Scratchpad] = None,
-        session_dir: Optional[Path] = None,
-        password: Optional[str] = None,
+        scratchpad: Scratchpad | None = None,
+        session_dir: Path | None = None,
+        password: str | None = None,
         unsafe: bool = False,
     ):
         """
@@ -124,8 +121,8 @@ class Session:
         self.session_path = self.base_dir / session_id
         self.password = password
         self.unsafe = unsafe
-        self._key: Optional[bytes] = None
-        self._metadata: Optional[SessionMetadata] = None
+        self._key: bytes | None = None
+        self._metadata: SessionMetadata | None = None
         self._scratchpad = scratchpad
 
     @property
@@ -147,7 +144,7 @@ class Session:
         return self.session_path / "data"
 
     @property
-    def scratchpad(self) -> Optional[Scratchpad]:
+    def scratchpad(self) -> Scratchpad | None:
         """Get the scratchpad associated with this session."""
         return self._scratchpad
 
@@ -175,17 +172,19 @@ class Session:
         file_path = data_type_dir / name
 
         if self.unsafe:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(data)
         else:
-            ciphertext = encrypt_data(data.encode('utf-8'), self.get_key())
-            with open(file_path, 'wb') as f:
+            ciphertext = encrypt_data(data.encode("utf-8"), self.get_key())
+            with open(file_path, "wb") as f:
                 f.write(ciphertext)
 
         if self._scratchpad:
-            self._scratchpad.write_journal_entry("Session",
-                                                 f"Saved {_type.value} data",
-                                                 f"Saved {_type.value} data to {file_path}\n")
+            self._scratchpad.write_journal_entry(
+                "Session",
+                f"Saved {_type.value} data",
+                f"Saved {_type.value} data to {file_path}\n",
+            )
         return file_path
 
     def _ensure_password(self) -> None:
@@ -198,7 +197,7 @@ class Session:
         self._ensure_password()
         return derive_session_key(self.password, salt)
 
-    def _load_metadata(self, key: Optional[bytes]) -> SessionMetadata:
+    def _load_metadata(self, key: bytes | None) -> SessionMetadata:
         """Load session metadata from file (encrypted or plaintext).
 
         Args:
@@ -209,7 +208,7 @@ class Session:
         """
         # Check for plaintext metadata first (new standard)
         if self.metadata_file.exists():
-            with open(self.metadata_file, 'r', encoding='utf-8') as f:
+            with open(self.metadata_file, encoding="utf-8") as f:
                 data = json.load(f)
             return SessionMetadata.from_dict(data)
 
@@ -220,15 +219,17 @@ class Session:
                 # If we don't have a key but need to migrate, we can't fully load yet unless unsafe was explicitly requested but file is encrypted (shouldnt happen in valid state)
                 # But typically this method is called when we HAVE the key or are in unsafe mode.
                 # If we are here, it means we have an encrypted file.
-                raise SessionError("Cannot migrate legacy encrypted metadata without encryption key")
-            
+                raise SessionError(
+                    "Cannot migrate legacy encrypted metadata without encryption key"
+                )
+
             # Decrypt legacy file
             data = decrypt_json_file(legacy_encrypted_file, key)
-            
+
             # Auto-migrate to plaintext
             self._save_metadata(SessionMetadata.from_dict(data))
-            logging.info(f"Migrated session {self.session_id} metadata to plaintext.")
-            
+            logger.info(f"Migrated session {self.session_id} metadata to plaintext.")
+
             return SessionMetadata.from_dict(data)
 
         raise SessionNotFoundError(f"Session {self.session_id} metadata not found")
@@ -242,14 +243,14 @@ class Session:
 
         if self.unsafe:
             # Save plaintext metadata
-            with open(self.metadata_file, 'w', encoding='utf-8') as f:
+            with open(self.metadata_file, "w", encoding="utf-8") as f:
                 json.dump(metadata.to_dict(), f, indent=2)
         else:
             # Save plaintext metadata (even for "authenticated" sessions, metadata is now open)
-            with open(self.metadata_file, 'w', encoding='utf-8') as f:
+            with open(self.metadata_file, "w", encoding="utf-8") as f:
                 json.dump(metadata.to_dict(), f, indent=2)
 
-    def get_key(self) -> Optional[bytes]:
+    def get_key(self) -> bytes | None:
         """Get or derive encryption key (None in unsafe mode)."""
         if self.unsafe:
             return None
@@ -279,12 +280,12 @@ class Session:
         canary_file = self.session_path / ".canary"
         if canary_file.exists():
             try:
-                with open(canary_file, 'rb') as f:
+                with open(canary_file, "rb") as f:
                     data = f.read()
                 decrypted = decrypt_data(data, self._key)
                 if decrypted != b"ALETHEIA_CHECK":
                     raise SessionError("Invalid password (canary check failed)")
-                return # Validated
+                return  # Validated
             except Exception:
                 raise SessionError("Invalid password")
 
@@ -294,34 +295,33 @@ class Session:
         scratchpad_file = self.session_path / ScratchpadFileName.ENCRYPTED.value
         if scratchpad_file.exists():
             try:
-                with open(scratchpad_file, 'rb') as f:
+                with open(scratchpad_file, "rb") as f:
                     data = f.read()
-                if data: # Only check if not empty
+                if data:  # Only check if not empty
                     decrypt_data(data, self._key)
-                return # Validated (or empty)
+                return  # Validated (or empty)
             except Exception:
                 raise SessionError("Invalid password")
-        
+
         # 3. If no encrypted files exist, we can't validate, assume OK.
         # This happens for old empty sessions. User will just create new encrypted files with this password.
 
-
     def update_usage(self, input_tokens: int, output_tokens: int) -> None:
         """Update session token usage statistics.
-        
+
         Args:
             input_tokens: Total accumulated input tokens
             output_tokens: Total accumulated output tokens
         """
         if self._metadata is None:
-             # Try to load if key is available or unsafe
-             key = self.get_key() if not self.unsafe else None
-             self._metadata = self._load_metadata(key)
+            # Try to load if key is available or unsafe
+            key = self.get_key() if not self.unsafe else None
+            self._metadata = self._load_metadata(key)
 
         self._metadata.total_input_tokens = input_tokens
         self._metadata.total_output_tokens = output_tokens
         self._metadata.updated = datetime.now().isoformat()
-        
+
         self._save_metadata(self._metadata)
 
     def get_metadata(self) -> SessionMetadata:
@@ -342,9 +342,9 @@ class Session:
     @classmethod
     def create(
         cls,
-        name: Optional[str] = None,
-        password: Optional[str] = None,
-        session_dir: Optional[Path] = None,
+        name: str | None = None,
+        password: str | None = None,
+        session_dir: Path | None = None,
         verbose: bool = False,
         unsafe: bool = False,
     ) -> "Session":
@@ -366,17 +366,20 @@ class Session:
             SessionError: If password not provided when unsafe=False
         """
         if not unsafe and password is None:
-            raise SessionError("Password required to create session (unless --unsafe is used)")
+            raise SessionError(
+                "Password required to create session (unless --unsafe is used)"
+            )
 
         # Generate unique session ID
         session_id = cls._generate_session_id(session_dir)
 
         # Create session instance
         session = cls(
-                      session_id=session_id,
-                      session_dir=session_dir,
-                      password=password,
-                      unsafe=unsafe)
+            session_id=session_id,
+            session_dir=session_dir,
+            password=password,
+            unsafe=unsafe,
+        )
 
         # Check if session already exists
         if session.session_path.exists():
@@ -387,7 +390,7 @@ class Session:
 
         if unsafe:
             # In unsafe mode, use a dummy salt (no actual encryption)
-            salt = b'unsafe_mode_no_encryption'
+            salt = b"unsafe_mode_no_encryption"
             session._key = None
         else:
             # Generate encryption key and salt
@@ -401,7 +404,7 @@ class Session:
             # Create canary file for password validation
             canary_file = session.session_path / ".canary"
             canary_ciphertext = encrypt_data(b"ALETHEIA_CHECK", key)
-            with open(canary_file, 'wb') as f:
+            with open(canary_file, "wb") as f:
                 f.write(canary_ciphertext)
 
         # Create metadata
@@ -420,18 +423,14 @@ class Session:
         session._metadata = metadata
         session._save_metadata(metadata)
 
-        # Enable trace logging if verbose
-        if verbose:
-            enable_trace_logging(session.session_path)
-
         return session
 
     @classmethod
     def resume(
         cls,
         session_id: str,
-        password: Optional[str],
-        session_dir: Optional[Path] = None,
+        password: str | None,
+        session_dir: Path | None = None,
         unsafe: bool = False,
     ) -> "Session":
         """
@@ -451,10 +450,12 @@ class Session:
             SessionError: If password is incorrect
         """
 
-        session = cls(session_id=session_id,
-                      session_dir=session_dir,
-                      password=password,
-                      unsafe=unsafe)
+        session = cls(
+            session_id=session_id,
+            session_dir=session_dir,
+            password=password,
+            unsafe=unsafe,
+        )
 
         if not session.session_path.exists():
             raise SessionNotFoundError(f"Session {session_id} not found")
@@ -477,18 +478,14 @@ class Session:
 
             # Load metadata (metadata is plaintext now, so this doesn't validate password)
             session._metadata = session._load_metadata(session._key)
-            
+
             # Explicitly validate password
             session._validate_key()
-
-        # Enable trace logging if sticky verbose mode is on
-        if session._metadata.verbose:
-            enable_trace_logging(session.session_path)
 
         return session
 
     @classmethod
-    def list_sessions(cls, session_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    def list_sessions(cls, session_dir: Path | None = None) -> list[dict[str, Any]]:
         """
         List all sessions.
 
@@ -508,23 +505,23 @@ class Session:
             if session_path.is_dir():
                 metadata_path = session_path / "metadata.json"
                 encrypted_metadata_path = session_path / "metadata.encrypted"
-                
+
                 session_name = None
-                is_unsafe = "False" # Default to string "False" for consistency with existing return
-                
+                is_unsafe = "False"  # Default to string "False" for consistency with existing return
+
                 if metadata_path.exists():
-                   try:
-                       with open(metadata_path, 'r', encoding='utf-8') as f:
-                           meta = json.load(f)
-                           session_name = meta.get("name")
-                           # Handle unsafe: "True"/"False" string or boolean
-                           unsafe_val = meta.get("unsafe", False)
-                           if isinstance(unsafe_val, str):
-                               is_unsafe = unsafe_val == "True"
-                           else:
-                               is_unsafe = bool(unsafe_val)
-                   except Exception:
-                       pass
+                    try:
+                        with open(metadata_path, encoding="utf-8") as f:
+                            meta = json.load(f)
+                            session_name = meta.get("name")
+                            # Handle unsafe: "True"/"False" string or boolean
+                            unsafe_val = meta.get("unsafe", False)
+                            if isinstance(unsafe_val, str):
+                                is_unsafe = unsafe_val == "True"
+                            else:
+                                is_unsafe = bool(unsafe_val)
+                    except Exception:
+                        pass
                 elif encrypted_metadata_path.exists():
                     # Legacy session, name unknown without decryption
                     pass
@@ -559,7 +556,7 @@ class Session:
         # Remove entire session directory
         shutil.rmtree(self.session_path)
 
-    def export(self, output_path: Optional[Path] = None) -> Path:
+    def export(self, output_path: Path | None = None) -> Path:
         """
         Export session as encrypted tar.gz archive.
 
@@ -612,8 +609,8 @@ class Session:
     def import_session(
         cls,
         archive_path: Path,
-        password: Optional[str],
-        session_dir: Optional[Path] = None,
+        password: str | None,
+        session_dir: Path | None = None,
         unsafe: bool = False,
     ) -> "Session":
         """
@@ -633,7 +630,7 @@ class Session:
             SessionError: If import fails
         """
 
-        log_debug(f"Importing session from archive: {archive_path} unsafe: {unsafe}")
+        logger.debug(f"Importing session from archive: {archive_path} unsafe: {unsafe}")
         if not archive_path.exists():
             raise SessionError(f"Archive not found: {archive_path}")
 
@@ -689,7 +686,9 @@ class Session:
                 (temp_extract_path / session_id).rename(session_path)
 
             # Create session instance
-            session = cls(session_id=session_id, session_dir=session_dir, password=password)
+            session = cls(
+                session_id=session_id, session_dir=session_dir, password=password
+            )
             session._key = key
 
             # Load metadata to validate
@@ -703,7 +702,7 @@ class Session:
                 tmp_path.unlink()
 
     @staticmethod
-    def _generate_session_id(session_dir: Optional[Path] = None) -> str:
+    def _generate_session_id(session_dir: Path | None = None) -> str:
         """
         Generate unique session ID in format INC-XXXX.
 

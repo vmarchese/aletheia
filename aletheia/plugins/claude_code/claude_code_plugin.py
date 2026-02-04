@@ -1,15 +1,18 @@
 """Plugin for Claude code operations."""
-from typing import Annotated, List
-import subprocess
 
+import subprocess
+from typing import Annotated
+
+import structlog
 from agent_framework import ToolProtocol
 
-from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
-from aletheia.session import Session
-from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
+from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.session import Session
 from aletheia.utils.command import sanitize_command
+
+logger = structlog.get_logger(__name__)
 
 
 class ClaudeCodePlugin(BasePlugin):
@@ -31,35 +34,43 @@ class ClaudeCodePlugin(BasePlugin):
     def code_analyze(
         self,
         prompt: str,
-        repo_path: Annotated[str, "Path to the repository to analyze"]
+        repo_path: Annotated[str, "Path to the repository to analyze"],
     ) -> str:
         """Launches claude code with -p in non interactive mode on a folder containing the repository to analyze."""
         try:
-            log_debug(f"ClaudeCodePlugin::claude_code_analyze:: Launching claude code on repo: {repo_path}")
+            logger.debug(
+                f"ClaudeCodePlugin::claude_code_analyze:: Launching claude code on repo: {repo_path}"
+            )
 
             # Construct the command to run claude code
             command = [
                 "claude",
-                "--output-format", "text",
-                "--add-dir", repo_path,
-                "-p", prompt]
+                "--output-format",
+                "text",
+                "--add-dir",
+                repo_path,
+                "-p",
+                prompt,
+            ]
 
             # Run the command and capture output
-            result = subprocess.run(sanitize_command(command), capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                sanitize_command(command), capture_output=True, text=True, check=False
+            )
 
             if result.returncode != 0:
-                log_error(f"Claude code analysis failed: {result.stderr}")
+                logger.error(f"Claude code analysis failed: {result.stderr}")
                 return f"Error launching claude code: {result.stderr}"
 
-            log_debug("Claude code analysis completed successfully.")
+            logger.debug("Claude code analysis completed successfully.")
             return result.stdout
         except (subprocess.CalledProcessError, OSError) as e:
-            log_error(f"Error launching claude code: {str(e)}")
+            logger.error(f"Error launching claude code: {str(e)}")
             return f"Error launching claude code: {e}"
         except Exception as e:
-            log_error(f"Unexpected error launching claude code: {str(e)}")
+            logger.error(f"Unexpected error launching claude code: {str(e)}")
             raise
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
         return [self.code_analyze]

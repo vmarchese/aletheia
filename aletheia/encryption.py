@@ -14,7 +14,7 @@ import base64
 import json
 import secrets
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -62,13 +62,13 @@ def derive_session_key(password: str, salt: bytes, iterations: int = 100000) -> 
         iterations=iterations,
     )
 
-    key = kdf.derive(password.encode('utf-8'))
+    key = kdf.derive(password.encode("utf-8"))
     return key
 
 
-def create_session_encryption(password: str,
-                              salt_size: int = 32,
-                              iterations: int = 100000) -> Tuple[bytes, bytes]:
+def create_session_encryption(
+    password: str, salt_size: int = 32, iterations: int = 100000
+) -> tuple[bytes, bytes]:
     """Create encryption key and salt for new session.
 
     Args:
@@ -148,7 +148,9 @@ def decrypt_data(encrypted_data: bytes, key: bytes) -> bytes:
         raise DecryptionError(f"Decryption failed: {e}") from e
 
 
-def encrypt_file(filepath: Path, key: bytes, output_path: Optional[Path] = None) -> Path:
+def encrypt_file(
+    filepath: Path, key: bytes, output_path: Path | None = None
+) -> Path:
     """Encrypt file with Fernet.
 
     Args:
@@ -167,15 +169,15 @@ def encrypt_file(filepath: Path, key: bytes, output_path: Optional[Path] = None)
         raise FileNotFoundError(f"File not found: {filepath}")
 
     try:
-        with open(filepath, 'rb') as f:
+        with open(filepath, "rb") as f:
             plaintext = f.read()
 
         encrypted = encrypt_data(plaintext, key)
 
         if output_path is None:
-            output_path = filepath.with_suffix(filepath.suffix + '.encrypted')
+            output_path = filepath.with_suffix(filepath.suffix + ".encrypted")
 
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             f.write(encrypted)
 
         return output_path
@@ -185,9 +187,9 @@ def encrypt_file(filepath: Path, key: bytes, output_path: Optional[Path] = None)
         raise EncryptionError(f"File encryption failed: {e}") from e
 
 
-def decrypt_file(encrypted_filepath: Path,
-                 key: bytes,
-                 output_path: Optional[Path] = None) -> Path:
+def decrypt_file(
+    encrypted_filepath: Path, key: bytes, output_path: Path | None = None
+) -> Path:
     """Decrypt file with Fernet.
 
     Args:
@@ -206,7 +208,7 @@ def decrypt_file(encrypted_filepath: Path,
         raise FileNotFoundError(f"Encrypted file not found: {encrypted_filepath}")
 
     try:
-        with open(encrypted_filepath, 'rb') as f:
+        with open(encrypted_filepath, "rb") as f:
             encrypted = f.read()
 
         decrypted = decrypt_data(encrypted, key)
@@ -214,11 +216,11 @@ def decrypt_file(encrypted_filepath: Path,
         if output_path is None:
             # Remove .encrypted suffix
             name = encrypted_filepath.name
-            if name.endswith('.encrypted'):
+            if name.endswith(".encrypted"):
                 name = name[:-10]  # Remove '.encrypted'
             output_path = encrypted_filepath.parent / name
 
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             f.write(decrypted)
 
         return output_path
@@ -243,7 +245,7 @@ def encrypt_json(data: Any, key: bytes) -> bytes:
     """
     try:
         json_str = json.dumps(data, indent=2)
-        json_bytes = json_str.encode('utf-8')
+        json_bytes = json_str.encode("utf-8")
         return encrypt_data(json_bytes, key)
     except Exception as e:
         raise EncryptionError(f"JSON encryption failed: {e}") from e
@@ -264,7 +266,7 @@ def decrypt_json(encrypted_data: bytes, key: bytes) -> Any:
     """
     try:
         json_bytes = decrypt_data(encrypted_data, key)
-        json_str = json_bytes.decode('utf-8')
+        json_str = json_bytes.decode("utf-8")
         return json.loads(json_str)
     except DecryptionError:
         raise
@@ -288,7 +290,7 @@ def encrypt_json_file(data: Any, filepath: Path, key: bytes) -> Path:
     """
     try:
         encrypted = encrypt_json(data, key)
-        with open(filepath, 'wb') as f:
+        with open(filepath, "wb") as f:
             f.write(encrypted)
         return filepath
     except Exception as e:
@@ -313,7 +315,7 @@ def decrypt_json_file(filepath: Path, key: bytes) -> Any:
         raise FileNotFoundError(f"Encrypted file not found: {filepath}")
 
     try:
-        with open(filepath, 'rb') as f:
+        with open(filepath, "rb") as f:
             encrypted = f.read()
         return decrypt_json(encrypted, key)
     except DecryptionError:

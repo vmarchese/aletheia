@@ -6,7 +6,9 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from aletheia.utils.logging import log_debug, log_info
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class MemoryWatcher:
@@ -71,9 +73,9 @@ class MemoryWatcher:
                 for path, mtime in current.items():
                     old_mtime = self._mtimes.get(path)
                     if old_mtime is None or mtime > old_mtime:
-                        log_info(f"file_changed path={path}")
+                        logger.info(f"file_changed path={path}")
                         self._on_change(path)
                 self._mtimes = current
             except Exception:
-                log_debug("poll_error")
+                logger.debug("poll_error")
             self._stop_event.wait(self._poll_interval)

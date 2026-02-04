@@ -1,20 +1,23 @@
 """Timeline Agent implementation."""
 
+import structlog
+
 from aletheia.agents.base import BaseAgent
-from aletheia.utils.logging import log_debug
+
+logger = structlog.get_logger(__name__)
 
 
 class TimelineAgent(BaseAgent):
     """Timeline Agent for managing and visualizing event timelines."""
-    def __init__(self,
-                 name: str,
-                 instructions: str,
-                 description: str):
 
-        log_debug("TimelineAgent::__init__:: called")
+    def __init__(self, name: str, instructions: str, description: str):
 
-        super().__init__(name=name,
-                         description=description,
-                         instructions=instructions,
-                         scratchpad=None,
-                         render_instructions=False)
+        logger.debug("TimelineAgent::__init__:: called")
+
+        super().__init__(
+            name=name,
+            description=description,
+            instructions=instructions,
+            scratchpad=None,
+            render_instructions=False,
+        )
