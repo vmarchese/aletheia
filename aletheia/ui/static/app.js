@@ -621,19 +621,42 @@ function connectStream(sessionId) {
             } else {
                 appendMessage(data.content, 'bot');
             }
-        } else if (data.type === 'confidence') {
+        } else if (data.type === 'json_response') {
+            // Complete JSON response from the agent - parse and render
             stopThinking();
-            updateStructuredResponse('confidence', data.content);
-        } else if (data.type === 'agent') {
-            updateStructuredResponse('agent', data.content);
-        } else if (data.type === 'findings') {
-            updateStructuredResponse('findings', data.content);
-        } else if (data.type === 'decisions') {
-            updateStructuredResponse('decisions', data.content);
-        } else if (data.type === 'next_actions') {
-            updateStructuredResponse('next_actions', data.content);
-        } else if (data.type === 'errors') {
-            updateStructuredResponse('errors', data.content);
+            const response = data.content;
+            if (response.confidence !== undefined) {
+                updateStructuredResponse('confidence', response.confidence);
+            }
+            if (response.agent) {
+                updateStructuredResponse('agent', response.agent);
+            }
+            // Skip decisions/next_actions for orchestrator direct responses
+            const agentName = (response.agent || '').toLowerCase();
+            const isOrchestrator = agentName === 'orchestrator' || agentName === 'aletheia';
+            if (response.findings) {
+                // Clean up findings - remove markdown section headers from details
+                const findings = Object.assign({}, response.findings);
+                if (findings.details && typeof findings.details === 'string') {
+                    findings.details = findings.details
+                        .split('\n')
+                        .filter(line => !line.trim().startsWith('##'))
+                        .join('\n')
+                        .trim();
+                }
+                updateStructuredResponse('findings', findings);
+            }
+            if (!isOrchestrator) {
+                if (response.decisions) {
+                    updateStructuredResponse('decisions', response.decisions);
+                }
+                if (response.next_actions) {
+                    updateStructuredResponse('next_actions', response.next_actions);
+                }
+            }
+            if (response.errors && response.errors.length > 0) {
+                updateStructuredResponse('errors', response.errors);
+            }
         } else if (data.type === 'text_fallback') {
             // Fallback: JSON parsing failed, render raw content as markdown
             stopThinking();

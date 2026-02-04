@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agent_framework import ChatMessage, Role, TextContent, UsageContent, UsageDetails
+from agent_framework import ChatMessage, Role, TextContent
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -17,11 +17,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.instructions_loader import Loader
-from aletheia.agents.model import AgentResponse, Timeline
-from aletheia.cli import _build_plugins
-from aletheia.commands import COMMANDS, expand_custom_command, get_custom_commands
+from aletheia.agents.model import Timeline
+from aletheia.commands import COMMANDS, get_custom_commands
 from aletheia.config import load_config
 from aletheia.daemon.session_manager import GatewaySessionManager
 from aletheia.engram.tools import Engram
@@ -370,7 +368,7 @@ def create_web_app(
         async def stream_response():
             import json as json_module
 
-            last_sent_data = {}
+            last_sent_json = None
             parsed_successfully = False
 
             try:
@@ -380,7 +378,7 @@ def create_web_app(
 
                     if chunk_type == "json_chunk":
                         # Incremental JSON chunk (not yet parseable)
-                        # For web UI, we wait for json_complete to send structured events
+                        # Wait for json_complete to send the full response
                         pass
 
                     elif chunk_type == "json_complete":
@@ -388,120 +386,13 @@ def create_web_app(
                         parsed = chunk.get("parsed", {})
                         parsed_successfully = True
 
-                        # Helper to serialize for comparison (handles nested objects)
-                        def serialize_for_comparison(obj):
-                            return (
-                                json_module.dumps(obj, sort_keys=True) if obj else None
+                        # Only send if the response has changed
+                        current_json = json_module.dumps(parsed, sort_keys=True)
+                        if current_json != last_sent_json:
+                            await queue.put(
+                                {"type": "json_response", "content": parsed}
                             )
-
-                        # Send incremental structured events ONLY for changed fields
-                        if "confidence" in parsed:
-                            new_val = serialize_for_comparison(parsed.get("confidence"))
-                            old_val = serialize_for_comparison(
-                                last_sent_data.get("confidence")
-                            )
-                            if new_val != old_val:
-                                await queue.put(
-                                    {
-                                        "type": "confidence",
-                                        "content": parsed["confidence"],
-                                    }
-                                )
-                                last_sent_data["confidence"] = parsed["confidence"]
-
-                        if "agent" in parsed:
-                            new_val = serialize_for_comparison(parsed.get("agent"))
-                            old_val = serialize_for_comparison(
-                                last_sent_data.get("agent")
-                            )
-                            if new_val != old_val:
-                                await queue.put(
-                                    {"type": "agent", "content": parsed["agent"]}
-                                )
-                                last_sent_data["agent"] = parsed["agent"]
-
-                        # Check if orchestrator response (simplified rendering)
-                        agent_name = parsed.get("agent", "").lower()
-                        is_orchestrator = agent_name in ("orchestrator", "aletheia")
-
-                        if "findings" in parsed:
-                            new_val = serialize_for_comparison(parsed.get("findings"))
-                            old_val = serialize_for_comparison(
-                                last_sent_data.get("findings")
-                            )
-                            if new_val != old_val:
-                                # Clean up findings data - remove section headers from details
-                                findings = (
-                                    parsed["findings"].copy()
-                                    if isinstance(parsed["findings"], dict)
-                                    else parsed["findings"]
-                                )
-                                if isinstance(findings, dict) and "details" in findings:
-                                    # Remove markdown section headers from details field
-                                    details_text = findings["details"]
-                                    if isinstance(details_text, str):
-                                        # Remove lines starting with ## (markdown headers)
-                                        lines = details_text.split("\n")
-                                        cleaned_lines = [
-                                            line
-                                            for line in lines
-                                            if not line.strip().startswith("##")
-                                        ]
-                                        findings["details"] = "\n".join(
-                                            cleaned_lines
-                                        ).strip()
-
-                                await queue.put(
-                                    {"type": "findings", "content": findings}
-                                )
-                                last_sent_data["findings"] = parsed["findings"]
-
-                        # Skip decisions/next_actions for orchestrator direct responses
-                        if not is_orchestrator:
-                            if "decisions" in parsed:
-                                new_val = serialize_for_comparison(
-                                    parsed.get("decisions")
-                                )
-                                old_val = serialize_for_comparison(
-                                    last_sent_data.get("decisions")
-                                )
-                                if new_val != old_val:
-                                    await queue.put(
-                                        {
-                                            "type": "decisions",
-                                            "content": parsed["decisions"],
-                                        }
-                                    )
-                                    last_sent_data["decisions"] = parsed["decisions"]
-
-                            if "next_actions" in parsed:
-                                new_val = serialize_for_comparison(
-                                    parsed.get("next_actions")
-                                )
-                                old_val = serialize_for_comparison(
-                                    last_sent_data.get("next_actions")
-                                )
-                                if new_val != old_val:
-                                    await queue.put(
-                                        {
-                                            "type": "next_actions",
-                                            "content": parsed["next_actions"],
-                                        }
-                                    )
-                                    last_sent_data["next_actions"] = parsed[
-                                        "next_actions"
-                                    ]
-
-                        if "errors" in parsed and parsed.get("errors"):
-                            new_val = serialize_for_comparison(parsed.get("errors"))
-                            old_val = serialize_for_comparison(
-                                last_sent_data.get("errors")
-                            )
-                            if new_val != old_val:
-                                await queue.put(
-                                    {"type": "errors", "content": parsed["errors"]}
-                                )
-                                last_sent_data["errors"] = parsed["errors"]
+                            last_sent_json = current_json
 
                     elif chunk_type == "json_error":
                         # JSON parsing failed, send as text fallback
@@ -664,15 +555,11 @@ def create_web_app(
 
             message = ChatMessage(
                 role=Role.USER,
-                contents=[
-                    TextContent(
-                        text=f"""
+                contents=[TextContent(text=f"""
 Generate a timeline of the following troubleshooting session scratchpad data:
 
 {journal_content}
-"""
-                    )
-                ],
+""")],
             )
 
             response = await timeline_agent.agent.run(message, response_format=Timeline)
