@@ -3,10 +3,10 @@
 import asyncio
 import html as html_module
 import json
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from agent_framework import ChatMessage, TextContent, UsageContent, UsageDetails
 from telegram import Chat, Update
 from telegram.ext import ContextTypes
@@ -15,17 +15,11 @@ from aletheia.agents.model import AgentResponse
 from aletheia.commands import COMMANDS, expand_custom_command
 from aletheia.config import Config
 from aletheia.session import Session, SessionNotFoundError
-from aletheia.utils.logging import (
-    log_debug,
-    log_operation_complete,
-    log_operation_start,
-    log_warning,
-)
 
 from .formatter import format_agent_response, split_message
 from .session_manager import TelegramSessionManager
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
@@ -641,32 +635,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     session_manager: TelegramSessionManager = context.bot_data["session_manager"]
     config: Config = context.bot_data["config"]
 
-    log_debug(
+    logger.debug(
         f"Telegram: Received message from user {user_id}: {update.message.text[:100]}..."
     )
 
     # Check authorization
     if config.telegram_allowed_users and user_id not in config.telegram_allowed_users:
-        log_debug(f"Telegram: User {user_id} not authorized")
+        logger.debug(f"Telegram: User {user_id} not authorized")
         await update.message.reply_text("⛔ Unauthorized. Contact admin to get access.")
         return
 
     # Check for active session
     session_id = session_manager.get_active_session(user_id)
     if not session_id:
-        log_debug(f"Telegram: No active session for user {user_id}")
+        logger.debug(f"Telegram: No active session for user {user_id}")
         await update.message.reply_text(
             "⚠️ No active session. Start one with /new_session or /session resume &lt;id&gt;",
             parse_mode="HTML",
         )
         return
 
-    log_debug(f"Telegram: Using session {session_id} for user {user_id}")
+    logger.debug(f"Telegram: Using session {session_id} for user {user_id}")
 
     # Get orchestrator
     orchestrator = session_manager.get_orchestrator(session_id)
     if not orchestrator:
-        log_debug(f"Telegram: Orchestrator not found for session {session_id}")
+        logger.debug(f"Telegram: Orchestrator not found for session {session_id}")
         await update.message.reply_text(
             "❌ Session orchestrator not found. Please create a new session."
         )
@@ -678,7 +672,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Check for custom command expansion
     expanded, was_expanded = expand_custom_command(user_message, config)
     if was_expanded:
-        log_debug(
+        logger.debug(
             f"Telegram: Expanded custom command: {user_message} -> {expanded[:100]}..."
         )
         user_message = expanded
@@ -687,11 +681,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Track token usage
         completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
 
-        # Start operation tracking
-        op_start = log_operation_start(
-            "telegram_message_handler",
-            agent_name="Telegram",
-            details={"session_id": session_id, "user_id": user_id},
+        logger.debug(
+            "operation started: telegram_message_handler",
+            session_id=session_id,
+            user_id=user_id,
         )
 
         # Use continuous typing indicator while processing
@@ -717,7 +710,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     json_buffer += chunk.text
 
             # Parse once after stream completes
-            log_debug(f"Telegram: Stream complete, buffer size: {len(json_buffer)}")
+            logger.debug(f"Telegram: Stream complete, buffer size: {len(json_buffer)}")
 
             if json_buffer.strip():
                 try:
@@ -728,7 +721,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     agent_name = parsed.get("agent", "").lower()
                     is_orchestrator = agent_name in ("orchestrator", "aletheia")
 
-                    log_debug(
+                    logger.debug(
                         f"Telegram: Parsed JSON response from agent: {agent_name}, "
                         f"is_orchestrator: {is_orchestrator}"
                     )
@@ -740,20 +733,22 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         is_orchestrator=is_orchestrator,
                     )
 
-                    log_debug(f"Telegram: Formatted response length: {len(formatted)} chars")
+                    logger.debug(
+                        f"Telegram: Formatted response length: {len(formatted)} chars"
+                    )
 
                     # Split and send messages
                     chunks = split_message(formatted)
-                    log_debug(f"Telegram: Sending {len(chunks)} message chunk(s)")
+                    logger.debug(f"Telegram: Sending {len(chunks)} message chunk(s)")
                     for chunk_text in chunks:
                         await update.message.reply_text(chunk_text, parse_mode="HTML")
 
-                    log_debug("Telegram: Response sent successfully")
+                    logger.debug("Telegram: Response sent successfully")
 
                 except (json.JSONDecodeError, ValueError) as e:
                     # Fallback to raw text
-                    log_warning(f"Telegram: Failed to parse response: {e}")
-                    log_debug(f"Telegram: Buffer content: {json_buffer[:500]}...")
+                    logger.warning(f"Telegram: Failed to parse response: {e}")
+                    logger.debug(f"Telegram: Buffer content: {json_buffer[:500]}...")
                     fallback_text = html_module.escape(json_buffer.strip()[:3500])
                     await update.message.reply_text(
                         f"<code>🔗 {session_id}</code>\n{'─' * 20}\n{fallback_text}",
@@ -765,18 +760,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         output_tokens = completion_usage.output_token_count or 0
         if input_tokens > 0 or output_tokens > 0:
             orchestrator.session.update_usage(input_tokens, output_tokens)
-            log_debug(
+            logger.debug(
                 f"Telegram: Updated session usage: {input_tokens} input, {output_tokens} output tokens"
             )
 
         # Update last activity
         session_manager.update_activity(user_id)
-        log_operation_complete(
-            "telegram_message_handler",
-            op_start,
-            agent_name="Telegram",
-            result_summary="completed",
-        )
+        logger.debug("operation completed: telegram_message_handler")
 
     except Exception as e:
         logger.exception(f"Error processing message for user {user_id}")

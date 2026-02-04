@@ -11,24 +11,24 @@ The plugin provides synchronous functions for:
 """
 
 import json
-from typing import Annotated, Any, List, Optional
 from datetime import datetime, timedelta
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 import requests
-
-from botocore.session import Session as BotocoreSession
+import structlog
+from agent_framework import ToolProtocol
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
-
-from agent_framework import ToolProtocol
+from botocore.session import Session as BotocoreSession
 
 from aletheia.config import Config
-from aletheia.utils.logging import log_debug
-from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
-from aletheia.session import Session, SessionDataType
+from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+from aletheia.session import Session, SessionDataType
+
+logger = structlog.get_logger(__name__)
 
 # PromQL query templates for common use cases
 PROMQL_TEMPLATES = {
@@ -56,10 +56,7 @@ class AWSAMPPlugin(BasePlugin):
         session: requests.Session for reusing connections
     """
 
-    def __init__(self,
-                 config: Config,
-                 session: Session,
-                 scratchpad: Scratchpad):
+    def __init__(self, config: Config, session: Session, scratchpad: Scratchpad):
         """Initialize the Prometheus plugin.
 
         Args:
@@ -69,11 +66,11 @@ class AWSAMPPlugin(BasePlugin):
         Raises:
             ValueError: If required configuration is missing
         """
-        log_debug("AWSAMP::__init__:: called")
+        logger.debug("AWSAMP::__init__:: called")
         self.name = "AWSAMPPlugin"
 
         if config.prometheus_endpoint:
-            self.endpoint = config.prometheus_endpoint.rstrip('/')
+            self.endpoint = config.prometheus_endpoint.rstrip("/")
         self.timeout = config.prometheus_timeout_seconds
         self.session = session
         self.scratchpad = scratchpad
@@ -84,7 +81,7 @@ class AWSAMPPlugin(BasePlugin):
 
     def _save_response(
         self, data: Any, save_key: str, log_prefix: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """Save response data to session if session is available.
 
         Args:
@@ -97,19 +94,23 @@ class AWSAMPPlugin(BasePlugin):
         """
         if self.session:
             json_data = json.dumps(data, indent=2, default=str)
-            saved_path = self.session.save_data(SessionDataType.INFO, save_key, json_data)
-            log_debug(f"{log_prefix} Saved output to {saved_path}")
+            saved_path = self.session.save_data(
+                SessionDataType.INFO, save_key, json_data
+            )
+            logger.debug(f"{log_prefix} Saved output to {saved_path}")
             return str(saved_path)
-        return None        
+        return None
 
-    def _make_request(self,
-                      profile: str,
-                      region: str,
-                      workspace_id: str,
-                      endpoint: Optional[str] = None,
-                      params: Optional[List[dict]] = None,
-                      start_date: Optional[str] = None,
-                      end_date: Optional[str] = None) -> Any:
+    def _make_request(
+        self,
+        profile: str,
+        region: str,
+        workspace_id: str,
+        endpoint: str | None = None,
+        params: list[dict] | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> Any:
         """Make HTTP request to Prometheus API.
 
         Args:
@@ -133,9 +134,9 @@ class AWSAMPPlugin(BasePlugin):
         # 2. Build the AMP data-plane URL
         # Use query_range endpoint if start_date provided, otherwise use instant query
         url = (
-                f"https://aps-workspaces.{region}.amazonaws.com"
-                f"/workspaces/{workspace_id}/api/v1/{endpoint}"
-            )
+            f"https://aps-workspaces.{region}.amazonaws.com"
+            f"/workspaces/{workspace_id}/api/v1/{endpoint}"
+        )
 
         # 3. Merge params list into a single dictionary
         # Prometheus API expects form-encoded data: query=...&start=...&end=...
@@ -153,27 +154,29 @@ class AWSAMPPlugin(BasePlugin):
             # Calculate step automatically (1 point per minute by default)
             params_dict["step"] = "60s"
 
-        log_debug(f"PrometheusPlugin::_make_request:: Making request to {url} with params {params_dict}")
+        logger.debug(
+            f"PrometheusPlugin::_make_request:: Making request to {url} with params {params_dict}"
+        )
 
         # 4. Encode params as form data (application/x-www-form-urlencoded)
-        body = urlencode(params_dict).encode('utf-8')
+        body = urlencode(params_dict).encode("utf-8")
 
         # 5. Create and sign a botocore AWSRequest
         aws_request = AWSRequest(
             method="POST",
             url=url,
             data=body,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         SigV4Auth(creds, "aps", region).add_auth(aws_request)
 
         # 6. Prepare the AWSRequest (this gives AWSPreparedRequest)
         aws_prepared = aws_request.prepare()
 
-        log_debug("PrometheusPlugin::_make_request:: Prepared signed request")
-        log_debug(f"URL: {aws_prepared.url}")
-        log_debug(f"Headers: {aws_prepared.headers}")
-        log_debug(f"Body: {aws_prepared.body}")
+        logger.debug("PrometheusPlugin::_make_request:: Prepared signed request")
+        logger.debug(f"URL: {aws_prepared.url}")
+        logger.debug(f"Headers: {aws_prepared.headers}")
+        logger.debug(f"Body: {aws_prepared.body}")
 
         # 7. Translate AWSPreparedRequest → requests.Request → PreparedRequest
         req = requests.Request(
@@ -208,8 +211,13 @@ class AWSAMPPlugin(BasePlugin):
         region: Annotated[str, "AWS region of the Prometheus workspace"],
         profile: Annotated[str, "AWS CLI profile name for authentication"],
         workspace_id: Annotated[str, "AWS Managed Prometheus workspace ID"],
-        start_date: Annotated[Optional[str], "Start time in ISO format (YYYY-MM-DDTHH:MM:SSZ). Default: 4 hours ago"] = None,
-        end_date: Annotated[Optional[str], "End time in ISO format (YYYY-MM-DDTHH:MM:SSZ). Default: now"] = None,
+        start_date: Annotated[
+            str | None,
+            "Start time in ISO format (YYYY-MM-DDTHH:MM:SSZ). Default: 4 hours ago",
+        ] = None,
+        end_date: Annotated[
+            str | None, "End time in ISO format (YYYY-MM-DDTHH:MM:SSZ). Default: now"
+        ] = None,
     ) -> Annotated[str, "JSON string containing metrics, summary, and metadata"]:
         """Fetch metrics from Prometheus using a PromQL query.
 
@@ -235,7 +243,7 @@ class AWSAMPPlugin(BasePlugin):
                 "metadata": {...}
             }
         """
-        log_debug("PrometheusPlugin::fetch_prometheus_metrics:: called")
+        logger.debug("PrometheusPlugin::fetch_prometheus_metrics:: called")
         try:
             # Set default time range if not provided: now-4h to now
             if end_date is None:
@@ -247,7 +255,7 @@ class AWSAMPPlugin(BasePlugin):
             if start_date:
                 endpoint = "query_range"
             else:
-                endpoint = "query"                
+                endpoint = "query"
 
             result = self._make_request(
                 params=[{"query": query}],
@@ -256,24 +264,29 @@ class AWSAMPPlugin(BasePlugin):
                 region=region,
                 workspace_id=workspace_id,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
             )
-            self._save_response(result, "amp_metrics", "AWSAMPPlugin::fetch_prometheus_metrics::")
+            self._save_response(
+                result, "amp_metrics", "AWSAMPPlugin::fetch_prometheus_metrics::"
+            )
 
             return result
         except (ValueError, KeyError, TypeError, requests.RequestException) as e:
-            return json.dumps({
-                "error": f"Failed to fetch metrics: {str(e)}",
-                "query": query,
-                "endpoint": self.endpoint
-            })
+            return json.dumps(
+                {
+                    "error": f"Failed to fetch metrics: {str(e)}",
+                    "query": query,
+                    "endpoint": self.endpoint,
+                }
+            )
 
-    def get_series(self,
-                   profile: Annotated[str, "AWS CLI profile name for authentication"],
-                   region: Annotated[str, "AWS region of the Prometheus workspace"],
-                   workspace_id: Annotated[str, "AWS Managed Prometheus workspace ID"],
-                   matchers: Annotated[List[str], "PromQL series matchers string"],
-                   ) -> Annotated[List[dict], "List of matching time series"]:
+    def get_series(
+        self,
+        profile: Annotated[str, "AWS CLI profile name for authentication"],
+        region: Annotated[str, "AWS region of the Prometheus workspace"],
+        workspace_id: Annotated[str, "AWS Managed Prometheus workspace ID"],
+        matchers: Annotated[list[str], "PromQL series matchers string"],
+    ) -> Annotated[list[dict], "List of matching time series"]:
         """Get time series from Prometheus matching the given matchers.
 
         Args:
@@ -285,7 +298,7 @@ class AWSAMPPlugin(BasePlugin):
             end_date: End time in ISO format (optional)
         """
         # Implementation to fetch time series based on matchers
-        log_debug("PrometheusPlugin::get_series:: called")
+        logger.debug("PrometheusPlugin::get_series:: called")
         try:
             _matchers = []
             for matcher in matchers:
@@ -302,13 +315,17 @@ class AWSAMPPlugin(BasePlugin):
 
             return result
         except (ValueError, KeyError, TypeError, requests.RequestException) as e:
-            return json.dumps({
-                "error": f"Failed to fetch series: {str(e)}",
-                "matchers": matchers,
-                "endpoint": "series"
-            })
+            return json.dumps(
+                {
+                    "error": f"Failed to fetch series: {str(e)}",
+                    "matchers": matchers,
+                    "endpoint": "series",
+                }
+            )
 
-    def get_query_templates(self) -> Annotated[List[str], "List of available PromQL query templates"]:
+    def get_query_templates(
+        self,
+    ) -> Annotated[list[str], "List of available PromQL query templates"]:
         """Get the list of available PromQL query templates.
 
         Returns:
@@ -316,9 +333,6 @@ class AWSAMPPlugin(BasePlugin):
         """
         return list(PROMQL_TEMPLATES.keys())
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
-        return [
-            self.fetch_prometheus_metrics,
-            self.get_series
-        ]
+        return [self.fetch_prometheus_metrics, self.get_series]

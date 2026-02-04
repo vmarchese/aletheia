@@ -1,9 +1,8 @@
 """WebSocket server for Aletheia gateway."""
 
-import asyncio
-import logging
 from typing import Any
 
+import structlog
 import websockets
 from websockets.server import WebSocketServerProtocol
 
@@ -21,7 +20,7 @@ class WebSocketServer:
         self.port = port
         self.connections: dict[str, WebSocketServerProtocol] = {}
         self.server: websockets.WebSocketServer | None = None
-        self.logger = logging.getLogger("aletheia.daemon.server")
+        self.logger = structlog.get_logger("aletheia.daemon.server")
 
     async def start(self, handler) -> None:
         """Start WebSocket server with given handler."""
@@ -63,7 +62,9 @@ class WebSocketServer:
         if channel_id in self.connections:
             websocket = self.connections[channel_id]
             try:
-                msg = ProtocolMessage.create(message["type"], message.get("payload", {}))
+                msg = ProtocolMessage.create(
+                    message["type"], message.get("payload", {})
+                )
                 await websocket.send(msg.to_json())
             except Exception as e:
                 self.logger.error(f"Error sending to channel {channel_id}: {e}")

@@ -9,10 +9,10 @@ Flow: Frontend (REST/SSE) → WebChannelConnector → WebSocket → Gateway
 
 import asyncio
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
+import structlog
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -24,7 +24,7 @@ from aletheia.channels.base import BaseChannelConnector
 from aletheia.channels.manifest import ChannelCapability, ChannelManifest
 from aletheia.daemon.protocol import ProtocolMessage
 
-logger = logging.getLogger("aletheia.channel.web")
+logger = structlog.get_logger("aletheia.channel.web")
 
 
 class WebChannelConnector(BaseChannelConnector):

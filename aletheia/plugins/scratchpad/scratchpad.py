@@ -7,14 +7,21 @@ All data is encrypted at rest using session encryption keys.
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated
 
+import structlog
 from agent_framework import ToolProtocol
 
-from aletheia.encryption import encrypt_data, decrypt_data, EncryptionError, DecryptionError
-from aletheia.plugins.loader import PluginInfoLoader
-from aletheia.utils.logging import log_debug
+from aletheia.encryption import (
+    DecryptionError,
+    EncryptionError,
+    decrypt_data,
+    encrypt_data,
+)
 from aletheia.plugins.base import BasePlugin
+from aletheia.plugins.loader import PluginInfoLoader
+
+logger = structlog.get_logger(__name__)
 
 
 class ScratchpadFileName(Enum):
@@ -54,9 +61,13 @@ class Scratchpad(BasePlugin):
         self.encryption_key = encryption_key
         self.unsafe = encryption_key is None
         if self.unsafe:
-            self._scratchpad_file = self.session_dir / ScratchpadFileName.PLAINTEXT.value
+            self._scratchpad_file = (
+                self.session_dir / ScratchpadFileName.PLAINTEXT.value
+            )
         else:
-            self._scratchpad_file = self.session_dir / ScratchpadFileName.ENCRYPTED.value
+            self._scratchpad_file = (
+                self.session_dir / ScratchpadFileName.ENCRYPTED.value
+            )
 
         # Load existing scratchpad if it exists
         self._load_from_disk()
@@ -67,17 +78,17 @@ class Scratchpad(BasePlugin):
         """Load scratchpad from file (encrypted or plaintext)."""
         if self._scratchpad_file.exists():
             try:
-                with open(self._scratchpad_file, 'rb') as f:
+                with open(self._scratchpad_file, "rb") as f:
                     file_data = f.read()
 
                 if file_data:  # Only process if file has content
                     if self.unsafe:
                         # Plaintext mode - just decode
-                        self._journal = file_data.decode('utf-8')
+                        self._journal = file_data.decode("utf-8")
                     else:
                         # Encrypted mode - decrypt then decode
                         decrypted_data = decrypt_data(file_data, self.encryption_key)
-                        self._journal = decrypted_data.decode('utf-8')
+                        self._journal = decrypted_data.decode("utf-8")
                 else:
                     self._journal = ""
             except (DecryptionError, OSError):
@@ -89,21 +100,21 @@ class Scratchpad(BasePlugin):
     def _save_to_disk(self) -> None:
         """Save scratchpad to file (encrypted or plaintext)."""
         try:
-            journal_bytes = self._journal.encode('utf-8')
+            journal_bytes = self._journal.encode("utf-8")
 
             if self.unsafe:
                 # Plaintext mode - save directly
-                with open(self._scratchpad_file, 'wb') as f:
+                with open(self._scratchpad_file, "wb") as f:
                     f.write(journal_bytes)
             else:
                 # Encrypted mode - encrypt then save
                 encrypted_data = encrypt_data(journal_bytes, self.encryption_key)
-                with open(self._scratchpad_file, 'wb') as f:
+                with open(self._scratchpad_file, "wb") as f:
                     f.write(encrypted_data)
         except EncryptionError as e:
             raise EncryptionError(f"Failed to save scratchpad: {e}") from e
 
-#    #@ai_function
+    #    #@ai_function
     def read_scratchpad(self) -> str:
         """Read the whole scratchpad.
 
@@ -112,11 +123,13 @@ class Scratchpad(BasePlugin):
         """
         return self._journal
 
-#    #@ai_function
-    def write_journal_entry(self,
-                            agent: Annotated[str, "The name of the agent writing the entry"],
-                            description: Annotated[str, "Description of the entry"],
-                            text: Annotated[str, "Text content of the entry"]) -> str:
+    #    #@ai_function
+    def write_journal_entry(
+        self,
+        agent: Annotated[str, "The name of the agent writing the entry"],
+        description: Annotated[str, "Description of the entry"],
+        text: Annotated[str, "Text content of the entry"],
+    ) -> str:
         """Append an entry to the scratchpad and save to disk.
 
         Args:
@@ -130,7 +143,9 @@ class Scratchpad(BasePlugin):
             ...     "Collected 200 logs from payments-svc pod"
             ... )
         """
-        log_debug(f"Scratchpad::write_journal_entry: Writing journal entry by agent '{agent}' with description '{description}'")
+        logger.debug(
+            f"Scratchpad::write_journal_entry: Writing journal entry by agent '{agent}' with description '{description}'"
+        )
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = f"## Date: {timestamp}\n"
@@ -141,9 +156,6 @@ class Scratchpad(BasePlugin):
         self._save_to_disk()
         return "Entry added to scratchpad."
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Get the list of tools provided by the Scratchpad plugin."""
-        return [
-            self.write_journal_entry,
-            self.read_scratchpad
-        ]
+        return [self.write_journal_entry, self.read_scratchpad]

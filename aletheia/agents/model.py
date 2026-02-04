@@ -1,9 +1,9 @@
-""" Aletheia agent response model """
+"""Aletheia agent response model"""
+
 import json
-from typing import Any, List
+from typing import Any
 
 from pydantic import BaseModel
-
 
 # Install a custom default handler so all SerializableModel instances
 # work with json.dumps() directly.
@@ -21,6 +21,7 @@ json.JSONEncoder.default = _pydantic_default  # type: ignore[assignment]
 
 class ToolOutput(BaseModel):
     """Holds the output from a tool used by the agent."""
+
     tool_name: str  # Name of the tool
     command: str  # Command executed
     output: str  # Verbatim output from the tool
@@ -28,9 +29,12 @@ class ToolOutput(BaseModel):
 
 class Findings(BaseModel):
     """Holds the findings of the agent's analysis."""
+
     summary: str  # Summary of the findings
     details: str  # Detailed information about the findings
-    tool_outputs: List[ToolOutput] = []  # verbatim outputs from tools used during analysis
+    tool_outputs: list[ToolOutput] = (
+        []
+    )  # verbatim outputs from tools used during analysis
     additional_output: str = ""  # Any additional output or observations
     skill_used: str = ""  # Skill used to derive the findings
     knowledge_searched: bool = False  # Whether external knowledge was searched
@@ -38,33 +42,41 @@ class Findings(BaseModel):
 
 class Decisions(BaseModel):
     """Holds the decisions made by the agent."""
+
     approach: str  # Description of the approach taken
-    tools_used: List[str] = []  # List of tools used in the decision-making process
-    skills_loaded: List[str] = []  # List of skills loaded for the decision-making process
+    tools_used: list[str] = []  # List of tools used in the decision-making process
+    skills_loaded: list[str] = (
+        []
+    )  # List of skills loaded for the decision-making process
     rationale: str  # Rationale behind the decisions made
-    checklist: List[str]  # Checklist of items considered during decision-making
+    checklist: list[str]  # Checklist of items considered during decision-making
     additional_output: str = ""  # Any additional output or observations
 
 
 class NextActions(BaseModel):
     """Holds the next actions to be taken by the agent."""
-    steps: List[str]  # List of next action steps
-    next_requests: List[str]  # List of next requests to be made
+
+    steps: list[str]  # List of next action steps
+    next_requests: list[str]  # List of next requests to be made
     additional_output: str = ""  # Any additional output or observations
 
 
 class AgentResponse(BaseModel):
     """Structured response from the agent."""
+
     confidence: float  # Confidence level of the agent's response
     agent: str  # Name of the agent
-    findings: Findings   # Holds the findings of the agent's analysis
+    findings: Findings  # Holds the findings of the agent's analysis
     decisions: Decisions | None = None  # Holds the decisions made by the agent
-    next_actions: NextActions | None = None  # Holds the next actions to be taken by the agent
-    errors: List[str] = []  # Optional list of errors encountered
+    next_actions: NextActions | None = (
+        None  # Holds the next actions to be taken by the agent
+    )
+    errors: list[str] = []  # Optional list of errors encountered
 
 
 class TimelineEntry(BaseModel):
     """Holds a timeline entry for the troubleshooting session."""
+
     timestamp: str  # Timestamp of the entry
     entry_type: str  # Type of the entry (e.g., "observation", "action", "decision")
     content: str  # Content of the timeline entry
@@ -72,4 +84,5 @@ class TimelineEntry(BaseModel):
 
 class Timeline(BaseModel):
     """Holds the timeline of the troubleshooting session."""
-    entries: List[TimelineEntry]  # List of timeline entries
+
+    entries: list[TimelineEntry]  # List of timeline entries

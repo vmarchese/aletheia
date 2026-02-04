@@ -4,6 +4,7 @@ import json
 import subprocess
 from typing import Annotated
 
+import structlog
 from agent_framework import ToolProtocol
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.keys import KeyClient
@@ -21,7 +22,8 @@ from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.session import Session, SessionDataType
 from aletheia.utils.command import sanitize_command
-from aletheia.utils.logging import log_debug, log_error
+
+logger = structlog.get_logger(__name__)
 
 
 class AzurePlugin(BasePlugin):
@@ -46,7 +48,7 @@ class AzurePlugin(BasePlugin):
     ) -> str:
         """Helper to run Azure CLI commands and handle output, errors, and saving."""
         try:
-            log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
+            logger.debug(f"{log_prefix} Running command: [{' '.join(command)}]")
             process = subprocess.run(
                 args=sanitize_command(command), capture_output=True, check=False
             )
@@ -58,10 +60,10 @@ class AzurePlugin(BasePlugin):
             output = process.stdout.decode()
             if self.session and save_key:
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
-                log_debug(f"{log_prefix} Saved output to {saved}")
+                logger.debug(f"{log_prefix} Saved output to {saved}")
             return output
         except (OSError, ValueError, ImportError, subprocess.CalledProcessError) as e:
-            log_error(f"{log_prefix} Error launching Azure CLI: {str(e)}")
+            logger.error(f"{log_prefix} Error launching Azure CLI: {str(e)}")
             return f"Error launching Azure CLI: {e}"
 
     def azure_accounts(self) -> str:
@@ -534,16 +536,16 @@ class AzurePlugin(BasePlugin):
         """Lists all available Kusto queries for Log Analytics."""
         return json.dumps(self.kusto_query_loader.get_all_queries_as_dicts())
 
-    def azure_log_analytics_run_query(self,
-                                      workspace_id: Annotated[str, "The Log Analytics workspace ID"],
-                                      query: Annotated[str, "The Kusto query to run"]) -> str:
+    def azure_log_analytics_run_query(
+        self,
+        workspace_id: Annotated[str, "The Log Analytics workspace ID"],
+        query: Annotated[str, "The Kusto query to run"],
+    ) -> str:
         """Runs a Kusto query against the specified Log Analytics workspace."""
         credential = DefaultAzureCredential()
         client = LogsQueryClient(credential)
         response = client.query_workspace(
-            workspace_id=workspace_id,
-            query=query,
-            timespan=None
+            workspace_id=workspace_id, query=query, timespan=None
         )
         results = []
         if response.status == LogsQueryStatus.SUCCESS:
@@ -585,5 +587,5 @@ class AzurePlugin(BasePlugin):
             self.azure_fd_rule_list,
             self.azure_fd_rule_show,
             self.azure_log_analytics_query_templates,
-            self.azure_log_analytics_run_query
+            self.azure_log_analytics_run_query,
         ]

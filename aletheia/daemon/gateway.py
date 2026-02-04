@@ -2,10 +2,10 @@
 
 import asyncio
 import json
-import logging
 import signal
 from typing import Any
 
+import structlog
 from agent_framework import FunctionInvocationContext, FunctionMiddleware
 from websockets.server import WebSocketServerProtocol
 
@@ -35,7 +35,7 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
         next: Any,
     ) -> None:
         """Intercept function calls and send them via WebSocket."""
-        from aletheia.utils.logging import log_debug
+        logger = structlog.get_logger("aletheia.daemon.gateway.middleware")
 
         skipped_functions = ["write_journal_entry", "read_scratchpad"]
         try:
@@ -73,7 +73,7 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
                 )
                 await self.websocket.send(chunk_msg.to_json())
             except Exception as e:
-                log_debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
+                logger.debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
 
         await next(context)
 
@@ -96,16 +96,11 @@ class AletheiaGateway:
         self.engram: Engram | None = None
         self.running = False
 
-        # Configure logging for gateway and related modules
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
-        self.logger = logging.getLogger("aletheia.daemon.gateway")
+        # Configure logging for gateway
+        from aletheia.utils.logging import setup_logging
 
-        # Set log levels for our modules
-        logging.getLogger("aletheia.daemon.session_manager").setLevel(logging.INFO)
-        logging.getLogger("aletheia.daemon.telegram_integration").setLevel(logging.INFO)
+        setup_logging()
+        self.logger = structlog.get_logger("aletheia.daemon.gateway")
 
         # Function middleware for sending function call events via WebSocket
         self.function_middleware = GatewayFunctionMiddleware()

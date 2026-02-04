@@ -10,14 +10,16 @@ The plugin provides simplified async functions for:
 """
 
 import os
-from typing import Annotated, List
+from typing import Annotated
 
+import structlog
 from agent_framework import ToolProtocol
 
-from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.session import Session
+
+logger = structlog.get_logger(__name__)
 
 
 class LogFilePlugin:
@@ -36,8 +38,7 @@ class LogFilePlugin:
         self.instructions = loader.load("log_file")
 
     def fetch_logs_from_file(
-        self,
-        file_path: Annotated[str, "Path to the log file"]
+        self, file_path: Annotated[str, "Path to the log file"]
     ) -> str:
         """Fetch logs from a specified log file.
 
@@ -47,13 +48,14 @@ class LogFilePlugin:
         Returns:
             Logs from the specified file
         """
+
         def try_read(path: str) -> str:
             try:
-                log_debug(f"Fetching logs from file: {path}")
-                with open(path, 'r', encoding='utf-8') as f:
+                logger.debug(f"Fetching logs from file: {path}")
+                with open(path, encoding="utf-8") as f:
                     return f.read()
-            except (OSError, IOError) as e:
-                log_error(f"Error fetching logs from file {path}: {e}")
+            except OSError as e:
+                logger.error(f"Error fetching logs from file {path}: {e}")
                 return f"Error fetching logs: {e}"
 
         # 1. Check if the file exists at the given path
@@ -61,18 +63,22 @@ class LogFilePlugin:
             return try_read(file_path)
 
         # 2. If not, traverse session.data_dir to find the file by name
-        log_debug(f"File not found at {file_path}, searching in session.data_dir: {self.session.data_dir}")
+        logger.debug(
+            f"File not found at {file_path}, searching in session.data_dir: {self.session.data_dir}"
+        )
         file_name = os.path.basename(file_path)
         for root, _, files in os.walk(self.session.data_dir):
             if file_name in files:
                 found_path = os.path.join(root, file_name)
-                log_debug(f"Found file {file_name} at {found_path}")
+                logger.debug(f"Found file {file_name} at {found_path}")
                 return try_read(found_path)
 
         # 3. If still not found, return error
-        log_error(f"Log file {file_path} not found in session.data_dir: {self.session.data_dir}")
+        logger.error(
+            f"Log file {file_path} not found in session.data_dir: {self.session.data_dir}"
+        )
         return f"Error: Log file '{file_path}' not found in session data directory."
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
         return [self.fetch_logs_from_file]

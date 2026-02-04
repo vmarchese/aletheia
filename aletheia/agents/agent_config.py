@@ -18,10 +18,11 @@ following the same pattern as internal agents.
 from pathlib import Path
 from typing import Any
 
+import structlog
 import yaml
 from pydantic import BaseModel, Field
 
-from aletheia.utils.logging import log_debug
+logger = structlog.get_logger(__name__)
 
 
 class AgentDefinition(BaseModel):
@@ -58,7 +59,7 @@ class UserAgentConfig(BaseModel):
         with open(config_path, encoding="utf-8") as f:
             data: dict[str, Any] = yaml.safe_load(f)
 
-        log_debug(
-            f"UserAgentConfig::from_yaml:: "
-            f"Loaded config from {config_path}: {data}")
+        logger.debug(
+            f"UserAgentConfig::from_yaml:: " f"Loaded config from {config_path}: {data}"
+        )
         return cls.model_validate(data)

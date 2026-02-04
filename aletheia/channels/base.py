@@ -1,15 +1,15 @@
 """Base channel connector for Aletheia gateway."""
 
 import asyncio
-import logging
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
+import structlog
 import websockets
 from websockets.client import WebSocketClientProtocol
 
-from aletheia.channels.manifest import ChannelCapability, ChannelManifest
+from aletheia.channels.manifest import ChannelManifest
 from aletheia.daemon.protocol import ProtocolMessage
 
 
@@ -32,7 +32,7 @@ class BaseChannelConnector(ABC):
         self.websocket: WebSocketClientProtocol | None = None
         self.connected = False
         self.channel_id = str(uuid.uuid4())
-        self.logger = logging.getLogger(
+        self.logger = structlog.get_logger(
             f"aletheia.channel.{self.manifest().channel_type}"
         )
         self._reconnect_attempts = 0

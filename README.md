@@ -456,7 +456,55 @@ agents/
     instructions.yaml    # Agent instructions
 ```
 
-See the full documentation for details on creating custom agents.
+A typical `agent.py` could be:
+
+```python
+from typing import Annotated
+from aletheia.agents.base import BaseAgent
+from aletheia.plugins.base import BasePlugin
+
+
+class HelloWorldPlugin(BasePlugin):
+    def say_hello(self, name: Annotated[str, "Name of the person to greet"]) -> str:
+        return f"Hello, {name} from the HelloWorldAgent!"
+
+    def get_tools(self):
+        return [self.say_hello]
+
+class HelloWorldAgent(BaseAgent):
+    def __init__(self, name, config, description, session, scratchpad, **kwargs):
+        hello = HelloWorldPlugin()
+        plugins = [scratchpad, hello]  # Add your plugins here
+        super().__init__(
+            name=name, config=config, description=description,
+            session=session, plugins=plugins, **kwargs
+        )
+```        
+
+with  `config.yaml`: 
+
+```yaml
+agent:
+  name: hello_world
+  class: HelloWorldAgent
+  description: "My Hello World Agent"
+  enabled: true
+```  
+
+and `instructions.yaml`: 
+
+```yaml
+---
+agent:
+  name: hello_world
+  identity: |-
+        You are **HelloWorldAgent**, a specialized assistant responsible for **greeting users warmly and providing friendly interactions**.
+  guidelines: |-
+    - Be nice and friendly
+    - Use the say_hello tool to greet people
+    - Always add a joke about kittens after greeting
+```    
+
 
 ## Advanced Configuration
 
@@ -584,9 +632,3 @@ Contributions are welcome! Please:
 ## License
 
 MIT License - see LICENSE file for details.
-
-## Support
-
-- Documentation: [GitHub Wiki](https://github.com/your-org/aletheia/wiki)
-- Issues: [GitHub Issues](https://github.com/your-org/aletheia/issues)
-- Discussions: [GitHub Discussions](https://github.com/your-org/aletheia/discussions)

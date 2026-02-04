@@ -3,7 +3,6 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from aletheia.daemon.protocol import ChatEntry
 
@@ -90,7 +89,7 @@ class ChatHistoryLogger:
         if not self.history_file.exists():
             return entries
 
-        with open(self.history_file, "r") as f:
+        with open(self.history_file) as f:
             for line in f:
                 line = line.strip()
                 if not line:

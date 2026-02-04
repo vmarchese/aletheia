@@ -10,34 +10,47 @@ This specialized agent is responsible for:
 This agent focuses exclusively on Kubernetes data sources, providing better
 separation of concerns and easier maintenance compared to the generic DataFetcherAgent.
 """
+
+import structlog
+
 from aletheia.agents.base import BaseAgent
-from aletheia.session import Session
-from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.plugins.log_file.log_file_plugin import LogFilePlugin
+from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.plugins.utils.utils_plugin import UtilsPlugin
-from aletheia.utils.logging import log_debug
+from aletheia.session import Session
+
+logger = structlog.get_logger(__name__)
 from aletheia.config import Config
 
 
 class LogFileDataFetcher(BaseAgent):
     """Log File Data Fetcher Agent for collecting and processing log files."""
-    def __init__(self,
-                 name: str,
-                 config: Config,
-                 description: str,
-                 session: Session,
-                 scratchpad: Scratchpad,
-                 **kwargs):
 
-        log_debug("LogFileDataFetcher::__init__:: called")
+    def __init__(
+        self,
+        name: str,
+        config: Config,
+        description: str,
+        session: Session,
+        scratchpad: Scratchpad,
+        **kwargs,
+    ):
 
-        log_debug("LogFileDataFetcher::__init__:: setup plugins")
+        logger.debug("LogFileDataFetcher::__init__:: called")
+
+        logger.debug("LogFileDataFetcher::__init__:: setup plugins")
         log_file_plugin = LogFilePlugin(config=config, session=session)
 
-        plugins = [log_file_plugin, scratchpad, UtilsPlugin(config=config, session=session)]
+        plugins = [
+            log_file_plugin,
+            scratchpad,
+            UtilsPlugin(config=config, session=session),
+        ]
 
-        super().__init__(name=name,
-                         description=description,
-                         session=session,
-                         plugins=plugins,
-                         **kwargs)
+        super().__init__(
+            name=name,
+            description=description,
+            session=session,
+            plugins=plugins,
+            **kwargs,
+        )

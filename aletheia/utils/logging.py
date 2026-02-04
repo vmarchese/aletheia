@@ -1,550 +1,107 @@
-"""
-Trace logging for verbose mode  and logging.
+"""Logging configuration for Aletheia using structlog."""
 
-This module provides comprehensive trace and debug logging for Aletheia.
-
-Verbose mode:
-- All LLM prompts with metadata
-- All external command executions with output
-- Agent state transitions
-- Function entry/exit points
-
-debug mode (additional):
-- Agent operation start/end with duration
-- Scratchpad read/write operations
-- Plugin function invocations
-- LLM invocation summaries
-- State changes
-
-"""
+from __future__ import annotations
 
 import logging
+import os
+import sys
 from pathlib import Path
-from typing import Optional, Any, Dict
-from datetime import datetime
-from rich.console import Console
-from rich.syntax import Syntax
-from rich.panel import Panel
+
+import structlog
+
+_logging_configured = False
 
 
-# Global state for trace logging
-_TRACE_ENABLED = False
-_TRACE_LOGGER: Optional[logging.Logger] = None
-_TRACE_FILE_PATH: Optional[Path] = None
-_console = Console(stderr=True)
+def setup_logging(level: str | None = None, session_dir: Path | None = None) -> None:
+    """Configure structlog for the entire application.
 
-
-def enable_trace_logging(session_dir: Path) -> None:
-    """Enable trace logging to file.
+    Bridges stdlib logging so all existing logging.getLogger() loggers
+    also go through structlog processors.
 
     Args:
-        session_dir: Session directory path for trace log file
+        level: Log level string (DEBUG, INFO, WARNING, ERROR).
+               Falls back to ALETHEIA_LOG_LEVEL env var, then INFO.
+        session_dir: Optional session directory. When provided, adds a
+                     file handler writing to {session_dir}/aletheia_trace.log.
     """
-    global _TRACE_ENABLED, _TRACE_LOGGER, _TRACE_FILE_PATH
+    global _logging_configured
 
-    logging.basicConfig(level=logging.CRITICAL, handlers=[])
-    _TRACE_ENABLED = True
-    _TRACE_FILE_PATH = session_dir / "aletheia_trace.log"
+    log_level_str = (level or os.environ.get("ALETHEIA_LOG_LEVEL", "INFO")).upper()
+    numeric_level = getattr(logging, log_level_str, logging.INFO)
 
-    # Create logger
-    _TRACE_LOGGER = logging.getLogger("aletheia.trace")
-    _TRACE_LOGGER.setLevel(logging.DEBUG)
+    shared_processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
 
-    # Prevent propagation to root logger (which may have stdout handlers)
-    _TRACE_LOGGER.propagate = False
+    renderer = structlog.dev.ConsoleRenderer()
 
-    # Remove existing handlers
-    _TRACE_LOGGER.handlers.clear()
-
-    # Add file handler
-    file_handler = logging.FileHandler(_TRACE_FILE_PATH, mode='a', encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
-
-    # Format: timestamp | level | message
-    formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-8s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            renderer,
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(numeric_level),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=False,
     )
-    file_handler.setFormatter(formatter)
-    _TRACE_LOGGER.addHandler(file_handler)
 
-    # Log initialization
-    _TRACE_LOGGER.info("=" * 80)
-    _TRACE_LOGGER.info("Trace logging initialized")
-    _TRACE_LOGGER.info("Session directory: %s", session_dir)
-    _TRACE_LOGGER.info("=" * 80)
+    # Bridge stdlib logging through structlog
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
 
+    if session_dir is not None:
+        session_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(
+            session_dir / "aletheia_trace.log", mode="a", encoding="utf-8"
+        )
+        handlers.append(file_handler)
 
-def disable_trace_logging() -> None:
-    """Disable trace logging."""
-    global _TRACE_ENABLED, _TRACE_LOGGER, _TRACE_FILE_PATH
+    logging.basicConfig(
+        format="%(message)s",
+        level=numeric_level,
+        handlers=handlers,
+        force=True,
+    )
 
-    if _TRACE_LOGGER:
-        _TRACE_LOGGER.info("=" * 80)
-        _TRACE_LOGGER.info("Trace logging disabled")
-        _TRACE_LOGGER.info("=" * 80)
-        for handler in _TRACE_LOGGER.handlers:
-            handler.close()
-        _TRACE_LOGGER.handlers.clear()
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.dev.ConsoleRenderer(colors=False),
+        foreign_pre_chain=shared_processors,
+    )
+    for handler in logging.root.handlers:
+        handler.setFormatter(formatter)
 
-    _TRACE_ENABLED = False
-    _TRACE_LOGGER = None
-    _TRACE_FILE_PATH = None
-
-
-def is_trace_enabled() -> bool:
-    """Check if trace logging is enabled.
-
-    Returns:
-        True if trace logging is enabled
-    """
-    return _TRACE_ENABLED
+    _logging_configured = True
 
 
-def get_trace_file_path() -> Optional[Path]:
-    """Get the trace log file path.
+def enable_session_file_logging(session_dir: Path) -> None:
+    """Add a file handler for session trace logging.
 
-    Returns:
-        Path to trace log file, or None if not enabled
-    """
-    return _TRACE_FILE_PATH
-
-
-def log_prompt(
-    agent_name: str,
-    prompt: str,
-    model: str,
-    prompt_tokens: Optional[int] = None
-) -> None:
-    """Log an LLM prompt with metadata.
+    Call this after setup_logging() when a session is created or resumed
+    in verbose mode. Appends logs to {session_dir}/aletheia_trace.log.
 
     Args:
-        agent_name: Name of the agent making the call
-        prompt: The prompt text
-        model: Model being used
-        prompt_tokens: Estimated token count (optional)
+        session_dir: Session directory path.
     """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    timestamp = datetime.now().isoformat()
-
-    # Log to file with full details
-    _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info("LLM PROMPT | Agent: %s | Model: %s", agent_name, model)
-    _TRACE_LOGGER.info("Timestamp: %s", timestamp)
-    if prompt_tokens:
-        _TRACE_LOGGER.info("Estimated tokens: %d", prompt_tokens)
-    _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(prompt)
-    _TRACE_LOGGER.info("-" * 80)
-
-    # Log to console with syntax highlighting
-    _console.print(f"\n[bold magenta]📝 LLM Prompt ({agent_name})[/bold magenta]")
-    if prompt_tokens:
-        _console.print(f"[dim]Model: {model} | Time: {timestamp} | Tokens: ~{prompt_tokens}[/dim]")
-    else:
-        _console.print(f"[dim]Model: {model} | Time: {timestamp}[/dim]")
-
-    # Syntax highlight the prompt
-    syntax = Syntax(prompt, "markdown", theme="monokai", line_numbers=False)
-    panel = Panel(syntax, border_style="magenta")
-    _console.print(panel)
-
-
-def log_prompt_response(
-    agent_name: str,
-    response: Any,
-    completion_tokens: Optional[int] = None,
-    total_tokens: Optional[int] = None
-) -> None:
-    """Log LLM response to trace log and console.
-
-    Args:
-        agent_name: Name of the agent receiving the response
-        response: The response text (will be converted to string if needed)
-        completion_tokens: Completion token count (optional)
-        total_tokens: Total token count (optional)
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    # Ensure response is a string
-    response_str = str(response) if response is not None else ""
-
-    timestamp = datetime.now().isoformat()
-
-    # Log to file
-    _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info("LLM RESPONSE | Agent: %s", agent_name)
-    _TRACE_LOGGER.info("Timestamp: %s", timestamp)
-    if completion_tokens:
-        _TRACE_LOGGER.info("Completion tokens: %d", completion_tokens)
-    if total_tokens:
-        _TRACE_LOGGER.info("Total tokens: %d", total_tokens)
-    _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info(response_str)
-    _TRACE_LOGGER.info("-" * 80)
-
-    # Log to console
-    _console.print(f"\n[bold green]✅ LLM Response ({agent_name})[/bold green]")
-    token_info = []
-    if completion_tokens:
-        token_info.append(f"Completion tokens: {completion_tokens}")
-    if total_tokens:
-        token_info.append(f"Total tokens: {total_tokens}")
-
-    if token_info:
-        _console.print(f"[dim]Time: {timestamp} | {' | '.join(token_info)}[/dim]")
-    else:
-        _console.print(f"[dim]Time: {timestamp}[/dim]")
-
-    # Show truncated response in console
-    if len(response_str) > 500:
-        _console.print(f"{response_str[:500]}[dim]... (truncated, see trace log for full response)[/dim]\n")
-    else:
-        _console.print(f"{response_str}\n")
-
-
-def log_command(
-    command: str,
-    cwd: Optional[str] = None,
-    env_summary: Optional[str] = None
-) -> None:
-    """Log command execution start.
-
-    Args:
-        command: Command string
-        cwd: Working directory
-        env_summary: Summary of relevant environment variables
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    timestamp = datetime.now().isoformat()
-
-    _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info("COMMAND START | Timestamp: %s", timestamp)
-    _TRACE_LOGGER.info("Command: %s", command)
-    if cwd:
-        _TRACE_LOGGER.info("Working directory: %s", cwd)
-    if env_summary:
-        _TRACE_LOGGER.info("Environment: %s", env_summary)
-    _TRACE_LOGGER.info("-" * 80)
-
-
-def log_command_result(
-    command: str,
-    exit_code: int,
-    stdout: Optional[str] = None,
-    stderr: Optional[str] = None,
-    duration_seconds: Optional[float] = None
-) -> None:
-    """Log command execution result.
-
-    Args:
-        command: Command string
-        exit_code: Command exit code
-        stdout: Standard output
-        stderr: Standard error
-        duration_seconds: Execution duration
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    timestamp = datetime.now().isoformat()
-
-    _TRACE_LOGGER.info("-" * 80)
-    _TRACE_LOGGER.info("COMMAND END | Timestamp: %s", timestamp)
-    _TRACE_LOGGER.info("Command: %s", command)
-    _TRACE_LOGGER.info("Exit code: %d", exit_code)
-    if duration_seconds is not None:
-        _TRACE_LOGGER.info("Duration: %.3fs", duration_seconds)
-    _TRACE_LOGGER.info("-" * 80)
-
-    if stdout:
-        _TRACE_LOGGER.info("STDOUT:")
-        _TRACE_LOGGER.info(stdout)
-
-    if stderr:
-        _TRACE_LOGGER.info("STDERR:")
-        _TRACE_LOGGER.info(stderr)
-
-    _TRACE_LOGGER.info("-" * 80)
-
-
-def log_agent_transition(
-    from_agent: Optional[str],
-    to_agent: str,
-    reason: Optional[str] = None
-) -> None:
-    """Log agent-to-agent transition.
-
-    Args:
-        from_agent: Previous agent name (None if starting)
-        to_agent: Next agent name
-        reason: Reason for transition
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    timestamp = datetime.now().isoformat()
-
-    _TRACE_LOGGER.info("=" * 80)
-    if from_agent:
-        _TRACE_LOGGER.info("AGENT TRANSITION | %s → %s", from_agent, to_agent)
-    else:
-        _TRACE_LOGGER.info("AGENT START | %s", to_agent)
-    _TRACE_LOGGER.info("Timestamp: %s", timestamp)
-    if reason:
-        _TRACE_LOGGER.info("Reason: %s", reason)
-    _TRACE_LOGGER.info("=" * 80)
-
-    # Console output
-    if from_agent:
-        _console.print(f"\n[bold blue]🔄 Agent Transition: {from_agent} → {to_agent}[/bold blue]")
-    else:
-        _console.print(f"\n[bold blue]🚀 Starting Agent: {to_agent}[/bold blue]")
-    if reason:
-        _console.print(f"[dim]Reason: {reason}[/dim]")
-    _console.print()
-
-
-def log_function_entry(
-    function_name: str,
-    args: Optional[Dict[str, Any]] = None
-) -> None:
-    """Log function entry for debugging.
-
-    Args:
-        function_name: Name of the function
-        args: Function arguments (optional)
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.debug("→ ENTER %s", function_name)
-    if args:
-        _TRACE_LOGGER.debug("  Args: %s", args)
-
-
-def log_function_exit(
-    function_name: str,
-    result: Optional[Any] = None
-) -> None:
-    """Log function exit for debugging.
-
-    Args:
-        function_name: Name of the function
-        result: Return value (optional)
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.debug("← EXIT %s", function_name)
-    if result is not None:
-        _TRACE_LOGGER.debug("  Result: %s", result)
-
-
-def log_info(message: str) -> None:
-    """Log an informational message.
-
-    Args:
-        message: Message to log
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.info(message)
-
-
-def log_warning(message: str) -> None:
-    """Log a warning message.
-
-    Args:
-        message: Warning message
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.warning(message)
-
-
-def log_error(message: str, exception: Optional[Exception] = None) -> None:
-    """Log an error message.
-
-    Args:
-        message: Error message
-        exception: Exception object (optional)
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.error(message)
-    if exception:
-        _TRACE_LOGGER.exception(exception)
-
-
-def log_debug(message: str) -> None:
-    """Log a debug message.
-
-    Args:
-        message: Debug message
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.debug(message)
-
-
-def log_operation_start(
-    operation_name: str,
-    agent_name: Optional[str] = None,
-    details: Optional[Dict[str, Any]] = None
-) -> datetime:
-    """Log the start of an operation and return start time for duration tracking.
-
-    Args:
-        operation_name: Name of the operation (e.g., "fetch_logs", "analyze_patterns")
-        agent_name: Name of the agent performing the operation
-        details: Optional dictionary with operation details
-
-    Returns:
-        Start time for duration calculation
-    """
-    start_time = datetime.now()
-
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return start_time
-
-    prefix = f"{agent_name} | " if agent_name else ""
-    _TRACE_LOGGER.debug("⚙️  %s%s - STARTING", prefix, operation_name)
-
-    if details:
-        for key, value in details.items():
-            _TRACE_LOGGER.debug("   %s: %s", key, value)
-
-    return start_time
-
-
-def log_operation_complete(
-    operation_name: str,
-    start_time: datetime,
-    agent_name: Optional[str] = None,
-    result_summary: Optional[str] = None
-) -> None:
-    """Log the completion of an operation with duration.
-
-    Args:
-        operation_name: Name of the operation
-        start_time: Start time returned from log_operation_start
-        agent_name: Name of the agent performing the operation
-        result_summary: Optional summary of the result
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    duration = (datetime.now() - start_time).total_seconds() * 1000  # Convert to milliseconds
-    prefix = f"{agent_name} | " if agent_name else ""
-
-    _TRACE_LOGGER.debug("✅ %s%s - COMPLETED (duration: %.2fms)", prefix, operation_name, duration)
-
-    if result_summary:
-        _TRACE_LOGGER.debug("   Result: %s", result_summary)
-
-
-def log_scratchpad_operation(
-    operation: str,
-    section: str,
-    agent_name: Optional[str] = None,
-    data_summary: Optional[str] = None
-) -> None:
-    """Log scratchpad read/write operations.
-
-    Args:
-        operation: Type of operation ("READ", "WRITE", "APPEND")
-        section: Scratchpad section name
-        agent_name: Name of the agent performing the operation
-        data_summary: Optional summary of the data (first 100 chars)
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    prefix = f"{agent_name} | " if agent_name else ""
-    _TRACE_LOGGER.debug("📋 %sSCRATCHPAD %s | Section: %s", prefix, operation, section)
-
-    if data_summary:
-        # Truncate if too long
-        if len(data_summary) > 100:
-            data_summary = data_summary[:100] + "..."
-        _TRACE_LOGGER.debug("   Data: %s", data_summary)
-
-
-def log_state_change(
-    entity: str,
-    old_state: str,
-    new_state: str,
-    reason: Optional[str] = None
-) -> None:
-    """Log a state change in the system.
-
-    Args:
-        entity: Name of the entity changing state (e.g., "session", "agent")
-        old_state: Previous state
-        new_state: New state
-        reason: Optional reason for the state change
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.debug("🔄 STATE CHANGE | %s: %s → %s", entity, old_state, new_state)
-
-    if reason:
-        _TRACE_LOGGER.debug("   Reason: %s", reason)
-
-
-def log_plugin_invocation(
-    plugin_name: str,
-    function_name: str,
-    parameters: Dict[str, Any]
-) -> None:
-    """Log a plugin function invocation.
-
-    Args:
-        plugin_name: Name of the plugin
-        function_name: Name of the function being called
-        parameters: Function parameters
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    _TRACE_LOGGER.debug("🔌 PLUGIN CALL | %s.%s", plugin_name, function_name)
-
-    for key, value in parameters.items():
-        # Truncate long values
-        value_str = str(value)
-        if len(value_str) > 200:
-            value_str = value_str[:200] + "..."
-        _TRACE_LOGGER.debug("   %s: %s", key, value_str)
-
-
-def log_llm_invocation(
-    agent_name: str,
-    model: str,
-    prompt_summary: str,
-    estimated_tokens: Optional[int] = None
-) -> None:
-    """Log an LLM invocation with summary (detailed prompts use log_prompt).
-
-    Args:
-        agent_name: Name of the agent making the call
-        model: Model being used
-        prompt_summary: Brief summary of the prompt (first 100 chars)
-        estimated_tokens: Estimated token count
-    """
-    if not _TRACE_ENABLED or not _TRACE_LOGGER:
-        return
-
-    token_info = f" (~{estimated_tokens} tokens)" if estimated_tokens else ""
-    _TRACE_LOGGER.debug("🤖 LLM INVOKE | %s | Model: %s%s", agent_name, model, token_info)
-    _TRACE_LOGGER.debug("   Prompt summary: %s", prompt_summary)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    trace_file = session_dir / "aletheia_trace.log"
+
+    shared_processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+
+    file_handler = logging.FileHandler(trace_file, mode="a", encoding="utf-8")
+    file_handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            processor=structlog.dev.ConsoleRenderer(colors=False),
+            foreign_pre_chain=shared_processors,
+        )
+    )
+    logging.root.addHandler(file_handler)

@@ -15,6 +15,7 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
+import structlog
 import typer
 from agent_framework import (
     AgentThread,
@@ -62,8 +63,10 @@ from aletheia.encryption import DecryptionError, decrypt_file
 from aletheia.engram.tools import Engram
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session, SessionNotFoundError
-from aletheia.utils import enable_trace_logging, set_verbose_commands
-from aletheia.utils.logging import log_debug
+from aletheia.utils import set_verbose_commands
+from aletheia.utils.logging import enable_session_file_logging, setup_logging
+
+logger = structlog.get_logger(__name__)
 
 THINKING_MESSAGES = [
     "🕺 Galavanting...",
@@ -371,9 +374,7 @@ async def init_orchestrator(
     return orchestrator
 
 
-async def _start_investigation(
-    session: Session, enable_memory: bool = True
-) -> None:
+async def _start_investigation(session: Session, enable_memory: bool = True) -> None:
     """
     Start the investigation workflow for a session.
 
@@ -536,19 +537,39 @@ async def _start_investigation(
                                         current_agent_name = parsed_response["agent"]
 
                                     # Check if this is a direct orchestrator response (case-insensitive)
-                                    agent_lower = current_agent_name.lower() if current_agent_name else ""
-                                    is_orchestrator = agent_lower in ("orchestrator", "aletheia")
+                                    agent_lower = (
+                                        current_agent_name.lower()
+                                        if current_agent_name
+                                        else ""
+                                    )
+                                    is_orchestrator = agent_lower in (
+                                        "orchestrator",
+                                        "aletheia",
+                                    )
 
                                     if is_orchestrator:
                                         # Simplified rendering for orchestrator direct responses
                                         if "findings" in parsed_response:
                                             findings = parsed_response["findings"]
-                                            if "summary" in findings and findings["summary"]:
-                                                display_parts.append(f"{findings['summary']}\n")
-                                            if "details" in findings and findings["details"]:
-                                                display_parts.append(f"\n{findings['details']}\n")
+                                            if (
+                                                "summary" in findings
+                                                and findings["summary"]
+                                            ):
+                                                display_parts.append(
+                                                    f"{findings['summary']}\n"
+                                                )
+                                            if (
+                                                "details" in findings
+                                                and findings["details"]
+                                            ):
+                                                display_parts.append(
+                                                    f"\n{findings['details']}\n"
+                                                )
                                         # Show errors if any
-                                        if "errors" in parsed_response and parsed_response["errors"]:
+                                        if (
+                                            "errors" in parsed_response
+                                            and parsed_response["errors"]
+                                        ):
                                             display_parts.append("\n⚠️ **Errors:**\n")
                                             for error in parsed_response["errors"]:
                                                 display_parts.append(f"- {error}\n")
@@ -590,8 +611,12 @@ async def _start_investigation(
                                                 "tool_outputs" in findings
                                                 and findings["tool_outputs"]
                                             ):
-                                                display_parts.append("**Tool Outputs:**\n")
-                                                for tool_output in findings["tool_outputs"]:
+                                                display_parts.append(
+                                                    "**Tool Outputs:**\n"
+                                                )
+                                                for tool_output in findings[
+                                                    "tool_outputs"
+                                                ]:
                                                     display_parts.append(
                                                         f"\n*{tool_output['tool_name']}*\n"
                                                     )
@@ -659,8 +684,12 @@ async def _start_investigation(
 
                                         # Next Actions
                                         if "next_actions" in parsed_response:
-                                            next_actions = parsed_response["next_actions"]
-                                            display_parts.append("\n## 📋 Next Actions\n")
+                                            next_actions = parsed_response[
+                                                "next_actions"
+                                            ]
+                                            display_parts.append(
+                                                "\n## 📋 Next Actions\n"
+                                            )
                                             if (
                                                 "steps" in next_actions
                                                 and next_actions["steps"]
@@ -668,7 +697,9 @@ async def _start_investigation(
                                                 for i, step in enumerate(
                                                     next_actions["steps"], 1
                                                 ):
-                                                    display_parts.append(f"{i}. {step}\n")
+                                                    display_parts.append(
+                                                        f"{i}. {step}\n"
+                                                    )
                                                 display_parts.append("\n")
                                             if (
                                                 "additional_output" in next_actions
@@ -720,7 +751,7 @@ async def _start_investigation(
                                 pass  # Use raw buffer if extraction fails
                         console.print(Markdown(fallback_text))
 
-                    log_debug(f"complete response:{json_buffer}")
+                    logger.debug(f"complete response:{json_buffer}")
                     # Print final usage for this turn
                     if completion_usage:
                         console.print(
@@ -807,6 +838,9 @@ def session_open(
     # Enable very-verbose mode (implies verbose)
     if very_verbose:
         verbose = True
+        setup_logging(level="DEBUG")
+    else:
+        setup_logging()
 
     # Enable verbose command output if requested
     if verbose:
@@ -851,9 +885,9 @@ def session_open(
             unsafe=unsafe,
         )
 
-        # Enable trace logging if very-verbose mode
-        # Enable trace logging if very-verbose mode
+        # Enable session file logging if very-verbose mode
         if very_verbose:
+            enable_session_file_logging(session.session_path)
             console.print(
                 f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n"
             )
@@ -959,6 +993,9 @@ def session_resume(
     # Enable very-verbose mode (implies verbose)
     if very_verbose:
         verbose = True
+        setup_logging(level="DEBUG")
+    else:
+        setup_logging()
 
     # Enable verbose command output if requested
     if verbose:
@@ -991,9 +1028,9 @@ def session_resume(
             session_id=session_id, password=password, unsafe=unsafe
         )
 
-        # Enable trace logging if very-verbose mode
+        # Enable session file logging if very-verbose mode
         if very_verbose:
-            enable_trace_logging(session.session_path)
+            enable_session_file_logging(session.session_path)
             console.print(
                 f"[dim]Trace log: {session.session_path / 'aletheia_trace.log'}[/dim]\n"
             )
@@ -1069,9 +1106,13 @@ def session_timeline(
 
         message = ChatMessage(
             role=Role.USER,
-            contents=[TextContent(text=f"""
+            contents=[
+                TextContent(
+                    text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       """)],
+                                       """
+                )
+            ],
         )
         response = asyncio.run(
             timeline_agent.agent.run(message, response_format=Timeline)
@@ -1380,7 +1421,7 @@ def knowledge_add(
                 raise typer.Exit(1)
         meta_dict["source_path"] = path
 
-        log_debug(
+        logger.debug(
             f"Adding document ID '{id}' from path '{path}' with metadata: {meta_dict}"
         )
         knowledge.add_document_from_markdown_file(
@@ -1404,7 +1445,7 @@ def knowledge_delete(
 
         knowledge = ChromaKnowledge()
 
-        log_debug(f"Deleting document ID '{id}' from knowledge base")
+        logger.debug(f"Deleting document ID '{id}' from knowledge base")
         knowledge.delete_document(id=id)
         console.print(
             f"[green]Document '{id}' deleted from knowledge base successfully![/green]"
@@ -1508,7 +1549,9 @@ def telegram_serve(
 
     # Run the bot
     try:
-        asyncio.run(run_telegram_bot(bot_token, config, verbose, enable_memory=enable_memory))
+        asyncio.run(
+            run_telegram_bot(bot_token, config, verbose, enable_memory=enable_memory)
+        )
     except KeyboardInterrupt:
         console.print("\n[cyan]Bot stopped.[/cyan]")
 
@@ -1659,8 +1702,9 @@ def daemon_stop() -> None:
             try:
                 uri = f"ws://{host}:{port}"
                 async with websockets.connect(uri) as websocket:
-                    from aletheia.daemon.protocol import ProtocolMessage
                     import uuid
+
+                    from aletheia.daemon.protocol import ProtocolMessage
 
                     # Register as a channel first
                     channel_id = f"cli-stop-{uuid.uuid4().hex[:8]}"
@@ -1689,12 +1733,20 @@ def daemon_stop() -> None:
                             return True, msg.payload.get("message", "Gateway stopped")
                         elif msg.type == "error":
                             error_code = msg.payload.get("code", "UNKNOWN")
-                            error_message = msg.payload.get("message", "No error message")
-                            return False, f"Gateway error ({error_code}): {error_message}"
+                            error_message = msg.payload.get(
+                                "message", "No error message"
+                            )
+                            return (
+                                False,
+                                f"Gateway error ({error_code}): {error_message}",
+                            )
                         else:
                             return False, f"Unexpected response type: {msg.type}"
                     except asyncio.TimeoutError:
-                        return True, "Shutdown command sent (no acknowledgment received)"
+                        return (
+                            True,
+                            "Shutdown command sent (no acknowledgment received)",
+                        )
             except Exception as e:
                 return False, str(e)
 

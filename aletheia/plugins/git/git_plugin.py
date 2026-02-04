@@ -10,18 +10,20 @@ The plugin provides annotated functions for:
 - Getting commit information
 """
 
+import os
 import re
 import subprocess
-import os
-from typing import Annotated, List
+from typing import Annotated
 
+import structlog
 from agent_framework import ToolProtocol
 
-from aletheia.session import Session
-from aletheia.utils.logging import log_debug
-from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.base import BasePlugin
+from aletheia.plugins.loader import PluginInfoLoader
+from aletheia.session import Session
 from aletheia.utils.command import sanitize_command
+
+logger = structlog.get_logger(__name__)
 
 
 class GitPlugin(BasePlugin):
@@ -52,15 +54,24 @@ class GitPlugin(BasePlugin):
 
     def git_clone_repo(
         self,
-        repo_url: Annotated[str, "The URL of the git repository to clone (https or ssh)"],
-        ref: Annotated[str, "Optional branch or tag to clone. If omitted, clones the default branch."] = "",
-    ) -> Annotated[str, "The path to the cloned repository, or error message if failed."]:
+        repo_url: Annotated[
+            str, "The URL of the git repository to clone (https or ssh)"
+        ],
+        ref: Annotated[
+            str,
+            "Optional branch or tag to clone. If omitted, clones the default branch.",
+        ] = "",
+    ) -> Annotated[
+        str, "The path to the cloned repository, or error message if failed."
+    ]:
         """
         Clones a git repository by URL into /data/src/<repo_name>.
         If ref is provided, checks out the specified branch or tag.
         Returns the path to the cloned repo or an error message.
         """
-        log_debug(f"GitPlugin::git_clone_repo:: called with repo_url={repo_url}, ref={ref}")
+        logger.debug(
+            f"GitPlugin::git_clone_repo:: called with repo_url={repo_url}, ref={ref}"
+        )
         # Extract repo name from URL
         match = re.search(r"([^/]+?)(?:\.git)?$", repo_url)
         if not match:
@@ -77,13 +88,19 @@ class GitPlugin(BasePlugin):
         try:
             if os.path.exists(dest_dir):
                 return f"Repository already exists at {dest_dir}"
-            result = subprocess.run(sanitize_command(clone_cmd), capture_output=True, text=True, timeout=120, check=False)
+            result = subprocess.run(
+                sanitize_command(clone_cmd),
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
             if result.returncode != 0:
                 return f"Error cloning repo: {result.stderr.strip()}"
             return dest_dir
         except (OSError, subprocess.SubprocessError) as e:
             return f"Exception during git clone: {e}"
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Get the list of tools provided by this plugin."""
         return [self.git_clone_repo]

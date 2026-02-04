@@ -1,9 +1,11 @@
 """Singleton for ChatMessageStore instance."""
+
 from agent_framework import ChatMessageStore
 
 
 class ChatMessageStoreSingleton:
     """Singleton class to manage a single ChatMessageStore instance."""
+
     _instance: ChatMessageStore = None
 
     @classmethod

@@ -152,21 +152,21 @@ async def list_commands():
 
     # Add built-in commands
     for name, cmd_obj in COMMANDS.items():
-        commands_list.append({
-            "name": name,
-            "description": cmd_obj.description,
-            "type": "built-in"
-        })
+        commands_list.append(
+            {"name": name, "description": cmd_obj.description, "type": "built-in"}
+        )
 
     # Add custom commands
     try:
         custom_cmds = get_custom_commands(config)
         for command_name, custom_cmd in custom_cmds.items():
-            commands_list.append({
-                "name": command_name,
-                "description": f"{custom_cmd.name}: {custom_cmd.description}",
-                "type": "custom"
-            })
+            commands_list.append(
+                {
+                    "name": command_name,
+                    "description": f"{custom_cmd.name}: {custom_cmd.description}",
+                    "type": "custom",
+                }
+            )
     except Exception:
         # If custom commands fail to load, just return built-in ones
         pass
@@ -540,7 +540,10 @@ async def run_agent_step(
                             "next_actions"
                         ) != last_sent_data.get("next_actions"):
                             await queue.put(
-                                {"type": "next_actions", "content": parsed["next_actions"]}
+                                {
+                                    "type": "next_actions",
+                                    "content": parsed["next_actions"],
+                                }
                             )
                             last_sent_data["next_actions"] = parsed["next_actions"]
 
@@ -571,11 +574,15 @@ async def run_agent_step(
         if not parsed_successfully and json_buffer and json_buffer.strip():
             # Try to extract text content from partial JSON
             fallback_text = json_buffer
-            if json_buffer.strip().startswith('{'):
+            if json_buffer.strip().startswith("{"):
                 try:
                     import re
+
                     # Extract text from string fields
-                    text_matches = re.findall(r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"', json_buffer)
+                    text_matches = re.findall(
+                        r'"(?:summary|details|approach|rationale)":\s*"([^"]*)"',
+                        json_buffer,
+                    )
                     if text_matches:
                         fallback_text = "\n\n".join(text_matches)
                 except Exception:
@@ -605,8 +612,6 @@ import io
 
 from rich.console import Console
 from rich.markdown import Markdown
-
-from aletheia.commands import COMMANDS
 
 
 class MockConsole:

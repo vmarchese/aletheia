@@ -1,11 +1,12 @@
 """Docker Script Plugin for Aletheia."""
+
 import json
 import os
 import tempfile
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 import docker
-
+import structlog
 from agent_framework import ToolProtocol
 
 from aletheia.config import Config
@@ -13,7 +14,8 @@ from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
 from aletheia.session import Session
-from aletheia.utils.logging import log_debug, log_error
+
+logger = structlog.get_logger(__name__)
 
 
 class DockerScriptPlugin(BasePlugin):
@@ -34,11 +36,19 @@ class DockerScriptPlugin(BasePlugin):
         self.instructions = loader.load("dockerscript")
         self.scratchpad = scratchpad
 
-    def sandbox_run(self,
-                    script_folder: Annotated[str, "The folder containing the python script"],
-                    script: Annotated[str, "The Docker script to execute"],
-                    args: Annotated[Optional[dict], "Script arguments (simple types: str, int, float, bool) passed as environment variables"] = None,
-                    data: Annotated[Optional[dict], "Complex data structures (lists, nested dicts, etc.) written to /scripts/data.json"] = None):
+    def sandbox_run(
+        self,
+        script_folder: Annotated[str, "The folder containing the python script"],
+        script: Annotated[str, "The Docker script to execute"],
+        args: Annotated[
+            dict | None,
+            "Script arguments (simple types: str, int, float, bool) passed as environment variables",
+        ] = None,
+        data: Annotated[
+            dict | None,
+            "Complex data structures (lists, nested dicts, etc.) written to /scripts/data.json",
+        ] = None,
+    ):
         """Executes a python script from a folder with optional arguments.
 
         Args:
@@ -72,30 +82,44 @@ class DockerScriptPlugin(BasePlugin):
                 with open(data_file, 'r') as f:
                     complex_data = json.load(f)
         """
-        log_debug(f"DockerScriptPlugin::sandbox_run:: called with script: {script} from folder: {script_folder}")
+        logger.debug(
+            f"DockerScriptPlugin::sandbox_run:: called with script: {script} from folder: {script_folder}"
+        )
         if args:
-            log_debug(f"DockerScriptPlugin::sandbox_run:: args: {args}")
+            logger.debug(f"DockerScriptPlugin::sandbox_run:: args: {args}")
         if data:
-            log_debug(f"DockerScriptPlugin::sandbox_run:: data keys: {list(data.keys())}")
+            logger.debug(
+                f"DockerScriptPlugin::sandbox_run:: data keys: {list(data.keys())}"
+            )
 
         client = docker.from_env()
         try:
             # Create temp dir and write script to file
-            log_debug(f"DockerScriptPlugin::sandbox_run:: Creating base temporary directory in {self.config.temp_folder}")
+            logger.debug(
+                f"DockerScriptPlugin::sandbox_run:: Creating base temporary directory in {self.config.temp_folder}"
+            )
             tmp = tempfile.mkdtemp(dir=self.config.temp_folder)
-            log_debug(f"DockerScriptPlugin::sandbox_run:: Created base temporary directory at {tmp}")
+            logger.debug(
+                f"DockerScriptPlugin::sandbox_run:: Created base temporary directory at {tmp}"
+            )
             tmpfolder = tempfile.TemporaryDirectory(dir=tmp)
-            log_debug(f"DockerScriptPlugin::sandbox_run:: Creating temporary folder at {tmpfolder.name}")
+            logger.debug(
+                f"DockerScriptPlugin::sandbox_run:: Creating temporary folder at {tmpfolder.name}"
+            )
             os.makedirs(tmpfolder.name, exist_ok=True)
-            log_debug(f"DockerScriptPlugin::sandbox_run:: Created temporary folder at {tmpfolder.name}")
+            logger.debug(
+                f"DockerScriptPlugin::sandbox_run:: Created temporary folder at {tmpfolder.name}"
+            )
 
             script_path = os.path.join(script_folder, "scripts", script)
             temp_script_path = os.path.join(tmpfolder.name, "script.py")
-            with open(script_path, 'r', encoding='utf-8') as script_file:
+            with open(script_path, encoding="utf-8") as script_file:
                 script_content = script_file.read()
-                with open(temp_script_path, 'w', encoding='utf-8') as temp_script_file:
+                with open(temp_script_path, "w", encoding="utf-8") as temp_script_file:
                     temp_script_file.write(script_content)
-            log_debug(f"DockerScriptPlugin::sandbox_run:: Wrote script to {temp_script_path}")
+            logger.debug(
+                f"DockerScriptPlugin::sandbox_run:: Wrote script to {temp_script_path}"
+            )
 
             # Prepare environment variables for simple args
             env_vars = {}
@@ -104,36 +128,44 @@ class DockerScriptPlugin(BasePlugin):
                     if isinstance(value, (str, int, float, bool)):
                         env_vars[key.upper()] = str(value)
                     else:
-                        log_debug(f"DockerScriptPlugin::sandbox_run:: Skipping non-simple type for env var: {key} (type: {type(value).__name__})")
+                        logger.debug(
+                            f"DockerScriptPlugin::sandbox_run:: Skipping non-simple type for env var: {key} (type: {type(value).__name__})"
+                        )
 
             # Write complex data to JSON file
             if data:
                 data_path = f"{tmpfolder.name}/data.json"
                 os.makedirs(os.path.dirname(data_path), exist_ok=True)
-                with open(data_path, 'w', encoding='utf-8') as data_file:
+                with open(data_path, "w", encoding="utf-8") as data_file:
                     json.dump(data, data_file, indent=2)
-                log_debug(f"DockerScriptPlugin::sandbox_run:: Wrote data to {data_path}")
+                logger.debug(
+                    f"DockerScriptPlugin::sandbox_run:: Wrote data to {data_path}"
+                )
 
             # Execute container with both mechanisms
-            log_debug("DockerScriptPlugin::sandbox_run:: Executing Docker container for script.")
+            logger.debug(
+                "DockerScriptPlugin::sandbox_run:: Executing Docker container for script."
+            )
             output = client.containers.run(
                 image="aletheia-script-executor:latest",
                 command=["python", "/scripts/script.py"],
                 environment=env_vars,  # Simple args as env vars
-                volumes={tmpfolder.name: {'bind': '/scripts', 'mode': 'ro'}},
+                volumes={tmpfolder.name: {"bind": "/scripts", "mode": "ro"}},
                 detach=False,
                 stdout=True,
                 stderr=True,
-                remove=True
+                remove=True,
             )
-            log_debug("DockerScriptPlugin::sandbox_run:: Script executed successfully.")
+            logger.debug(
+                "DockerScriptPlugin::sandbox_run:: Script executed successfully."
+            )
             return output.decode("utf-8") if isinstance(output, bytes) else str(output)
-        except (docker.errors.DockerException, OSError, IOError) as e:
-            log_error(f"DockerScriptPlugin::sandbox_run:: Error executing script: {e}")
+        except (docker.errors.DockerException, OSError) as e:
+            logger.error(
+                f"DockerScriptPlugin::sandbox_run:: Error executing script: {e}"
+            )
             return f"Error executing script: {e}"
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Returns the list of tools provided by the DockerScriptPlugin."""
-        return [
-            self.sandbox_run
-        ]
+        return [self.sandbox_run]

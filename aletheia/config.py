@@ -235,6 +235,14 @@ class Config(BaseSettings):
     )
 
     # =================================================================
+    # Logging Configuration
+    # =================================================================
+    log_level: str = Field(
+        default="INFO",
+        description="Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+    )
+
+    # =================================================================
     # Daemon Configuration
     # =================================================================
     daemon_host: str = Field(

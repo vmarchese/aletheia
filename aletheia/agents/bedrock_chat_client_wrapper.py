@@ -6,9 +6,11 @@ for Bedrock API calls to aid in troubleshooting and development.
 """
 
 import json
+import logging
 from collections.abc import AsyncIterable
 from typing import Any
 
+import structlog
 from agent_framework import (
     ChatMessage,
     FunctionResultContent,
@@ -19,7 +21,7 @@ from agent_framework._types import (
     ChatResponseUpdate,
 )
 
-from aletheia.utils.logging import log_debug, log_error
+logger = structlog.get_logger(__name__)
 
 
 class ChatOptions:
@@ -139,10 +141,10 @@ def wrap_bedrock_chat_client(chat_client, provider: str) -> None:
         provider: The LLM provider name ("bedrock", "azure", "openai")
     """
     if provider == "bedrock":
-        log_debug("Bedrock provider detected - Adding trace wrapper for debugging")
+        logger.debug("Bedrock provider detected - Adding trace wrapper for debugging")
         BedrockChatClientTraceWrapper(chat_client)
     else:
-        log_debug(
+        logger.debug(
             f"Provider {provider} already supports response_format, no chat client wrapping needed"
         )
 
@@ -171,7 +173,7 @@ class BedrockChatClientTraceWrapper:
         import json
         from pathlib import Path
 
-        log_debug(f"BEDROCK_TRACE: {message}")
+        logger.debug(f"BEDROCK_TRACE: {message}")
 
         # Also write to trace file if very verbose mode is enabled
         try:
@@ -206,7 +208,7 @@ class BedrockChatClientTraceWrapper:
                             )
                     f.write("---\n")
         except Exception as e:
-            log_debug(f"Failed to write trace data: {e}")
+            logger.debug(f"Failed to write trace data: {e}")
 
     def _get_session_dir(self):
         """Find the current session directory.
@@ -256,10 +258,8 @@ class BedrockChatClientTraceWrapper:
         """
         import json
 
-        from aletheia.utils.logging import is_trace_enabled
-
         # Only dump if trace logging is enabled (--very-verbose)
-        if not is_trace_enabled():
+        if not logging.getLogger().isEnabledFor(logging.DEBUG):
             return
 
         try:
@@ -332,7 +332,7 @@ class BedrockChatClientTraceWrapper:
             self._log_trace(f"📥 INPUT: {filepath.name}")
 
         except Exception as e:
-            log_debug(f"Failed to dump input messages: {e}")
+            logger.debug(f"Failed to dump input messages: {e}")
 
     def _dump_bedrock_request(self, request: dict, request_id: str):
         """Dump the complete Bedrock API request to a separate JSON file for detailed analysis.
@@ -345,10 +345,8 @@ class BedrockChatClientTraceWrapper:
         """
         import json
 
-        from aletheia.utils.logging import is_trace_enabled
-
         # Only dump if trace logging is enabled (--very-verbose)
-        if not is_trace_enabled():
+        if not logging.getLogger().isEnabledFor(logging.DEBUG):
             return
 
         try:
@@ -378,7 +376,7 @@ class BedrockChatClientTraceWrapper:
             self._log_trace(f"📤 REQUEST: {filepath.name}")
 
         except Exception as e:
-            log_debug(f"Failed to dump Bedrock request: {e}")
+            logger.debug(f"Failed to dump Bedrock request: {e}")
 
     def _dump_bedrock_response(
         self, response_data: dict, request_id: str, error: Exception = None
@@ -395,10 +393,8 @@ class BedrockChatClientTraceWrapper:
         import json
         from datetime import datetime
 
-        from aletheia.utils.logging import is_trace_enabled
-
         # Only dump if trace logging is enabled (--very-verbose)
-        if not is_trace_enabled():
+        if not logging.getLogger().isEnabledFor(logging.DEBUG):
             return
 
         try:
@@ -443,7 +439,7 @@ class BedrockChatClientTraceWrapper:
             self._log_trace(f"📨 RESPONSE: {filepath.name} - {status}")
 
         except Exception as e:
-            log_debug(f"Failed to dump Bedrock response: {e}")
+            logger.debug(f"Failed to dump Bedrock response: {e}")
 
     def _sanitize_for_json(self, obj):
         """Recursively sanitize an object for JSON serialization.
@@ -1120,9 +1116,7 @@ class BedrockChatClientTraceWrapper:
         # FIX: The agent framework puts response_format in kwargs, not options
         # We need to move it to options so our wrapper can access it
         if "response_format" in kwargs and options.get("response_format") is None:
-            self._log_trace(
-                "⚠️  FIXING: Moving response_format from kwargs to options"
-            )
+            self._log_trace("⚠️  FIXING: Moving response_format from kwargs to options")
             options["response_format"] = kwargs["response_format"]
             self._log_trace(
                 f"   response_format is now: {options.get('response_format')}"
@@ -1458,7 +1452,7 @@ CRITICAL RULES:
                             )
                     except Exception as e:
                         self._log_trace(f"   ❌ Failed to extract schema: {e}")
-                        log_error(
+                        logger.error(
                             f"Failed to add response_format to Bedrock request: {e}"
                         )
                 else:

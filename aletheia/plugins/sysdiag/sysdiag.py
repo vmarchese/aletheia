@@ -1,23 +1,27 @@
 """SysDiag Plugin Module
 provides df, free, ps, iotop, ss,...
 """
+
 import json
 import subprocess
-from typing import Annotated, List
+from typing import Annotated
 
+import structlog
 from agent_framework import ToolProtocol
 
-from aletheia.utils.logging import log_debug, log_error
 from aletheia.config import Config
-from aletheia.session import Session, SessionDataType
+from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.loader import PluginInfoLoader
 from aletheia.plugins.scratchpad.scratchpad import Scratchpad
-from aletheia.plugins.base import BasePlugin
+from aletheia.session import Session, SessionDataType
 from aletheia.utils.command import sanitize_command
+
+logger = structlog.get_logger(__name__)
 
 
 class SysDiagPlugin(BasePlugin):
     """plugin for security operations."""
+
     def __init__(self, config: Config, session: Session, scratchpad: Scratchpad):
         """Initialize the SecurityPlugin.
         Args:
@@ -31,52 +35,67 @@ class SysDiagPlugin(BasePlugin):
         self.instructions = loader.load("sysdiag")
         self.scratchpad = scratchpad
 
-    def _run_remote_command(self, user: str, remote_server: str, command: list, save_key: str = None, log_prefix: str = "") -> str:
+    def _run_remote_command(
+        self,
+        user: str,
+        remote_server: str,
+        command: list,
+        save_key: str = None,
+        log_prefix: str = "",
+    ) -> str:
         """Helper to run  security commands and handle output, errors, and saving."""
         try:
-            log_debug(f"{log_prefix} Preparing to run remote command [{' '.join(command)}] on {remote_server} as {user}")
+            logger.debug(
+                f"{log_prefix} Preparing to run remote command [{' '.join(command)}] on {remote_server} as {user}"
+            )
             rcmd = ["ssh", f"{user}@{remote_server}"]
             rcmd.extend(command)
-            log_debug(f"{log_prefix} Running command: [{' '.join(rcmd)}]")
-            process = subprocess.run(args=sanitize_command(rcmd), capture_output=True, check=True)
+            logger.debug(f"{log_prefix} Running command: [{' '.join(rcmd)}]")
+            process = subprocess.run(
+                args=sanitize_command(rcmd), capture_output=True, check=True
+            )
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": ' '.join(rcmd) + f" failed: {error_msg}"
-                })
+                return json.dumps({"error": " ".join(rcmd) + f" failed: {error_msg}"})
             output = process.stdout.decode()
             if self.session and save_key:
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
-                log_debug(f"{log_prefix} Saved output to {saved}")
+                logger.debug(f"{log_prefix} Saved output to {saved}")
             return output
         except (OSError, subprocess.SubprocessError) as e:
-            log_error(f"{log_prefix} Error launching command : {str(e)}")
+            logger.error(f"{log_prefix} Error launching command : {str(e)}")
             return f"Error launching command: {e}"
 
-    def _run_command(self, command: list, save_key: str = None, log_prefix: str = "") -> str:
+    def _run_command(
+        self, command: list, save_key: str = None, log_prefix: str = ""
+    ) -> str:
         """Helper to run  security commands and handle output, errors, and saving."""
         try:
-            log_debug(f"{log_prefix} Running command: [{' '.join(command)}]")
-            process = subprocess.run(args=sanitize_command(command), capture_output=True, check=False)
+            logger.debug(f"{log_prefix} Running command: [{' '.join(command)}]")
+            process = subprocess.run(
+                args=sanitize_command(command), capture_output=True, check=False
+            )
             if process.returncode != 0:
                 error_msg = process.stderr.decode().strip()
-                return json.dumps({
-                    "error": ' '.join(command) + f" failed: {error_msg}"
-                })
+                return json.dumps(
+                    {"error": " ".join(command) + f" failed: {error_msg}"}
+                )
             output = process.stdout.decode()
             if self.session and save_key:
                 saved = self.session.save_data(SessionDataType.INFO, save_key, output)
-                log_debug(f"{log_prefix} Saved output to {saved}")
+                logger.debug(f"{log_prefix} Saved output to {saved}")
             return output
         except (OSError, subprocess.SubprocessError) as e:
-            log_error(f"{log_prefix} Error launching command : {str(e)}")
+            logger.error(f"{log_prefix} Error launching command : {str(e)}")
             return f"Error launching command: {e}"
 
-    def scp(self,
-            remote_server: Annotated[str, "Remote server hostname or IP"],
-            source_path: Annotated[str, "Source file path"],
-            destination: Annotated[str, "Destination file path"],
-            user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def scp(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        source_path: Annotated[str, "Source file path"],
+        destination: Annotated[str, "Destination file path"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """Securely copy files between hosts on a network using scp command.
         Args:
          remote_server: Remote server hostname or IP
@@ -88,9 +107,11 @@ class SysDiagPlugin(BasePlugin):
         command = ["scp", f"{user}@{remote_server}:{source_path}", destination]
         return self._run_command(command, log_prefix="SysDiagPlugin::scp::")
 
-    def df(self,
-           remote_server: Annotated[str, "Remote server hostname or IP"],
-           user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def df(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get disk space usage using df command.
         Args:
@@ -98,11 +119,19 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["df", "-hT"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="disk_usage", log_prefix="SysDiagPlugin::df::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="disk_usage",
+            log_prefix="SysDiagPlugin::df::",
+        )
 
-    def inodes(self,
-               remote_server: Annotated[str, "Remote server hostname or IP"],
-               user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def inodes(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get inode usage using df command.
         Args:
@@ -110,11 +139,19 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["df", "-hi"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="inode_usage", log_prefix="SysDiagPlugin::inodes::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="inode_usage",
+            log_prefix="SysDiagPlugin::inodes::",
+        )
 
-    def system_load(self,
-                    remote_server: Annotated[str, "Remote server hostname or IP"],
-                    user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def system_load(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get system load using ps command.
         Args:
@@ -122,14 +159,30 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["ps", "-eo", "pid,ppid,cmd,%cpu,%mem", "--sort=-%cpu"]
-        psout = self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="system_load", log_prefix="SysDiagPlugin::system_load::")
+        psout = self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="system_load",
+            log_prefix="SysDiagPlugin::system_load::",
+        )
         command = ["uptime"]
-        uptimeout = self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="system_load", log_prefix="SysDiagPlugin::system_load::")
-        return f"Uptime Information:\n{uptimeout}\n\nTop Processes by CPU Usage:\n{psout}"
+        uptimeout = self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="system_load",
+            log_prefix="SysDiagPlugin::system_load::",
+        )
+        return (
+            f"Uptime Information:\n{uptimeout}\n\nTop Processes by CPU Usage:\n{psout}"
+        )
 
-    def memory_load(self,
-                    remote_server: Annotated[str, "Remote server hostname or IP"],
-                    user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def memory_load(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get Memory load using ps command.
         Args:
@@ -137,11 +190,19 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["ps", "-eo", "pid,ppid,cmd,%cpu,%mem", "--sort=-%mem"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="memory_load", log_prefix="SysDiagPlugin::memory_load::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="memory_load",
+            log_prefix="SysDiagPlugin::memory_load::",
+        )
 
-    def iostat(self,
-               remote_server: Annotated[str, "Remote server hostname or IP"],
-               user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def iostat(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get IO statistics using iostat command
         Args:
@@ -149,11 +210,19 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["iostat", "-xz", "1", "3"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="io_stat", log_prefix="SysDiagPlugin::io_stat::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="io_stat",
+            log_prefix="SysDiagPlugin::io_stat::",
+        )
 
-    def ss(self,
-           remote_server: Annotated[str, "Remote server hostname or IP"],
-           user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def ss(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get Network statistics using ss command
         Args:
@@ -161,11 +230,19 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["ss", "-tunap"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="ss", log_prefix="SysDiagPlugin::ss::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="ss",
+            log_prefix="SysDiagPlugin::ss::",
+        )
 
-    def journalctl(self,
-                   remote_server: Annotated[str, "Remote server hostname or IP"],
-                   user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def journalctl(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get Systemd journal logs using journalctl command
         Args:
@@ -173,11 +250,19 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["journalctl", "-p", "0..3", "-n", "200"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="journalctl", log_prefix="SysDiagPlugin::journalctl::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="journalctl",
+            log_prefix="SysDiagPlugin::journalctl::",
+        )
 
-    def systemctl_failed(self,
-                         remote_server: Annotated[str, "Remote server hostname or IP"],
-                         user: Annotated[str, "Username for remote host"] = "root") -> str:
+    def systemctl_failed(
+        self,
+        remote_server: Annotated[str, "Remote server hostname or IP"],
+        user: Annotated[str, "Username for remote host"] = "root",
+    ) -> str:
         """
         Get failed systemd services using systemctl command
         Args:
@@ -185,9 +270,15 @@ class SysDiagPlugin(BasePlugin):
          user: Username for remote host
         """
         command = ["systemctl", "list-units", "--failed"]
-        return self._run_remote_command(command=command, user=user, remote_server=remote_server, save_key="systemctl_failed", log_prefix="SysDiagPlugin::systemctl_failed::")
+        return self._run_remote_command(
+            command=command,
+            user=user,
+            remote_server=remote_server,
+            save_key="systemctl_failed",
+            log_prefix="SysDiagPlugin::systemctl_failed::",
+        )
 
-    def get_tools(self) -> List[ToolProtocol]:
+    def get_tools(self) -> list[ToolProtocol]:
         """Returns a list of tools provided by the SecurityPlugin."""
         return [
             self.scp,

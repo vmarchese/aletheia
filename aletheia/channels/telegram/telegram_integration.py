@@ -5,8 +5,8 @@ instead of maintaining its own session state.
 """
 
 import asyncio
-import logging
 
+import structlog
 from telegram import BotCommand, MenuButtonCommands, Update
 from telegram.ext import (
     Application,
@@ -22,7 +22,7 @@ from aletheia.config import Config
 from aletheia.daemon.session_manager import GatewaySessionManager
 from aletheia.engram.tools import Engram
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def is_authorized(user_id: int, config: Config) -> bool:
@@ -224,7 +224,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             elif chunk_type == "json_error":
                 # JSON parsing failed - use raw content
                 response_markdown = chunk.get("content", "Error parsing response")
-                logger.warning(f"Telegram: JSON parse error, using raw content")
+                logger.warning("Telegram: JSON parse error, using raw content")
 
         if response_markdown and response_markdown.strip():
             # Convert markdown to HTML for Telegram
@@ -240,7 +240,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 logger.debug(f"Telegram: Sending chunk {i+1}/{len(chunks)}")
                 await update.message.reply_text(chunk_text, parse_mode="HTML")
         else:
-            logger.warning(f"Telegram: No output to send")
+            logger.warning("Telegram: No output to send")
             await update.message.reply_text("✅ Done (no output)")
 
     except Exception as e:

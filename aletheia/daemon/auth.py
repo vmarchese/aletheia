@@ -1,14 +1,12 @@
 """Authentication server for secure password entry via web browser."""
 
 import asyncio
-import logging
 import secrets
 import webbrowser
-from typing import Optional
 
-from fastapi import FastAPI, Form, HTTPException, Request
+import structlog
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 
@@ -33,11 +31,11 @@ class AuthServer:
         self.host = host
         self.port = port
         self.app = FastAPI(title="Aletheia Auth Server")
-        self.logger = logging.getLogger("aletheia.auth")
+        self.logger = structlog.get_logger("aletheia.auth")
 
         # Store pending password prompts
         self._pending_prompts: dict[str, PasswordPrompt] = {}
-        self._password_results: dict[str, Optional[str]] = {}
+        self._password_results: dict[str, str | None] = {}
         self._result_events: dict[str, asyncio.Event] = {}
 
         self._setup_routes()
@@ -55,7 +53,9 @@ class AuthServer:
             return HTMLResponse(content=self._get_auth_html(prompt))
 
         @self.app.post("/auth/{token}")
-        async def submit_password(token: str, password: str = Form(...)) -> RedirectResponse:
+        async def submit_password(
+            token: str, password: str = Form(...)
+        ) -> RedirectResponse:
             """Handle password submission."""
             prompt = self._pending_prompts.get(token)
             if not prompt:
@@ -85,7 +85,7 @@ class AuthServer:
         self,
         prompt_text: str = "Enter session password:",
         timeout_seconds: int = 300,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Prompt user for password via web browser.
 
@@ -259,7 +259,9 @@ class AuthServer:
 
 async def main() -> None:
     """Main entry point for testing auth server."""
-    logging.basicConfig(level=logging.INFO)
+    from aletheia.utils.logging import setup_logging
+
+    setup_logging()
 
     auth = AuthServer()
 

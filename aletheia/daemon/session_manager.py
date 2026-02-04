@@ -1,20 +1,16 @@
 """Gateway session management for Aletheia daemon."""
 
 import json
-import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
+import structlog
 from agent_framework import AgentResponse as MSAgentResponse
-from agent_framework import (
-    ChatMessage,
-    Role,
-    TextContent
-)
+from agent_framework import ChatMessage, Role, TextContent
 
-from aletheia.cli import _build_plugins
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.instructions_loader import Loader
-from aletheia.agents.model import AgentResponse, Findings
+from aletheia.agents.model import AgentResponse
+from aletheia.cli import _build_plugins
 from aletheia.config import Config
 from aletheia.daemon.history import ChatHistoryLogger
 from aletheia.engram.tools import Engram
@@ -144,7 +140,7 @@ class GatewaySessionManager:
         if self.chat_logger:
             self.chat_logger.log_user_message(message, channel)
 
-        logger = logging.getLogger(__name__)
+        logger = structlog.get_logger(__name__)
 
         # Send to orchestrator and stream response
         agent_resp = await MSAgentResponse.from_agent_response_generator(
@@ -155,11 +151,12 @@ class GatewaySessionManager:
                 thread=self.orchestrator.thread,
                 response_format=AgentResponse,
             ),
-            output_format_type=AgentResponse)
+            output_format_type=AgentResponse,
+        )
 
         self.active_session.update_usage(
             input_tokens=agent_resp.usage_details.input_token_count,
-            output_tokens=agent_resp.usage_details.output_token_count
+            output_tokens=agent_resp.usage_details.output_token_count,
         )
 
         usage = {
@@ -203,9 +200,8 @@ class GatewaySessionManager:
                     "type": "json_complete",
                     "content": agent_resp.text,
                     "parsed": "",
-                    "usage": usage
+                    "usage": usage,
                 }
-
 
         """
         # Log complete response
@@ -216,7 +212,7 @@ class GatewaySessionManager:
                 channel,
             )
         """
-    
+
     def list_sessions(self) -> list[dict[str, any]]:
         """List all available sessions."""
         return Session.list_sessions()

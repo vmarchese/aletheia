@@ -26,20 +26,22 @@ agent:
 
 import importlib.util
 import sys
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import structlog
 from pydantic import ValidationError
 
 from aletheia.agents.agent_config import UserAgentConfig
 from aletheia.agents.base import BaseAgent
-from aletheia.utils.logging import log_debug, log_error
 
 if TYPE_CHECKING:
     from aletheia.config import Config
     from aletheia.plugins.scratchpad.scratchpad import Scratchpad
     from aletheia.session import Session
+
+logger = structlog.get_logger(__name__)
 
 
 class AgentLoadError(Exception):
@@ -72,7 +74,7 @@ class UserAgentLoader:
             List of tuples containing (agent_dir, validated_config)
         """
         if not self.agents_directory.exists():
-            log_debug(
+            logger.debug(
                 f"UserAgentLoader::discover_agents:: "
                 f"Agents directory does not exist: {self.agents_directory}"
             )
@@ -89,21 +91,21 @@ class UserAgentLoader:
 
             # All required files must exist
             if not config_path.exists():
-                log_debug(
+                logger.debug(
                     f"UserAgentLoader::discover_agents:: "
                     f"Skipping {agent_dir.name}: missing config.yaml"
                 )
                 continue
 
             if not agent_path.exists():
-                log_debug(
+                logger.debug(
                     f"UserAgentLoader::discover_agents:: "
                     f"Skipping {agent_dir.name}: missing agent.py"
                 )
                 continue
 
             if not instructions_path.exists():
-                log_debug(
+                logger.debug(
                     f"UserAgentLoader::discover_agents:: "
                     f"Skipping {agent_dir.name}: missing instructions.yaml"
                 )
@@ -113,7 +115,7 @@ class UserAgentLoader:
             try:
                 agent_config = UserAgentConfig.from_yaml(config_path)
             except (ValidationError, Exception) as e:
-                log_error(
+                logger.error(
                     f"UserAgentLoader::discover_agents:: "
                     f"Invalid config in {agent_dir.name}: {e}"
                 )
@@ -121,14 +123,14 @@ class UserAgentLoader:
 
             # Check if agent is enabled
             if not agent_config.agent.enabled:
-                log_debug(
+                logger.debug(
                     f"UserAgentLoader::discover_agents:: "
                     f"Agent {agent_config.agent.name} is disabled"
                 )
                 continue
 
             discovered.append((agent_dir, agent_config))
-            log_debug(
+            logger.debug(
                 f"UserAgentLoader::discover_agents:: "
                 f"Discovered agent: {agent_config.agent.name}"
             )
@@ -231,7 +233,7 @@ class UserAgentLoader:
                 kwargs["engram"] = engram
 
             agent = agent_class(**kwargs)
-            log_debug(
+            logger.debug(
                 f"UserAgentLoader::instantiate_agent:: "
                 f"Successfully loaded user agent: {agent_def.name}"
             )
@@ -271,7 +273,7 @@ def load_user_agents(
     agent_instances = []
 
     for agent_dir, agent_config in discovered:
-        log_debug(
+        logger.debug(
             f"UserAgentLoader::load_user_agents:: "
             f"Loading agent: {agent_config.agent.name}"
         )
@@ -288,7 +290,7 @@ def load_user_agents(
             agent_instances.append(agent)
             tools.append(agent.agent.as_tool())
         except AgentLoadError as e:
-            log_error(f"UserAgentLoader::load_user_agents:: {e}")
+            logger.error(f"UserAgentLoader::load_user_agents:: {e}")
             # Continue loading other agents
 
     return tools, agent_instances

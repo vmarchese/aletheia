@@ -1,7 +1,6 @@
 """TUI (Terminal User Interface) channel connector for Aletheia."""
 
 import asyncio
-import logging
 import os
 import random
 from typing import Any
@@ -601,10 +600,9 @@ async def main() -> None:
     import sys
 
     # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    from aletheia.utils.logging import setup_logging
+
+    setup_logging()
 
     # Parse gateway URL from args
     gateway_url = "ws://127.0.0.1:8765"
