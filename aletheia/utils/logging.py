@@ -74,6 +74,10 @@ def setup_logging(level: str | None = None, session_dir: Path | None = None) -> 
     for handler in logging.root.handlers:
         handler.setFormatter(formatter)
 
+    # Silence noisy third-party HTTP loggers
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     _logging_configured = True
 
 
