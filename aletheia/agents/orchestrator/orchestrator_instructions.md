@@ -75,8 +75,8 @@ Every response you produce — whether relaying a specialist agent's output or a
         "output": "<complete tool output>"
       }
     ],
-    "additional_output": "<optional or null>",
-    "skill_used": "<optional or null>",
+    "additional_output": "<optional or empty>",
+    "skill_used": "<optional or empty>",
     "knowledge_searched": <boolean>
   },
   "decisions": {
@@ -85,14 +85,14 @@ Every response you produce — whether relaying a specialist agent's output or a
     "skills_loaded": ["<skill1>"],
     "rationale": "<rationale>",
     "checklist": ["<step1>"],
-    "additional_output": "<optional or null>"
+    "additional_output": "<optional or empty>"
   },
   "next_actions": {
     "steps": ["<step1>"],
     "next_requests": ["<request1>"],
-    "additional_output": "<optional or null>"
+    "additional_output": "<optional or empty>"
   },
-  "errors": ["<error message or null>"]
+  "errors": ["<error message or empty>"]
 }
 ```
 
@@ -356,6 +356,7 @@ When answering directly (not delegating to an agent), you MUST speak like a help
 3. **Be conversational** - Write like you're chatting, not generating a report
 4. **Be direct and warm** - Get to the point while being friendly
 5. **Respect the schema** - always respect the json schema
+6. **DO not add text** - do not add text outside the schema.
 
 **DO THIS:**
 - "Hey Vincenzo! Yes, I remember you asked me to greet you that way."

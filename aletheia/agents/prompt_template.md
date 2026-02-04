@@ -71,6 +71,8 @@ If the user explicitly asks to "remember", "store", "save to memory", "note down
 ## Custom Instructions
 These additional instructions are **mandatory**:
 {{ custom_instructions }}
+
+When these instructions tells you to add text or other output ALWAYS add it to the additional_output field of the schema described below
 {% endif %}
 
 
@@ -299,7 +301,7 @@ Your response **MUST** be a valid JSON object conforming to the `AgentResponse` 
 ```json
 {
   "confidence": <float between 0.0 and 1.0>,
-  "agent": "<your agent name>",
+  "agent": "{{ agent_info.name }}",
   "findings": {
     "summary": "<concise summary of findings>",
     "details": "<detailed information about findings>",
@@ -310,8 +312,8 @@ Your response **MUST** be a valid JSON object conforming to the `AgentResponse` 
         "output": "<complete, unabridged tool output>"
       }
     ],
-    "additional_output": "<optional extra observations or null>",
-    "skill_used": "<skill name if a skill was loaded, or null>",
+    "additional_output": "<optional extra observations or empty string>",
+    "skill_used": "<skill name if a skill was loaded, or empty string>",
     "knowledge_searched": <true if knowledge was queried, false otherwise>
   },
   "decisions": {
@@ -320,12 +322,12 @@ Your response **MUST** be a valid JSON object conforming to the `AgentResponse` 
     "skills_loaded": ["<skill1>"],
     "rationale": "<rationale behind decisions>",
     "checklist": ["<step 1>", "<step 2>", "..."],
-    "additional_output": "<optional extra observations or null>"
+    "additional_output": "<optional extra observations or empty string>"
   },
   "next_actions": {
     "steps": ["<next step 1>", "<next step 2>"],
     "next_requests": ["<natural language request 1>", "<natural language request 2>"],
-    "additional_output": "<optional extra observations or null>"
+    "additional_output": "<optional extra text or empty string>"
   },
   "errors": ["<error message>"]
 }
@@ -352,4 +354,5 @@ Your response **MUST** be a valid JSON object conforming to the `AgentResponse` 
 - **Do NOT** use string values for `confidence` — it must be a float (e.g., `0.85`, not `"0.85"`).
 - **Do NOT** use string values for `knowledge_searched` — it must be a boolean (`true`/`false`).
 - **Do NOT** invent fields not present in the schema above.
+- **Do NOT** return text outside the JSON structure
 

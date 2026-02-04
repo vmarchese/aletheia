@@ -199,21 +199,11 @@ class GatewaySessionManager:
                     "as AgentResponse: %s",
                     e,
                 )
-                error_resp = AgentResponse(
-                    confidence=0.0,
-                    agent="orchestrator",
-                    findings=Findings(
-                        summary="error",
-                        details="error",
-                        tool_outputs=[],
-                    ),
-                    errors=["Failed to get response from orchestrator"],
-                )
                 yield {
                     "type": "json_complete",
-                    "content": error_resp.model_dump_json(),
-                    "parsed": error_resp.model_dump(),
-                    "usage": usage,
+                    "content": agent_resp.text,
+                    "parsed": "",
+                    "usage": usage
                 }
 
 
