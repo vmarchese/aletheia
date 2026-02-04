@@ -1,11 +1,20 @@
 """Gateway session management for Aletheia daemon."""
 
-import asyncio
-from pathlib import Path
+import json
+import logging
 from typing import AsyncIterator
 
+from agent_framework import AgentResponse as MSAgentResponse
+from agent_framework import (
+    ChatMessage,
+    Role,
+    TextContent
+)
+
+from aletheia.cli import _build_plugins
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.instructions_loader import Loader
+from aletheia.agents.model import AgentResponse, Findings
 from aletheia.config import Config
 from aletheia.daemon.history import ChatHistoryLogger
 from aletheia.engram.tools import Engram
@@ -135,86 +144,80 @@ class GatewaySessionManager:
         if self.chat_logger:
             self.chat_logger.log_user_message(message, channel)
 
-        # Import here to avoid circular dependency
-        import json
-        import logging
-
-        from agent_framework import (
-            ChatMessage,
-            Role,
-            TextContent,
-            UsageContent,
-        )
-        from aletheia.agents.model import AgentResponse
-
         logger = logging.getLogger(__name__)
 
         # Send to orchestrator and stream response
-        json_buffer = ""
-        parsed_response = None
-        parsed_successfully = False
+        agent_resp = await MSAgentResponse.from_agent_response_generator(
+            self.orchestrator.agent.run_stream(
+                messages=[
+                    ChatMessage(role=Role.USER, contents=[TextContent(text=message)])
+                ],
+                thread=self.orchestrator.thread,
+                response_format=AgentResponse,
+            ),
+            output_format_type=AgentResponse)
 
-        async for response in self.orchestrator.agent.run_stream(
-            messages=[
-                ChatMessage(role=Role.USER, contents=[TextContent(text=message)])
-            ],
-            thread=self.orchestrator.thread,
-            response_format=AgentResponse,
-        ):
-            # Check for regular text content
-            if response and response.text:
-                json_buffer += response.text
+        self.active_session.update_usage(
+            input_tokens=agent_resp.usage_details.input_token_count,
+            output_tokens=agent_resp.usage_details.output_token_count
+        )
 
-                # Try to parse the accumulated JSON
-                try:
-                    parsed_response = json.loads(json_buffer)
-                    parsed_successfully = True
+        usage = {
+            "input_tokens": agent_resp.usage_details.input_token_count,
+            "output_tokens": agent_resp.usage_details.output_token_count,
+            "total_tokens": (
+                agent_resp.usage_details.input_token_count
+                + agent_resp.usage_details.output_token_count
+            ),
+        }
 
-                    # Yield complete parsed JSON
-                    yield {
-                        "type": "json_complete",
-                        "content": json_buffer,
-                        "parsed": parsed_response,
-                    }
-                except json.JSONDecodeError:
-                    # JSON not complete yet, yield chunk for incremental rendering
-                    yield {
-                        "type": "json_chunk",
-                        "content": response.text,
-                        "buffer": json_buffer,
-                    }
-
-            # Check for usage content
-            if response and response.contents:
-                for content in response.contents:
-                    if isinstance(content, UsageContent):
-                        # Update session usage
-                        self.active_session.update_usage(
-                            input_tokens=content.details.input_token_count,
-                            output_tokens=content.details.output_token_count,
-                        )
-
-                        yield {
-                            "type": "usage",
-                            "usage": {
-                                "input_tokens": content.details.input_token_count,
-                                "output_tokens": content.details.output_token_count,
-                                "total_tokens": content.details.total_token_count,
-                            },
-                        }
-
-        # Final check: If JSON parsing never succeeded, send error
-        if not parsed_successfully and json_buffer.strip():
-            logger.warning(
-                f"Session manager: JSON parsing failed. Buffer length: {len(json_buffer)}"
-            )
-            logger.warning(f"Buffer preview: {json_buffer[:500]}")
+        logger.debug("Session manager: Completed streaming response - {agent_resp}")
+        if agent_resp.value:
             yield {
-                "type": "json_error",
-                "content": json_buffer,
-                "error": "Failed to parse JSON response",
+                "type": "json_complete",
+                "content": json.dumps(agent_resp.value),
+                "parsed": json.loads(json.dumps(agent_resp.value)),
+                "usage": usage,
             }
+        else:
+            # value is None — try to parse the raw text as AgentResponse
+            logger.warning(
+                "Session manager: agent_resp.value is None, "
+                "attempting to parse agent_resp.text"
+            )
+            try:
+                parsed = AgentResponse.model_validate_json(agent_resp.text)
+                yield {
+                    "type": "json_complete",
+                    "content": parsed.model_dump_json(),
+                    "parsed": parsed.model_dump(),
+                    "usage": usage,
+                }
+            except Exception as e:
+                logger.error(
+                    "Session manager: Failed to parse agent_resp.text "
+                    "as AgentResponse: %s",
+                    e,
+                )
+                error_resp = AgentResponse(
+                    confidence=0.0,
+                    agent="orchestrator",
+                    findings=Findings(
+                        summary="error",
+                        details="error",
+                        tool_outputs=[],
+                    ),
+                    errors=["Failed to get response from orchestrator"],
+                )
+                yield {
+                    "type": "json_complete",
+                    "content": error_resp.model_dump_json(),
+                    "parsed": error_resp.model_dump(),
+                    "usage": usage,
+                }
 
+
+        """
         # Log complete response
         if self.chat_logger:
             self.chat_logger.log_assistant_response(
@@ -222,16 +225,14 @@ class GatewaySessionManager:
                 parsed_response.get("agent") if parsed_response else None,
                 channel,
             )
-
+        """
+    
     def list_sessions(self) -> list[dict[str, any]]:
         """List all available sessions."""
         return Session.list_sessions()
 
     async def _init_orchestrator(self, session: Session) -> None:
         """Initialize orchestrator for a session (extracted from cli.py)."""
-        # Import here to avoid circular dependency at module level
-        from aletheia.cli import _build_plugins
-
         prompt_loader = Loader()
 
         # Initialize scratchpad

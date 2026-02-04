@@ -1,6 +1,22 @@
 """ Aletheia agent response model """
-from typing import List
+import json
+from typing import Any, List
+
 from pydantic import BaseModel
+
+
+# Install a custom default handler so all SerializableModel instances
+# work with json.dumps() directly.
+_original_encoder = json.JSONEncoder.default
+
+
+def _pydantic_default(self: json.JSONEncoder, obj: Any) -> Any:
+    if isinstance(obj, BaseModel):
+        return obj.model_dump()
+    return _original_encoder(self, obj)
+
+
+json.JSONEncoder.default = _pydantic_default  # type: ignore[assignment]
 
 
 class ToolOutput(BaseModel):
@@ -42,8 +58,8 @@ class AgentResponse(BaseModel):
     confidence: float  # Confidence level of the agent's response
     agent: str  # Name of the agent
     findings: Findings   # Holds the findings of the agent's analysis
-    decisions: Decisions  # Holds the decisions made by the agent
-    next_actions: NextActions  # Holds the next actions to be taken by the agent
+    decisions: Decisions | None = None  # Holds the decisions made by the agent
+    next_actions: NextActions | None = None  # Holds the next actions to be taken by the agent
     errors: List[str] | None = None  # Optional list of errors encountered
 
 

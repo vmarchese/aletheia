@@ -209,7 +209,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         async for chunk in session_manager.send_message(message_text, "telegram"):
             chunk_count += 1
             chunk_type = chunk.get("type")
-            logger.info(f"Telegram: Received chunk {chunk_count}: type={chunk_type}")
+            logger.debug(f"Telegram: Received chunk {chunk_count}: type={chunk_type}")
 
             # Wait for complete JSON, then format to markdown
             if chunk_type == "json_complete":

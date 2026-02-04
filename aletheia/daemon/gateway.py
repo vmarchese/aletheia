@@ -1,18 +1,81 @@
 """Main gateway daemon for Aletheia."""
 
 import asyncio
+import json
 import logging
 import signal
 from typing import Any
 
+from agent_framework import FunctionInvocationContext, FunctionMiddleware
 from websockets.server import WebSocketServerProtocol
 
-from aletheia.config import Config
-from aletheia.daemon.protocol import ProtocolMessage, SessionInfo
+from aletheia.config import Config, load_config
+from aletheia.daemon.protocol import ProtocolMessage
 from aletheia.daemon.server import WebSocketServer
 from aletheia.daemon.session_manager import GatewaySessionManager
 from aletheia.engram.tools import Engram
-from aletheia.session import SessionError
+from aletheia.session import Session, SessionError, SessionNotFoundError
+
+
+class GatewayFunctionMiddleware(FunctionMiddleware):
+    """Function middleware that sends function call events via WebSocket.
+
+    Installed by the gateway so all channels receive function_call events
+    as part of the chat stream protocol.
+    """
+
+    def __init__(self) -> None:
+        """Initialize with no active websocket."""
+        self.websocket: WebSocketServerProtocol | None = None
+        self.message_id: str | None = None
+
+    async def process(
+        self,
+        context: FunctionInvocationContext,
+        next: Any,
+    ) -> None:
+        """Intercept function calls and send them via WebSocket."""
+        from aletheia.utils.logging import log_debug
+
+        skipped_functions = ["write_journal_entry", "read_scratchpad"]
+        try:
+            from aletheia.commands import COMMANDS
+
+            if "agents" in COMMANDS:
+                for agent in COMMANDS["agents"].agents:
+                    skipped_functions.append(agent.name)
+        except (ImportError, KeyError):
+            pass
+
+        if (
+            self.websocket
+            and self.message_id
+            and context.function.name not in skipped_functions
+        ):
+            arguments = {}
+            for arg_key, arg_value in context.arguments.model_dump().items():
+                str_value = str(arg_value)
+                if len(str_value) > 100:
+                    str_value = str_value[:97] + "..."
+                arguments[arg_key] = str_value
+
+            try:
+                chunk_msg = ProtocolMessage.create(
+                    "chat_stream_chunk",
+                    {
+                        "message_id": self.message_id,
+                        "chunk_type": "function_call",
+                        "content": {
+                            "function_name": context.function.name,
+                            "arguments": arguments,
+                        },
+                    },
+                )
+                await self.websocket.send(chunk_msg.to_json())
+            except Exception as e:
+                log_debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
+
+        await next(context)
 
 
 class AletheiaGateway:
@@ -44,8 +107,13 @@ class AletheiaGateway:
         logging.getLogger("aletheia.daemon.session_manager").setLevel(logging.INFO)
         logging.getLogger("aletheia.daemon.telegram_integration").setLevel(logging.INFO)
 
+        # Function middleware for sending function call events via WebSocket
+        self.function_middleware = GatewayFunctionMiddleware()
+        self.session_manager.additional_middleware = [self.function_middleware]
+
         # Optional server components
         self.web_server = None
+        self.web_channel: Any = None
         self.telegram_task = None
 
         if enable_memory:
@@ -80,7 +148,7 @@ class AletheiaGateway:
         enabled_channels.append(f"TUI (ws://{host}:{port})")
 
         # Start Web/FastAPI server (always enabled)
-        await self._start_web_server(host, web_port)
+        await self._start_web_server(host, web_port, ws_port=port)
         enabled_channels.append(f"Web UI (http://{host}:{web_port})")
 
         # Start Telegram bot (conditional)
@@ -121,6 +189,10 @@ class AletheiaGateway:
                 await self.telegram_task
             except asyncio.CancelledError:
                 pass
+
+        # Disconnect web channel
+        if self.web_channel:
+            await self.web_channel.disconnect()
 
         # Stop Web server
         if self.web_server:
@@ -200,6 +272,24 @@ class AletheiaGateway:
 
         elif msg_type == "chat_message":
             await self._handle_chat_message(websocket, payload, channel_id or "unknown")
+
+        elif msg_type == "session_delete":
+            await self._handle_session_delete(websocket, payload)
+
+        elif msg_type == "session_metadata":
+            await self._handle_session_metadata(websocket, payload)
+
+        elif msg_type == "command_list":
+            await self._handle_command_list(websocket)
+
+        elif msg_type == "command_execute":
+            await self._handle_command_execute(websocket, payload)
+
+        elif msg_type == "scratchpad_get":
+            await self._handle_scratchpad_get(websocket, payload)
+
+        elif msg_type == "timeline_get":
+            await self._handle_timeline_get(websocket, payload)
 
         elif msg_type == "ping":
             # Respond to ping
@@ -323,6 +413,14 @@ class AletheiaGateway:
                 await websocket.send(error_msg.to_json())
                 return
 
+            # Check session metadata to detect if it's unsafe/unencrypted
+            sessions = Session.list_sessions()
+            for s in sessions:
+                if s["id"] == session_id:
+                    if s.get("unsafe") is True:
+                        unsafe = True
+                    break
+
             session = await self.session_manager.resume_session(
                 session_id=session_id,
                 password=password,
@@ -375,6 +473,455 @@ class AletheiaGateway:
         response = ProtocolMessage.create("session_list", {"sessions": sessions})
         await websocket.send(response.to_json())
 
+    async def _handle_session_delete(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Handle session deletion request."""
+        try:
+            session_id = payload.get("session_id")
+            if not session_id:
+                error_msg = ProtocolMessage.create(
+                    "error",
+                    {"code": "MISSING_SESSION_ID", "message": "session_id required"},
+                )
+                await websocket.send(error_msg.to_json())
+                return
+
+            # Close if it's the active session
+            active_session = self.session_manager.get_active_session()
+            if active_session and active_session.session_id == session_id:
+                await self.session_manager.close_active_session()
+
+            # Delete from disk
+            session = Session(session_id=session_id)
+            session.delete()
+
+            response = ProtocolMessage.create(
+                "session_deleted",
+                {"session_id": session_id},
+            )
+            await websocket.send(response.to_json())
+
+        except SessionNotFoundError:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "SESSION_NOT_FOUND", "message": "Session not found"},
+            )
+            await websocket.send(error_msg.to_json())
+        except Exception as e:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "SESSION_DELETE_ERROR", "message": str(e)},
+            )
+            await websocket.send(error_msg.to_json())
+
+    async def _handle_session_metadata(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Handle session metadata request."""
+        try:
+            session_id = payload.get("session_id")
+            password = payload.get("password")
+            unsafe = payload.get("unsafe", False)
+
+            if not session_id:
+                error_msg = ProtocolMessage.create(
+                    "error",
+                    {"code": "MISSING_SESSION_ID", "message": "session_id required"},
+                )
+                await websocket.send(error_msg.to_json())
+                return
+
+            # Check if this is the active session
+            active_session = self.session_manager.get_active_session()
+            if active_session and active_session.session_id == session_id:
+                data = active_session.get_metadata().to_dict()
+            else:
+                # Load from disk
+                sessions = Session.list_sessions()
+                target = None
+                for s in sessions:
+                    if s["id"] == session_id:
+                        target = s
+                        break
+
+                if not target:
+                    error_msg = ProtocolMessage.create(
+                        "error",
+                        {"code": "SESSION_NOT_FOUND", "message": "Session not found"},
+                    )
+                    await websocket.send(error_msg.to_json())
+                    return
+
+                try:
+                    is_unsafe = target.get("unsafe") is True
+                    use_unsafe = unsafe or is_unsafe
+                    session = Session.resume(
+                        session_id=session_id,
+                        password=password,
+                        unsafe=use_unsafe,
+                    )
+                    data = session.get_metadata().to_dict()
+                except Exception:
+                    if password:
+                        error_msg = ProtocolMessage.create(
+                            "error",
+                            {
+                                "code": "SESSION_METADATA_ERROR",
+                                "message": "Invalid password or session data",
+                            },
+                        )
+                        await websocket.send(error_msg.to_json())
+                        return
+                    data = target
+
+            # Calculate cost
+            config = load_config()
+            input_tokens = data.get("total_input_tokens", 0)
+            output_tokens = data.get("total_output_tokens", 0)
+            data["total_cost"] = (input_tokens * config.cost_per_input_token) + (
+                output_tokens * config.cost_per_output_token
+            )
+
+            response = ProtocolMessage.create("session_metadata", {"metadata": data})
+            await websocket.send(response.to_json())
+
+        except Exception as e:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "SESSION_METADATA_ERROR", "message": str(e)},
+            )
+            await websocket.send(error_msg.to_json())
+
+    async def _handle_command_list(self, websocket: WebSocketServerProtocol) -> None:
+        """Handle command list request."""
+        try:
+            from aletheia.commands import COMMANDS, get_custom_commands
+
+            config = load_config()
+            commands_list = []
+
+            # Built-in commands
+            for name, cmd_obj in COMMANDS.items():
+                commands_list.append(
+                    {
+                        "name": name,
+                        "description": cmd_obj.description,
+                        "type": "built-in",
+                    }
+                )
+
+            # Custom commands
+            try:
+                custom_cmds = get_custom_commands(config)
+                for command_name, custom_cmd in custom_cmds.items():
+                    commands_list.append(
+                        {
+                            "name": command_name,
+                            "description": f"{custom_cmd.name}: {custom_cmd.description}",
+                            "type": "custom",
+                        }
+                    )
+            except Exception:
+                pass
+
+            commands_list.sort(key=lambda x: x["name"])
+
+            response = ProtocolMessage.create(
+                "command_list", {"commands": commands_list}
+            )
+            await websocket.send(response.to_json())
+
+        except Exception as e:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "COMMAND_LIST_ERROR", "message": str(e)},
+            )
+            await websocket.send(error_msg.to_json())
+
+    async def _handle_command_execute(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Handle built-in command execution."""
+        import io
+        import re
+        import uuid
+
+        from rich.console import Console
+        from rich.markdown import Markdown
+
+        from aletheia.commands import COMMANDS, expand_custom_command
+
+        try:
+            message = payload.get("message", "")
+            config = load_config()
+
+            # Try custom command expansion first
+            expanded_message, was_expanded = expand_custom_command(message, config)
+            if was_expanded:
+                # Custom command expanded - treat as chat message
+                await self._handle_chat_message(
+                    websocket,
+                    {"message": expanded_message},
+                    payload.get("channel", "web"),
+                )
+                return
+
+            # Parse built-in command
+            command_parts = message.strip()[1:].split()
+            command_name = command_parts[0]
+            args = command_parts[1:]
+
+            command = COMMANDS.get(command_name)
+            if not command:
+                error_msg = ProtocolMessage.create(
+                    "error",
+                    {
+                        "code": "UNKNOWN_COMMAND",
+                        "message": f"Unknown command: /{command_name}",
+                    },
+                )
+                await websocket.send(error_msg.to_json())
+                return
+
+            # Execute command with mock console
+            class MockConsole:
+                def __init__(self) -> None:
+                    self.file = io.StringIO()
+                    self.console = Console(
+                        file=self.file,
+                        force_terminal=False,
+                        width=80,
+                        legacy_windows=False,
+                        no_color=True,
+                        markup=False,
+                    )
+
+                def print(self, *print_args: Any, **kwargs: Any) -> None:
+                    for arg in print_args:
+                        if isinstance(arg, Markdown):
+                            self.file.write(arg.markup + "\n")
+                        else:
+                            self.console.print(arg, **kwargs)
+
+                def get_output(self) -> str:
+                    output = self.file.getvalue()
+                    output = re.sub(r"\[/?[a-z_]+[^\]]*\]", "", output)
+                    return output
+
+            mock_console = MockConsole()
+
+            kwargs: dict[str, Any] = {"config": config}
+            if command_name == "cost":
+                orchestrator = self.session_manager.get_orchestrator()
+                if orchestrator and hasattr(orchestrator, "completion_usage"):
+                    kwargs["completion_usage"] = orchestrator.completion_usage
+
+            command.execute(*args, console=mock_console, **kwargs)
+
+            # Send result as stream
+            message_id = str(uuid.uuid4())
+            start_msg = ProtocolMessage.create(
+                "chat_stream_start", {"message_id": message_id}
+            )
+            await websocket.send(start_msg.to_json())
+
+            output = mock_console.get_output()
+            chunk_msg = ProtocolMessage.create(
+                "chat_stream_chunk",
+                {
+                    "message_id": message_id,
+                    "chunk_type": "text",
+                    "content": output,
+                },
+            )
+            await websocket.send(chunk_msg.to_json())
+
+            end_msg = ProtocolMessage.create(
+                "chat_stream_end", {"message_id": message_id, "usage": {}}
+            )
+            await websocket.send(end_msg.to_json())
+
+        except Exception as e:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "COMMAND_EXECUTE_ERROR", "message": str(e)},
+            )
+            await websocket.send(error_msg.to_json())
+
+    async def _handle_scratchpad_get(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Handle scratchpad content request."""
+        from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+
+        try:
+            session_id = payload.get("session_id")
+            password = payload.get("password")
+            unsafe = payload.get("unsafe", False)
+
+            if not session_id:
+                error_msg = ProtocolMessage.create(
+                    "error",
+                    {"code": "MISSING_SESSION_ID", "message": "session_id required"},
+                )
+                await websocket.send(error_msg.to_json())
+                return
+
+            # Get session
+            active_session = self.session_manager.get_active_session()
+            if active_session and active_session.session_id == session_id:
+                session = active_session
+            else:
+                sessions = Session.list_sessions()
+                is_unsafe = False
+                for s in sessions:
+                    if s["id"] == session_id:
+                        is_unsafe = s.get("unsafe") is True
+                        break
+                use_unsafe = unsafe or is_unsafe
+                session = Session.resume(
+                    session_id=session_id, password=password, unsafe=use_unsafe
+                )
+
+            scratchpad = Scratchpad(
+                session_dir=session.session_path, encryption_key=session.get_key()
+            )
+            content = scratchpad.read_scratchpad()
+
+            response = ProtocolMessage.create("scratchpad_data", {"content": content})
+            await websocket.send(response.to_json())
+
+        except Exception as e:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "SCRATCHPAD_ERROR", "message": str(e)},
+            )
+            await websocket.send(error_msg.to_json())
+
+    async def _handle_timeline_get(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Handle timeline generation request."""
+        from agent_framework import ChatMessage, Role, TextContent
+
+        from aletheia.agents.instructions_loader import Loader
+        from aletheia.agents.model import Timeline
+        from aletheia.agents.timeline.timeline_agent import TimelineAgent
+        from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+
+        try:
+            session_id = payload.get("session_id")
+            password = payload.get("password")
+            unsafe = payload.get("unsafe", False)
+
+            if not session_id:
+                error_msg = ProtocolMessage.create(
+                    "error",
+                    {"code": "MISSING_SESSION_ID", "message": "session_id required"},
+                )
+                await websocket.send(error_msg.to_json())
+                return
+
+            # Get session
+            active_session = self.session_manager.get_active_session()
+            if active_session and active_session.session_id == session_id:
+                session = active_session
+            else:
+                sessions = Session.list_sessions()
+                is_unsafe = False
+                for s in sessions:
+                    if s["id"] == session_id:
+                        is_unsafe = s.get("unsafe") is True
+                        break
+                use_unsafe = unsafe or is_unsafe
+                session = Session.resume(
+                    session_id=session_id, password=password, unsafe=use_unsafe
+                )
+
+            # Read scratchpad
+            scratchpad_file = session.scratchpad_file
+            if not scratchpad_file.exists():
+                response = ProtocolMessage.create("timeline_data", {"timeline": []})
+                await websocket.send(response.to_json())
+                return
+
+            scratchpad = Scratchpad(
+                session_dir=session.session_path, encryption_key=session.get_key()
+            )
+            journal_content = scratchpad.read_scratchpad()
+            if not journal_content or not journal_content.strip():
+                response = ProtocolMessage.create("timeline_data", {"timeline": []})
+                await websocket.send(response.to_json())
+                return
+
+            # Generate timeline
+            prompt_loader = Loader()
+            timeline_agent = TimelineAgent(
+                name="timeline_agent",
+                instructions=prompt_loader.load("timeline", "json_instructions"),
+                description="Timeline Agent for generating session timeline",
+            )
+
+            message = ChatMessage(
+                role=Role.USER,
+                contents=[
+                    TextContent(
+                        text=f"Generate a timeline of the following "
+                        f"troubleshooting session scratchpad data:\n\n"
+                        f"{journal_content}"
+                    )
+                ],
+            )
+
+            agent_response = await timeline_agent.agent.run(
+                message, response_format=Timeline
+            )
+
+            if agent_response and agent_response.text:
+                try:
+                    timeline_data = json.loads(str(agent_response.text))
+                    entries = (
+                        timeline_data.get("entries", timeline_data)
+                        if isinstance(timeline_data, dict)
+                        else timeline_data
+                    )
+
+                    normalized_entries = []
+                    for event in entries:
+                        normalized_entries.append(
+                            {
+                                "timestamp": event.get("timestamp", ""),
+                                "type": event.get(
+                                    "entry_type", event.get("type", "INFO")
+                                ),
+                                "content": event.get(
+                                    "content", event.get("description", "")
+                                ),
+                            }
+                        )
+
+                    response = ProtocolMessage.create(
+                        "timeline_data", {"timeline": normalized_entries}
+                    )
+                    await websocket.send(response.to_json())
+                except json.JSONDecodeError:
+                    response = ProtocolMessage.create(
+                        "timeline_data",
+                        {"timeline": [], "raw_text": str(agent_response.text)},
+                    )
+                    await websocket.send(response.to_json())
+            else:
+                response = ProtocolMessage.create("timeline_data", {"timeline": []})
+                await websocket.send(response.to_json())
+
+        except Exception as e:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "TIMELINE_ERROR", "message": str(e)},
+            )
+            await websocket.send(error_msg.to_json())
+
     async def _handle_chat_message(
         self, websocket: WebSocketServerProtocol, payload: dict[str, Any], channel: str
     ) -> None:
@@ -404,6 +951,11 @@ class AletheiaGateway:
         import uuid
 
         message_id = str(uuid.uuid4())
+
+        # Update function middleware to send events on this websocket
+        self.function_middleware.websocket = websocket
+        self.function_middleware.message_id = message_id
+
         start_msg = ProtocolMessage.create(
             "chat_stream_start",
             {"message_id": message_id},
@@ -412,8 +964,6 @@ class AletheiaGateway:
 
         # Stream response - send raw JSON chunks to channel for rendering
         try:
-            last_usage = {}
-
             async for chunk in self.session_manager.send_message(message, channel):
                 chunk_type = chunk.get("type")
 
@@ -425,22 +975,16 @@ class AletheiaGateway:
                             "message_id": message_id,
                             "chunk_type": chunk_type,
                             "content": chunk.get("content", ""),
-                            "parsed": chunk.get("parsed"),  # For json_complete
+                            "parsed": chunk.get("parsed"),
+                            "usage": chunk.get("usage"),
                         },
                     )
                     await websocket.send(chunk_msg.to_json())
 
-                # Track usage for stream end
-                elif chunk_type == "usage":
-                    last_usage = chunk.get("usage", {})
-
             # Send stream end
             end_msg = ProtocolMessage.create(
                 "chat_stream_end",
-                {
-                    "message_id": message_id,
-                    "usage": last_usage,
-                },
+                {"message_id": message_id},
             )
             await websocket.send(end_msg.to_json())
 
@@ -456,19 +1000,30 @@ class AletheiaGateway:
         """Broadcast message to all connected channels."""
         await self.websocket_server.broadcast(message)
 
-    async def _start_web_server(self, host: str, port: int) -> None:
+    async def _start_web_server(
+        self, host: str, port: int, ws_port: int = 8765
+    ) -> None:
         """Start the Web/FastAPI server as part of the gateway process.
+
+        Creates a WebChannelConnector that connects back to the gateway's
+        WebSocket server, then serves its FastAPI app via uvicorn.
 
         Args:
             host: Host to bind to
-            port: Port to listen on
+            port: Port for the web server
+            ws_port: Port of the gateway's WebSocket server
         """
         try:
             import uvicorn
-            from aletheia.channels.web import create_web_app
 
-            # Create FastAPI app integrated with gateway's session manager
-            app = create_web_app(self.session_manager, self.engram)
+            from aletheia.channels.web import WebChannelConnector
+
+            # Create web channel connector and connect to gateway's WebSocket
+            self.web_channel = WebChannelConnector(gateway_url=f"ws://{host}:{ws_port}")
+            await self.web_channel.connect()
+
+            # Get the FastAPI app from the connector
+            app = self.web_channel.create_app()
 
             # Create uvicorn config
             config = uvicorn.Config(

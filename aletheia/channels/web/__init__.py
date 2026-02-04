@@ -1,5 +1,5 @@
 """Web UI channel for Aletheia."""
 
-from aletheia.channels.web.web_integration import create_web_app
+from aletheia.channels.web.web_integration import WebChannelConnector
 
-__all__ = ["create_web_app"]
+__all__ = ["WebChannelConnector"]

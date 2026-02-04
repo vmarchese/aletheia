@@ -611,29 +611,116 @@ function connectStream(sessionId) {
             if (!messageStartTime) {
                 messageStartTime = Date.now();
             }
-        } else if (data.type === 'text') {
-            stopThinking(); // Stop thinking on first token
+        } else if (data.type === 'json_chunk') {
+            // Incremental JSON chunk - just ignore for now, wait for json_complete
+            // Could show a progress indicator here if desired
+            console.log('[SSE] JSON chunk received, waiting for complete...');
+        } else if (data.type === 'json_complete') {
+            // Complete JSON response from the agent
+            stopThinking();
+            console.log('[SSE] Complete JSON received:', data.parsed);
 
-            // Check if last message is bot, if so append, else create new
+            // Render the complete structured response
+            const parsedData = data.parsed;
+            if (parsedData) {
+                // Check if we need to create a new message or update existing
+                const lastMsg = chatContainer.lastElementChild;
+                const needsNewMessage = !lastMsg ||
+                                       lastMsg.classList.contains('user') ||
+                                       lastMsg.dataset.complete ||
+                                       !lastMsg.classList.contains('bot') ||
+                                       lastMsg.classList.contains('function-call-notification') ||
+                                       lastMsg.id === 'thinking-bubble';
+
+                if (needsNewMessage) {
+                    createStructuredMessage();
+                }
+
+                // Get the message div and set its structured data
+                const msgDiv = chatContainer.lastElementChild;
+                msgDiv.dataset.structuredData = JSON.stringify(parsedData);
+
+                // Render the structured message
+                renderStructuredMessage(msgDiv, parsedData);
+
+                // Update suggestions if next_actions contains next_requests
+                if (parsedData.next_actions && parsedData.next_actions.next_requests &&
+                    parsedData.next_actions.next_requests.length > 0) {
+                    currentNextRequests = parsedData.next_actions.next_requests;
+                    renderNextRequestSuggestions(currentNextRequests);
+                }
+
+                // Update usage if present
+                if (data.usage) {
+                    updateLastBotMessageUsage(data.usage);
+                }
+
+                // Mark message as complete
+                msgDiv.dataset.complete = "true";
+            }
+        } else if (data.type === 'json_error') {
+            // JSON parsing failed in backend, fallback to text rendering
+            stopThinking();
+            console.log('[SSE] JSON error, rendering as text fallback');
+            const content = data.content || '';
+
+            // Try to parse sections from the text
+            const fallbackHtml = parseSections(content);
+
+            // If parseSections returned HTML with sections, use it
+            if (fallbackHtml && fallbackHtml.includes('section-tabs')) {
+                // Render as structured content with warning
+                const lastMsg = chatContainer.lastElementChild;
+                if (lastMsg && lastMsg.classList.contains('bot') && !lastMsg.dataset.complete) {
+                    const contentDiv = lastMsg.querySelector('.message-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = `
+                            <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                                ⚠️ Backend JSON parsing failed. Displaying unstructured response.
+                            </div>
+                            ${fallbackHtml}
+                        `;
+                    }
+                } else {
+                    appendMessage(`
+                        <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                            ⚠️ Backend JSON parsing failed. Displaying unstructured response.
+                        </div>
+                        ${fallbackHtml}
+                    `, 'bot');
+                }
+            } else {
+                // Fallback to plain markdown if no sections found
+                const markdownHtml = marked.parse(content);
+                const lastMsg = chatContainer.lastElementChild;
+                if (lastMsg && lastMsg.classList.contains('bot') && !lastMsg.dataset.complete) {
+                    const contentDiv = lastMsg.querySelector('.message-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = `
+                            <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                                ⚠️ Backend JSON parsing failed. Displaying unstructured response.
+                            </div>
+                            ${markdownHtml}
+                        `;
+                    }
+                } else {
+                    appendMessage(`
+                        <div class="fallback-indicator" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">
+                            ⚠️ Backend JSON parsing failed. Displaying unstructured response.
+                        </div>
+                        ${markdownHtml}
+                    `, 'bot');
+                }
+            }
+        } else if (data.type === 'text') {
+            // Legacy text streaming (should not be used anymore, but keep for backwards compat)
+            stopThinking();
             const lastMsg = chatContainer.lastElementChild;
             if (lastMsg && lastMsg.classList.contains('bot') && !lastMsg.dataset.complete) {
                 updateLastBotMessage(data.content);
             } else {
                 appendMessage(data.content, 'bot');
             }
-        } else if (data.type === 'confidence') {
-            stopThinking();
-            updateStructuredResponse('confidence', data.content);
-        } else if (data.type === 'agent') {
-            updateStructuredResponse('agent', data.content);
-        } else if (data.type === 'findings') {
-            updateStructuredResponse('findings', data.content);
-        } else if (data.type === 'decisions') {
-            updateStructuredResponse('decisions', data.content);
-        } else if (data.type === 'next_actions') {
-            updateStructuredResponse('next_actions', data.content);
-        } else if (data.type === 'errors') {
-            updateStructuredResponse('errors', data.content);
         } else if (data.type === 'text_fallback') {
             // Fallback: JSON parsing failed, render raw content as markdown
             stopThinking();
@@ -687,22 +774,6 @@ function connectStream(sessionId) {
                     `, 'bot');
                 }
             }
-        } else if (data.type === 'response_complete') {
-            // Structured response completed successfully
-            stopThinking();
-            console.log('[SSE] Structured response complete');
-            // Ensure the last bot message is marked as complete and visible
-            const lastMsg = chatContainer.lastElementChild;
-            if (lastMsg && lastMsg.classList.contains('bot')) {
-                lastMsg.dataset.complete = "true";
-                // If message is empty or hidden, log warning
-                const contentDiv = lastMsg.querySelector('.message-content');
-                if (contentDiv && !contentDiv.innerHTML.trim()) {
-                    console.warn('[SSE] Response complete but message content is empty');
-                }
-            } else {
-                console.warn('[SSE] Response complete but no bot message found in DOM');
-            }
         } else if (data.type === 'done') {
             stopThinking();
             setProcessing(false);
@@ -734,10 +805,6 @@ function connectStream(sessionId) {
             stopThinking();
             setProcessing(false);
             appendMessage(`Error: ${data.content}`, 'bot');
-        } else if (data.type === 'usage') {
-            // Update the last bot message with usage info
-            console.log('Usage data received:', data.content);
-            updateLastBotMessageUsage(data.content);
         }
     };
 
@@ -1195,54 +1262,6 @@ function updateLastBotMessageUsage(usageData) {
     }
 }
 
-function updateStructuredResponse(fieldType, content) {
-    console.log('[updateStructuredResponse] Called with fieldType:', fieldType, 'content:', content);
-    const lastMsg = chatContainer.lastElementChild;
-
-    // Create new message if needed - check if last message is a proper bot message with structured data
-    // Also exclude thinking bubble which has ID 'thinking-bubble'
-    const needsNewMessage = !lastMsg ||
-                            lastMsg.classList.contains('user') ||
-                            lastMsg.dataset.complete ||
-                            !lastMsg.classList.contains('bot') ||
-                            lastMsg.classList.contains('function-call-notification') ||
-                            lastMsg.id === 'thinking-bubble';
-
-    if (needsNewMessage) {
-        console.log('[updateStructuredResponse] Creating new structured message, reason:', {
-            noLastMsg: !lastMsg,
-            isUser: lastMsg?.classList.contains('user'),
-            isComplete: lastMsg?.dataset.complete,
-            notBot: lastMsg && !lastMsg.classList.contains('bot'),
-            isFunctionCall: lastMsg?.classList.contains('function-call-notification'),
-            isThinking: lastMsg?.id === 'thinking-bubble'
-        });
-        createStructuredMessage();
-    }
-
-    const msgDiv = chatContainer.lastElementChild;
-    if (!msgDiv.dataset.structuredData) {
-        console.log('[updateStructuredResponse] Message has no structuredData, initializing');
-        msgDiv.dataset.structuredData = JSON.stringify({});
-    }
-
-    const data = JSON.parse(msgDiv.dataset.structuredData);
-    data[fieldType] = content;
-    msgDiv.dataset.structuredData = JSON.stringify(data);
-
-    console.log('[updateStructuredResponse] Updated data:', data);
-
-    // Render the updated structured response
-    renderStructuredMessage(msgDiv, data);
-    console.log('[updateStructuredResponse] Rendered structured message');
-
-    // Update suggestions if next_actions contains next_requests
-    if (fieldType === 'next_actions' && content.next_requests && content.next_requests.length > 0) {
-        currentNextRequests = content.next_requests;
-        renderNextRequestSuggestions(currentNextRequests);
-    }
-}
-
 function renderNextRequestSuggestions(suggestions) {
     console.log('[renderNextRequestSuggestions] Rendering suggestions:', suggestions);
 
@@ -1356,6 +1375,48 @@ function createStructuredMessage() {
     scrollToBottom();
 }
 
+function renderStructuredMessageFallback(contentDiv, data, error) {
+    console.error('[renderStructuredMessageFallback] Rendering fallback due to error:', error);
+    console.log('[renderStructuredMessageFallback] Data:', data);
+
+    let html = '';
+
+    // Error indicator
+    html += `<div class="fallback-indicator" style="background: #fee; border-left: 3px solid #f44; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.9em;">`;
+    html += `⚠️ Error rendering structured response. Showing simplified view.`;
+    html += `</div>`;
+
+    // Try to show findings summary and details
+    if (data.findings) {
+        try {
+            if (data.findings.summary) {
+                html += `<div class="section-summary" style="margin-bottom: 16px;">`;
+                html += `<strong style="display: block; margin-bottom: 8px;">Summary:</strong>`;
+                html += `<div>${marked.parse(String(data.findings.summary))}</div>`;
+                html += `</div>`;
+            }
+
+            if (data.findings.details) {
+                html += `<div class="section-details">`;
+                html += `<strong style="display: block; margin-bottom: 8px;">Details:</strong>`;
+                html += `<div>${marked.parse(String(data.findings.details))}</div>`;
+                html += `</div>`;
+            }
+        } catch (innerError) {
+            console.error('[renderStructuredMessageFallback] Error parsing findings:', innerError);
+            // Last resort: show raw text
+            html += `<div style="padding: 12px; background: #f5f5f5; border-radius: 4px; font-family: monospace; white-space: pre-wrap;">`;
+            html += escapeHtml(JSON.stringify(data.findings, null, 2));
+            html += `</div>`;
+        }
+    } else {
+        html += `<div style="color: #666; font-style: italic;">No findings data available.</div>`;
+    }
+
+    contentDiv.innerHTML = html;
+    scrollToBottom();
+}
+
 function renderStructuredMessage(msgDiv, data) {
     console.log('[renderStructuredMessage] Called with data:', data);
     const contentDiv = msgDiv.querySelector('.message-content');
@@ -1366,159 +1427,165 @@ function renderStructuredMessage(msgDiv, data) {
         return;
     }
 
-    let html = '';
+    try {
+        let html = '';
 
-    // Agent and confidence header
-    if (data.agent || data.confidence) {
-        const agentName = data.agent || 'Orchestrator';
-        const agentIcon = getAgentIcon(agentName);
-        if (avatar) {
-            renderAvatar(avatar, agentIcon, agentName);
-        } else {
-            console.warn('[renderStructuredMessage] No avatar element found, skipping avatar render');
+        // Agent and confidence header
+        if (data.agent || data.confidence) {
+            const agentName = data.agent || 'Orchestrator';
+            const agentIcon = getAgentIcon(agentName);
+            if (avatar) {
+                renderAvatar(avatar, agentIcon, agentName);
+            } else {
+                console.warn('[renderStructuredMessage] No avatar element found, skipping avatar render');
+            }
+
+            html += '<div class="response-header">';
+            html += `<div class="agent-name"><strong>Agent:</strong> ${agentName}</div>`;
+            if (data.confidence !== undefined) {
+                const confidencePct = Math.round(data.confidence * 100);
+                html += `<div class="confidence-meter">`;
+                html += `<div class="confidence-label">Confidence: ${confidencePct}%</div>`;
+                html += `<div class="confidence-bar">`;
+                html += `<div class="confidence-fill" style="width: ${confidencePct}%"></div>`;
+                html += `</div></div>`;
+            }
+            html += '</div>';
         }
 
-        html += '<div class="response-header">';
-        html += `<div class="agent-name"><strong>Agent:</strong> ${agentName}</div>`;
-        if (data.confidence !== undefined) {
-            const confidencePct = Math.round(data.confidence * 100);
-            html += `<div class="confidence-meter">`;
-            html += `<div class="confidence-label">Confidence: ${confidencePct}%</div>`;
-            html += `<div class="confidence-bar">`;
-            html += `<div class="confidence-fill" style="width: ${confidencePct}%"></div>`;
-            html += `</div></div>`;
-        }
+        // Create tabs structure
+        html += '<div class="section-tabs">';
+        html += '<div class="tabs-nav">';
+
+        const hasFindings = data.findings && Object.keys(data.findings).length > 0;
+        const hasDecisions = data.decisions && Object.keys(data.decisions).length > 0;
+        const hasActions = data.next_actions && data.next_actions.steps && data.next_actions.steps.length > 0;
+        const hasErrors = data.errors && data.errors.length > 0;
+
+        if (hasFindings) html += '<button class="tab-btn active" data-tab="findings">🔍 Findings</button>';
+        if (hasDecisions) html += `<button class="tab-btn ${!hasFindings ? 'active' : ''}" data-tab="decisions">🎯 Decisions</button>`;
+        if (hasActions) html += `<button class="tab-btn ${!hasFindings && !hasDecisions ? 'active' : ''}" data-tab="actions">📋 Next Actions</button>`;
+        if (hasErrors) html += '<button class="tab-btn error-tab" data-tab="errors">⚠️ Errors</button>';
+
         html += '</div>';
-    }
+        html += '<div class="tabs-content">';
 
-    // Create tabs structure
-    html += '<div class="section-tabs">';
-    html += '<div class="tabs-nav">';
+        // Findings tab
+        if (hasFindings) {
+            html += '<div class="tab-pane active" id="findings">';
+            if (data.findings.summary) {
+                html += `<div class="section-summary"><strong>Summary:</strong> ${marked.parse(data.findings.summary)}</div>`;
+            }
+            if (data.findings.details) {
+                html += `<div class="section-details">${marked.parse(data.findings.details)}</div>`;
+            }
+            if (data.findings.tool_outputs && Array.isArray(data.findings.tool_outputs) && data.findings.tool_outputs.length > 0) {
+                html += `<div class="tool-outputs-container">`;
+                html += `<h4 class="tool-outputs-title">Tool Outputs (${data.findings.tool_outputs.length})</h4>`;
+                data.findings.tool_outputs.forEach((toolOutput, index) => {
+                    const toolName = typeof toolOutput.tool_name === 'string' ? toolOutput.tool_name : String(toolOutput.tool_name || 'Unknown');
+                    const command = typeof toolOutput.command === 'string' ? toolOutput.command : String(toolOutput.command || '');
+                    const output = typeof toolOutput.output === 'string' ? toolOutput.output : String(toolOutput.output || '');
 
-    const hasFindings = data.findings && Object.keys(data.findings).length > 0;
-    const hasDecisions = data.decisions && Object.keys(data.decisions).length > 0;
-    const hasActions = data.next_actions && data.next_actions.steps && data.next_actions.steps.length > 0;
-    const hasErrors = data.errors && data.errors.length > 0;
-
-    if (hasFindings) html += '<button class="tab-btn active" data-tab="findings">🔍 Findings</button>';
-    if (hasDecisions) html += `<button class="tab-btn ${!hasFindings ? 'active' : ''}" data-tab="decisions">🎯 Decisions</button>`;
-    if (hasActions) html += `<button class="tab-btn ${!hasFindings && !hasDecisions ? 'active' : ''}" data-tab="actions">📋 Next Actions</button>`;
-    if (hasErrors) html += '<button class="tab-btn error-tab" data-tab="errors">⚠️ Errors</button>';
-
-    html += '</div>';
-    html += '<div class="tabs-content">';
-
-    // Findings tab
-    if (hasFindings) {
-        html += '<div class="tab-pane active" id="findings">';
-        if (data.findings.summary) {
-            html += `<div class="section-summary"><strong>Summary:</strong> ${marked.parse(data.findings.summary)}</div>`;
-        }
-        if (data.findings.details) {
-            html += `<div class="section-details">${marked.parse(data.findings.details)}</div>`;
-        }
-        if (data.findings.tool_outputs && Array.isArray(data.findings.tool_outputs) && data.findings.tool_outputs.length > 0) {
-            html += `<div class="tool-outputs-container">`;
-            html += `<h4 class="tool-outputs-title">Tool Outputs (${data.findings.tool_outputs.length})</h4>`;
-            data.findings.tool_outputs.forEach((toolOutput, index) => {
-                const toolName = typeof toolOutput.tool_name === 'string' ? toolOutput.tool_name : String(toolOutput.tool_name || 'Unknown');
-                const command = typeof toolOutput.command === 'string' ? toolOutput.command : String(toolOutput.command || '');
-                const output = typeof toolOutput.output === 'string' ? toolOutput.output : String(toolOutput.output || '');
-
-                html += `<div class="tool-output-item">`;
-                html += `<button class="tool-output-toggle" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">`;
-                html += `<span class="toggle-icon">&#x25B6</span>`;
-                html += `<div class="tool-output-header-content">`;
-                html += `<strong>${index + 1}. ${escapeHtml(toolName)}</strong>`;
-                html += `<code class="tool-command">${escapeHtml(command)}</code>`;
+                    html += `<div class="tool-output-item">`;
+                    html += `<button class="tool-output-toggle" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">`;
+                    html += `<span class="toggle-icon">&#x25B6</span>`;
+                    html += `<div class="tool-output-header-content">`;
+                    html += `<strong>${index + 1}. ${escapeHtml(toolName)}</strong>`;
+                    html += `<code class="tool-command">${escapeHtml(command)}</code>`;
+                    html += `</div>`;
+                    html += `</button>`;
+                    html += `<pre class="tool-output-body collapsed">${escapeHtml(output)}</pre>`;
+                    html += `</div>`;
+                });
                 html += `</div>`;
-                html += `</button>`;
-                html += `<pre class="tool-output-body collapsed">${escapeHtml(output)}</pre>`;
+            }
+            if (data.findings.skill_used) {
+                html += `<div class="skill-used-container">`;
+                html += `<h4 class="skill-used-title">🎯 Skill Used</h4>`;
+                html += `<div class="skill-used-badge">${escapeHtml(data.findings.skill_used)}</div>`;
                 html += `</div>`;
+            }
+            if (data.findings.knowledge_searched) {
+                const searchedText = data.findings.knowledge_searched ? 'Yes' : 'No';
+                const searchedClass = data.findings.knowledge_searched ? 'knowledge-searched-yes' : 'knowledge-searched-no';
+                html += `<div class="knowledge-searched-container">`;
+                html += `<h4 class="knowledge-searched-title">📚 External Knowledge Searched</h4>`;
+                html += `<div class="knowledge-searched-badge ${searchedClass}">${searchedText}</div>`;
+                html += `</div>`;
+            }
+            if (data.findings.additional_output) {
+                html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.findings.additional_output)}</div></div>`;
+            }
+            html += '</div>';
+        }
+
+        // Decisions tab
+        if (hasDecisions) {
+            html += `<div class="tab-pane ${!hasFindings ? 'active' : ''}" id="decisions">`;
+            if (data.decisions.approach) {
+                html += `<div class="decision-approach"><strong>Approach:</strong> ${escapeHtml(data.decisions.approach)}</div>`;
+            }
+            if (data.decisions.tools_used && data.decisions.tools_used.length > 0) {
+                html += `<div class="tools-used"><strong>Tools Used:</strong> ${data.decisions.tools_used.join(', ')}</div>`;
+            }
+            if (data.decisions.skills_loaded && data.decisions.skills_loaded.length > 0) {
+                html += `<div class="skills-loaded"><strong>Skills Loaded:</strong> ${data.decisions.skills_loaded.join(', ')}</div>`;
+            }
+            if (data.decisions.rationale) {
+                html += `<div class="rationale"><strong>Rationale:</strong> ${marked.parse(data.decisions.rationale)}</div>`;
+            }
+            if (data.decisions.checklist && data.decisions.checklist.length > 0) {
+                html += '<div class="checklist"><strong>Checklist:</strong><ul>';
+                data.decisions.checklist.forEach(item => {
+                    html += `<li>${escapeHtml(item)}</li>`;
+                });
+                html += '</ul></div>';
+            }
+            if (data.decisions.additional_output) {
+                html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.decisions.additional_output)}</div></div>`;
+            }
+            html += '</div>';
+        }
+
+        // Next Actions tab
+        if (hasActions) {
+            html += `<div class="tab-pane ${!hasFindings && !hasDecisions ? 'active' : ''}" id="actions">`;
+            html += '<ol class="action-steps">';
+            data.next_actions.steps.forEach(step => {
+                html += `<li>${escapeHtml(step)}</li>`;
             });
-            html += `</div>`;
+            html += '</ol>';
+            if (data.next_actions.additional_output) {
+                html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.next_actions.additional_output)}</div></div>`;
+            }
+            html += '</div>';
         }
-        if (data.findings.skill_used) {
-            html += `<div class="skill-used-container">`;
-            html += `<h4 class="skill-used-title">🎯 Skill Used</h4>`;
-            html += `<div class="skill-used-badge">${escapeHtml(data.findings.skill_used)}</div>`;
-            html += `</div>`;
-        }
-        if (data.findings.knowledge_searched) {
-            const searchedText = data.findings.knowledge_searched ? 'Yes' : 'No';
-            const searchedClass = data.findings.knowledge_searched ? 'knowledge-searched-yes' : 'knowledge-searched-no';
-            html += `<div class="knowledge-searched-container">`;
-            html += `<h4 class="knowledge-searched-title">📚 External Knowledge Searched</h4>`;
-            html += `<div class="knowledge-searched-badge ${searchedClass}">${searchedText}</div>`;
-            html += `</div>`;
-        }
-        if (data.findings.additional_output) {
-            html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.findings.additional_output)}</div></div>`;
-        }
-        html += '</div>';
-    }
 
-    // Decisions tab
-    if (hasDecisions) {
-        html += `<div class="tab-pane ${!hasFindings ? 'active' : ''}" id="decisions">`;
-        if (data.decisions.approach) {
-            html += `<div class="decision-approach"><strong>Approach:</strong> ${escapeHtml(data.decisions.approach)}</div>`;
-        }
-        if (data.decisions.tools_used && data.decisions.tools_used.length > 0) {
-            html += `<div class="tools-used"><strong>Tools Used:</strong> ${data.decisions.tools_used.join(', ')}</div>`;
-        }
-        if (data.decisions.skills_loaded && data.decisions.skills_loaded.length > 0) {
-            html += `<div class="skills-loaded"><strong>Skills Loaded:</strong> ${data.decisions.skills_loaded.join(', ')}</div>`;
-        }
-        if (data.decisions.rationale) {
-            html += `<div class="rationale"><strong>Rationale:</strong> ${marked.parse(data.decisions.rationale)}</div>`;
-        }
-        if (data.decisions.checklist && data.decisions.checklist.length > 0) {
-            html += '<div class="checklist"><strong>Checklist:</strong><ul>';
-            data.decisions.checklist.forEach(item => {
-                html += `<li>${escapeHtml(item)}</li>`;
+        // Errors tab
+        if (hasErrors) {
+            html += '<div class="tab-pane" id="errors">';
+            html += '<ul class="error-list">';
+            data.errors.forEach(error => {
+                html += `<li class="error-item">${escapeHtml(error)}</li>`;
             });
             html += '</ul></div>';
         }
-        if (data.decisions.additional_output) {
-            html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.decisions.additional_output)}</div></div>`;
-        }
-        html += '</div>';
+
+        html += '</div></div>';
+
+        // Clear existing content before setting new HTML to prevent duplication
+        contentDiv.innerHTML = '';
+        console.log('[renderStructuredMessage] Setting HTML, length:', html.length);
+        console.log('[renderStructuredMessage] HTML preview:', html.substring(0, 200));
+        contentDiv.innerHTML = html;
+        console.log('[renderStructuredMessage] HTML set successfully, contentDiv.innerHTML length:', contentDiv.innerHTML.length);
+        scrollToBottom();
+    } catch (error) {
+        // Fallback: render simplified view with just findings summary and details
+        console.error('[renderStructuredMessage] Error during rendering, using fallback:', error);
+        renderStructuredMessageFallback(contentDiv, data, error);
     }
-
-    // Next Actions tab
-    if (hasActions) {
-        html += `<div class="tab-pane ${!hasFindings && !hasDecisions ? 'active' : ''}" id="actions">`;
-        html += '<ol class="action-steps">';
-        data.next_actions.steps.forEach(step => {
-            html += `<li>${escapeHtml(step)}</li>`;
-        });
-        html += '</ol>';
-        if (data.next_actions.additional_output) {
-            html += `<div class="additional-output"><strong>Additional Output:</strong><div class="additional-content">${marked.parse(data.next_actions.additional_output)}</div></div>`;
-        }
-        html += '</div>';
-    }
-
-    // Errors tab
-    if (hasErrors) {
-        html += '<div class="tab-pane" id="errors">';
-        html += '<ul class="error-list">';
-        data.errors.forEach(error => {
-            html += `<li class="error-item">${escapeHtml(error)}</li>`;
-        });
-        html += '</ul></div>';
-    }
-
-    html += '</div></div>';
-
-    // Clear existing content before setting new HTML to prevent duplication
-    contentDiv.innerHTML = '';
-    console.log('[renderStructuredMessage] Setting HTML, length:', html.length);
-    console.log('[renderStructuredMessage] HTML preview:', html.substring(0, 200));
-    contentDiv.innerHTML = html;
-    console.log('[renderStructuredMessage] HTML set successfully, contentDiv.innerHTML length:', contentDiv.innerHTML.length);
-    scrollToBottom();
 }
 
 function switchStructuredTab(container, tabName) {
