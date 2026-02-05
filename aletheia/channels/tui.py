@@ -72,8 +72,7 @@ class TUICommandCompleter(Completer):
 
         # TUI-specific commands
         all_commands["new_session"] = "Create a new session"
-        all_commands["resume"] = "Resume an existing session"
-        all_commands["list_sessions"] = "List all sessions"
+        all_commands["session"] = "Session management (list/show/timeline/resume)"
         all_commands["exit"] = "Disconnect and exit"
 
         # Built-in commands from aletheia.commands
@@ -199,8 +198,10 @@ class TUIChannelConnector(BaseChannelConnector):
                 "[bold green]Connected to Aletheia Gateway[/bold green]\n\n"
                 "Session Commands:\n"
                 "  /new_session [name] [--unsafe] [--verbose] - Create new session\n"
-                "  /resume <id> - Resume existing session\n"
-                "  /list_sessions - List all sessions\n\n"
+                "  /session resume <id> [--unsafe] - Resume existing session\n"
+                "  /session list - List all sessions\n"
+                "  /session show - Show current session metadata\n"
+                "  /session timeline - Show session timeline\n\n"
                 "Built-in Commands:\n"
                 "  /help - Show available commands\n"
                 "  /info - Show session information\n"
@@ -227,6 +228,10 @@ class TUIChannelConnector(BaseChannelConnector):
                 await self._handle_stream_chunk(message.payload)
             elif message.type == "chat_stream_end":
                 await self._handle_stream_end(message.payload)
+            elif message.type == "session_metadata":
+                await self._handle_session_metadata(message.payload)
+            elif message.type == "timeline_data":
+                await self._handle_timeline_data(message.payload)
             elif message.type == "error":
                 await self._handle_error(message.payload)
         except Exception as e:
@@ -274,6 +279,71 @@ class TUIChannelConnector(BaseChannelConnector):
                 f"- Created: {session.get('created', 'unknown')}"
             )
         self.console.print()
+
+    async def _handle_session_metadata(self, payload: dict[str, Any]) -> None:
+        """Handle session metadata response."""
+        metadata = payload.get("metadata", {})
+        if not metadata:
+            self.console.print("\n[yellow]No metadata available[/yellow]\n")
+            return
+
+        self.console.print("\n[bold]Session Info:[/bold]")
+        self.console.print(f"  [cyan]ID:[/cyan]       {metadata.get('id', 'unknown')}")
+        if metadata.get("name"):
+            self.console.print(f"  [cyan]Name:[/cyan]     {metadata['name']}")
+        self.console.print(
+            f"  [cyan]Status:[/cyan]   {metadata.get('status', 'unknown')}"
+        )
+        self.console.print(
+            f"  [cyan]Created:[/cyan]  {metadata.get('created', 'unknown')}"
+        )
+        self.console.print(
+            f"  [cyan]Updated:[/cyan]  {metadata.get('updated', 'unknown')}"
+        )
+
+        input_tokens = metadata.get("total_input_tokens", 0)
+        output_tokens = metadata.get("total_output_tokens", 0)
+        total_cost = metadata.get("total_cost", 0)
+
+        if input_tokens or output_tokens:
+            self.console.print(
+                f"  [cyan]Tokens:[/cyan]   {input_tokens} in / {output_tokens} out"
+            )
+        if total_cost:
+            self.console.print(f"  [cyan]Cost:[/cyan]     ${total_cost:.4f}")
+
+        self.console.print()
+
+    async def _handle_timeline_data(self, payload: dict[str, Any]) -> None:
+        """Handle timeline data response."""
+        timeline = payload.get("timeline", [])
+        if not timeline:
+            self.console.print("\n[yellow]No timeline entries found[/yellow]\n")
+            return
+
+        type_styles = {
+            "ACTION": ("bold green", "ACTION"),
+            "OBSERVATION": ("bold blue", "OBSERVATION"),
+            "DECISION": ("bold red", "DECISION"),
+            "INFO": ("bold cyan", "INFO"),
+        }
+
+        self.console.print("\n[bold]Session Timeline:[/bold]")
+        self.console.print("[dim]" + "-" * 80 + "[/dim]")
+
+        for entry in timeline:
+            entry_type = entry.get("type", "INFO").upper()
+            timestamp = entry.get("timestamp", "")
+            content = entry.get("content", "")
+            style, label = type_styles.get(entry_type, ("bold white", entry_type))
+
+            self.console.print(
+                f"  [{style}][{label}][/{style}] " f"[dim]{timestamp}[/dim]"
+            )
+            self.console.print(f"    {content}")
+            self.console.print()
+
+        self.console.print("[dim]" + "-" * 80 + "[/dim]\n")
 
     async def _show_thinking_animation(self) -> None:
         """Show thinking animation until first content arrives."""
@@ -364,6 +434,30 @@ class TUIChannelConnector(BaseChannelConnector):
 
                 self._current_response = content
                 self._live.update(self._current_response)
+
+        elif chunk_type == "text":
+            # Plain text content (e.g. from command_execute responses)
+            content = payload.get("content", "")
+            if content:
+                # Stop thinking animation on first real content
+                if self._thinking_task and not self._thinking_task.done():
+                    self._thinking_task.cancel()
+                    try:
+                        await self._thinking_task
+                    except asyncio.CancelledError:
+                        pass
+
+                if self._live is None:
+                    self._live = Live(
+                        "",
+                        console=self.console,
+                        auto_refresh=True,
+                        refresh_per_second=5,
+                    )
+                    self._live.start()
+
+                self._current_response += content
+                self._live.update(Markdown(self._current_response))
 
         elif chunk_type == "function_call":
             # Show function call events from the gateway middleware
@@ -531,25 +625,95 @@ class TUIChannelConnector(BaseChannelConnector):
                 name=name, password=password, unsafe=unsafe, verbose=verbose
             )
 
-        elif cmd == "/resume":
-            if len(parts) < 2:
-                self.console.print("[bold red]Usage:[/bold red] /resume <session_id>")
+        elif cmd == "/list_sessions":
+            # Legacy alias — redirect to /session list
+            await self.list_sessions()
+
+        elif cmd == "/session":
+            args = parts[1].split() if len(parts) > 1 else []
+            if not args:
+                self.console.print(
+                    "[bold red]Usage:[/bold red]\n"
+                    "  /session resume <id> [--unsafe] - Resume existing session\n"
+                    "  /session list     - List all sessions\n"
+                    "  /session show     - Show current session metadata\n"
+                    "  /session timeline - Show session timeline"
+                )
                 return
 
-            session_id = parts[1]
-            password = None
+            action = args[0].lower()
 
-            # Prompt for password
-            password = await self.prompt_session.prompt_async(
-                "Session password (press Enter if none): ", is_password=True
-            )
-            if not password.strip():
+            if action == "resume":
+                # Parse: /session resume <id> [--unsafe]
+                remaining = args[1:]
+                session_id = None
+                unsafe = False
+
+                for arg in remaining:
+                    if arg == "--unsafe":
+                        unsafe = True
+                    elif not session_id:
+                        session_id = arg
+
+                if not session_id:
+                    self.console.print(
+                        "[bold red]Usage:[/bold red] "
+                        "/session resume <session_id> [--unsafe]"
+                    )
+                    return
+
                 password = None
 
-            await self.resume_session(session_id=session_id, password=password)
+                if not unsafe:
+                    password = await self.prompt_session.prompt_async(
+                        "Session password (press Enter if none): ",
+                        is_password=True,
+                    )
+                    if not password.strip():
+                        password = None
 
-        elif cmd == "/list_sessions":
-            await self.list_sessions()
+                await self.resume_session(
+                    session_id=session_id, password=password, unsafe=unsafe
+                )
+
+            elif action == "list":
+                await self.list_sessions()
+
+            elif action == "show":
+                if not self._active_session_id:
+                    self.console.print(
+                        "[bold red]No active session.[/bold red] "
+                        "Use /new_session or /session resume first."
+                    )
+                    return
+                self.console.print("[yellow]Fetching session metadata...[/yellow]")
+                await self.request_session_metadata(
+                    session_id=self._active_session_id, unsafe=True
+                )
+
+            elif action == "timeline":
+                if not self._active_session_id:
+                    self.console.print(
+                        "[bold red]No active session.[/bold red] "
+                        "Use /new_session or /session resume first."
+                    )
+                    return
+                self.console.print(
+                    "[yellow]Generating timeline (this may take a moment)...[/yellow]"
+                )
+                await self.request_timeline(
+                    session_id=self._active_session_id, unsafe=True
+                )
+
+            else:
+                self.console.print(
+                    "[bold red]Unknown subcommand:[/bold red] "
+                    f"{action}\n"
+                    "  /session resume <id> [--unsafe] - Resume existing session\n"
+                    "  /session list     - List all sessions\n"
+                    "  /session show     - Show current session metadata\n"
+                    "  /session timeline - Show session timeline"
+                )
 
         else:
             # Try built-in commands (help, version, info, agents, cost)
@@ -577,10 +741,19 @@ class TUIChannelConnector(BaseChannelConnector):
                 elif cmd_name == "agents":
                     COMMANDS[cmd_name].execute(self.console)
                 elif cmd_name == "cost":
-                    # Cost needs usage info which we don't track in TUI yet
-                    self.console.print(
-                        "[yellow]Cost tracking not yet available in TUI mode[/yellow]"
-                    )
+                    if not self._active_session_id:
+                        self.console.print(
+                            "[bold red]No active session.[/bold red] "
+                            "Use /new_session or /session resume first."
+                        )
+                    elif self.websocket:
+                        # Delegate to gateway which has access to usage data
+                        self._processing = True
+                        msg = ProtocolMessage.create(
+                            "command_execute",
+                            {"message": "/cost", "channel": "tui"},
+                        )
+                        await self.websocket.send(msg.to_json())
                 else:
                     COMMANDS[cmd_name].execute(self.console)
             else:
@@ -588,8 +761,8 @@ class TUIChannelConnector(BaseChannelConnector):
                     f"[bold red]Unknown command:[/bold red] {cmd}\n"
                     "Available commands:\n"
                     "  /new_session [name] [--unsafe] [--verbose]\n"
-                    "  /resume <id>\n"
-                    "  /list_sessions\n"
+                    "  /session resume <id> [--unsafe]\n"
+                    "  /session list | show | timeline\n"
                     "  /help - Show built-in commands\n"
                     "  /exit"
                 )

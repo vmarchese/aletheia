@@ -708,9 +708,16 @@ class AletheiaGateway:
 
             kwargs: dict[str, Any] = {"config": config}
             if command_name == "cost":
-                orchestrator = self.session_manager.get_orchestrator()
-                if orchestrator and hasattr(orchestrator, "completion_usage"):
-                    kwargs["completion_usage"] = orchestrator.completion_usage
+                session = self.session_manager.get_active_session()
+                if session:
+                    metadata = session.get_metadata()
+                    if metadata.total_input_tokens or metadata.total_output_tokens:
+                        from agent_framework import UsageDetails
+
+                        kwargs["completion_usage"] = UsageDetails(
+                            input_token_count=metadata.total_input_tokens,
+                            output_token_count=metadata.total_output_tokens,
+                        )
 
             command.execute(*args, console=mock_console, **kwargs)
 

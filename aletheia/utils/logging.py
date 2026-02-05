@@ -77,6 +77,7 @@ def setup_logging(level: str | None = None, session_dir: Path | None = None) -> 
     # Silence noisy third-party HTTP loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("agent_framework").setLevel(logging.WARNING)
 
     _logging_configured = True
 
