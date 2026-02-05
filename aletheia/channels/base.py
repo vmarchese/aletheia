@@ -163,6 +163,46 @@ class BaseChannelConnector(ABC):
         msg = ProtocolMessage.create("session_list", {})
         await self.websocket.send(msg.to_json())
 
+    async def request_session_metadata(
+        self,
+        session_id: str,
+        password: str | None = None,
+        unsafe: bool = False,
+    ) -> None:
+        """Request session metadata from gateway."""
+        if not self.connected or not self.websocket:
+            raise RuntimeError("Not connected to gateway")
+
+        msg = ProtocolMessage.create(
+            "session_metadata",
+            {
+                "session_id": session_id,
+                "password": password,
+                "unsafe": unsafe,
+            },
+        )
+        await self.websocket.send(msg.to_json())
+
+    async def request_timeline(
+        self,
+        session_id: str,
+        password: str | None = None,
+        unsafe: bool = False,
+    ) -> None:
+        """Request session timeline from gateway."""
+        if not self.connected or not self.websocket:
+            raise RuntimeError("Not connected to gateway")
+
+        msg = ProtocolMessage.create(
+            "timeline_get",
+            {
+                "session_id": session_id,
+                "password": password,
+                "unsafe": unsafe,
+            },
+        )
+        await self.websocket.send(msg.to_json())
+
     async def _receive_loop(self) -> None:
         """Receive and handle messages from gateway."""
         try:

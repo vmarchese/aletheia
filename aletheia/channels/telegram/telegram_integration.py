@@ -5,8 +5,10 @@ instead of maintaining its own session state.
 """
 
 import asyncio
+import uuid
 
 import structlog
+import websockets
 from telegram import BotCommand, MenuButtonCommands, Update
 from telegram.ext import (
     Application,
@@ -19,6 +21,7 @@ from telegram.ext import (
 from aletheia.channels.formatter import format_response_to_markdown
 from aletheia.commands import COMMANDS, get_custom_commands
 from aletheia.config import Config
+from aletheia.daemon.protocol import ProtocolMessage
 from aletheia.daemon.session_manager import GatewaySessionManager
 from aletheia.engram.tools import Engram
 
@@ -163,13 +166,278 @@ async def session_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.error(f"Failed to resume session: {e}")
             await update.message.reply_text(f"❌ Error resuming session: {e}")
 
+    elif args[0] == "show":
+        await _handle_session_show(update, session_manager, config)
+
+    elif args[0] == "timeline":
+        await _handle_session_timeline(update, session_manager)
+
     else:
         await update.message.reply_text(
             "Usage:\n"
             "/session list - List available sessions\n"
-            "/session resume &lt;id&gt; - Resume a session",
+            "/session resume &lt;id&gt; - Resume a session\n"
+            "/session show - Show current session info\n"
+            "/session timeline - Show session timeline",
             parse_mode="HTML",
         )
+
+
+async def _handle_session_show(
+    update: Update,
+    session_manager: GatewaySessionManager,
+    config: Config,
+) -> None:
+    """Handle /session show - display current session metadata."""
+    if not update.message:
+        return
+
+    active_session = session_manager.get_active_session()
+    if not active_session:
+        await update.message.reply_text(
+            "No active session. Use /new_session or /session resume &lt;id&gt;.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        metadata = active_session.get_metadata()
+
+        input_tokens = metadata.total_input_tokens
+        output_tokens = metadata.total_output_tokens
+        total_cost = (input_tokens * config.cost_per_input_token) + (
+            output_tokens * config.cost_per_output_token
+        )
+
+        lines = [
+            "<b>Session Info</b>\n",
+            f"🆔 ID: <code>{metadata.id}</code>",
+            f"📝 Name: {metadata.name or 'unnamed'}",
+            f"📊 Status: {metadata.status}",
+            f"📅 Created: {metadata.created}",
+            f"🔄 Updated: {metadata.updated}",
+        ]
+
+        if input_tokens or output_tokens:
+            lines.append(f"🔢 Tokens: {input_tokens} in / {output_tokens} out")
+        if total_cost:
+            lines.append(f"💰 Cost: ${total_cost:.4f}")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Failed to show session: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+async def _handle_session_timeline(
+    update: Update,
+    session_manager: GatewaySessionManager,
+) -> None:
+    """Handle /session timeline - generate and display session timeline."""
+    import json
+
+    from agent_framework import ChatMessage, Role, TextContent
+
+    from aletheia.agents.instructions_loader import Loader
+    from aletheia.agents.model import Timeline
+    from aletheia.agents.timeline.timeline_agent import TimelineAgent
+    from aletheia.plugins.scratchpad.scratchpad import Scratchpad
+
+    if not update.message:
+        return
+
+    active_session = session_manager.get_active_session()
+    if not active_session:
+        await update.message.reply_text(
+            "No active session. Use /new_session or /session resume &lt;id&gt;.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await update.message.reply_text("⏳ Generating timeline...")
+
+        # Read scratchpad
+        scratchpad_file = active_session.scratchpad_file
+        if not scratchpad_file.exists():
+            await update.message.reply_text(
+                "No scratchpad data found for this session."
+            )
+            return
+
+        scratchpad = Scratchpad(
+            session_dir=active_session.session_path,
+            encryption_key=active_session.get_key(),  # type: ignore[arg-type]
+        )
+        journal_content = scratchpad.read_scratchpad()
+        if not journal_content or not journal_content.strip():
+            await update.message.reply_text(
+                "Scratchpad is empty — no timeline to generate."
+            )
+            return
+
+        # Generate timeline via TimelineAgent
+        prompt_loader = Loader()
+        timeline_agent = TimelineAgent(
+            name="timeline_agent",
+            instructions=prompt_loader.load("timeline", "json_instructions"),
+            description="Timeline Agent for generating session timeline",
+        )
+
+        message = ChatMessage(
+            role=Role.USER,
+            contents=[
+                TextContent(
+                    text=f"Generate a timeline of the following "
+                    f"troubleshooting session scratchpad data:\n\n"
+                    f"{journal_content}"
+                )
+            ],
+        )
+
+        agent_response = await timeline_agent.agent.run(
+            message, response_format=Timeline
+        )
+
+        if not agent_response or not agent_response.text:
+            await update.message.reply_text("No timeline generated.")
+            return
+
+        # Parse and format timeline
+        timeline_data = json.loads(str(agent_response.text))
+        entries = (
+            timeline_data.get("entries", timeline_data)
+            if isinstance(timeline_data, dict)
+            else timeline_data
+        )
+
+        if not entries:
+            await update.message.reply_text("No timeline entries found.")
+            return
+
+        type_icons = {
+            "ACTION": "▶️",
+            "OBSERVATION": "👁️",
+            "DECISION": "🎯",
+            "INFO": "ℹ️",
+        }
+
+        lines = ["<b>Session Timeline</b>\n"]
+        for entry in entries[:20]:  # Limit for Telegram
+            entry_type = entry.get("entry_type", entry.get("type", "INFO")).upper()
+            timestamp = entry.get("timestamp", "")
+            content = entry.get("content", entry.get("description", ""))
+            icon = type_icons.get(entry_type, "•")
+
+            lines.append(f"{icon} <b>{entry_type}</b> {timestamp}")
+            lines.append(f"   {content}\n")
+
+        text = "\n".join(lines)
+
+        # Split into Telegram-sized chunks if needed
+        from aletheia.telegram.formatter import split_message
+
+        chunks = split_message(text, max_len=4096)
+        for chunk_text in chunks:
+            await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+    except json.JSONDecodeError:
+        await update.message.reply_text("❌ Failed to parse timeline data.")
+    except Exception as e:
+        logger.error(f"Failed to generate timeline: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Error generating timeline: {e}")
+
+
+async def _execute_gateway_command(command: str, config: Config) -> str:
+    """Execute a command via the gateway websocket and return the output.
+
+    Opens a temporary websocket connection to the gateway, sends a
+    ``command_execute`` protocol message, collects the streamed text
+    response, and returns it.
+    """
+    gateway_url = f"ws://{config.daemon_host}:{config.daemon_port}"
+    channel_id = str(uuid.uuid4())
+
+    async with websockets.connect(gateway_url) as ws:
+        # Register as a channel
+        register_msg = ProtocolMessage.create(
+            "channel_register",
+            {"channel_type": "telegram", "channel_id": channel_id},
+        )
+        await ws.send(register_msg.to_json())
+        response = ProtocolMessage.from_json(await ws.recv())
+        if response.type != "channel_registered":
+            return f"Error: Registration failed: {response.type}"
+
+        # Send command
+        cmd_msg = ProtocolMessage.create(
+            "command_execute",
+            {"message": command, "channel": "telegram"},
+        )
+        await ws.send(cmd_msg.to_json())
+
+        # Collect streamed response
+        output = ""
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=30.0)
+            msg = ProtocolMessage.from_json(raw)
+            if msg.type == "chat_stream_chunk":
+                content = msg.payload.get("content", "")
+                if content:
+                    output += content
+            elif msg.type == "chat_stream_end":
+                break
+            elif msg.type == "error":
+                return f"Error: {msg.payload.get('message', 'Unknown error')}"
+
+    return output
+
+
+async def builtin_command_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle built-in commands (help, version, info, agents, cost).
+
+    Delegates to the gateway via websocket ``command_execute`` so that
+    commands like ``/cost`` have access to the orchestrator's usage data.
+    """
+    if not update.message or not update.effective_user:
+        return
+
+    user_id = update.effective_user.id
+    config: Config = context.bot_data["config"]
+
+    if not is_authorized(user_id, config):
+        await update.message.reply_text("⛔ Unauthorized.")
+        return
+
+    # Extract command name (handle @botname suffix)
+    cmd_text = update.message.text or ""
+    cmd_name = cmd_text.split()[0].lstrip("/").split("@")[0]
+
+    if cmd_name not in COMMANDS:
+        await update.message.reply_text(f"Unknown command: /{cmd_name}")
+        return
+
+    try:
+        output = await _execute_gateway_command(f"/{cmd_name}", config)
+        output = output.strip()
+
+        if output:
+            html_output = _convert_markdown_to_html(output)
+
+            from aletheia.telegram.formatter import split_message
+
+            chunks = split_message(html_output, max_len=4096)
+            for chunk_text in chunks:
+                await update.message.reply_text(chunk_text, parse_mode="HTML")
+        else:
+            await update.message.reply_text("No output.")
+
+    except Exception as e:
+        logger.error(f"Failed to execute command /{cmd_name}: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -276,7 +544,7 @@ def get_bot_commands(config: Config) -> list[BotCommand]:
     commands = [
         BotCommand("start", "Welcome to Aletheia"),
         BotCommand("new_session", "Create session (--unsafe, --verbose)"),
-        BotCommand("session", "Manage sessions (list/resume)"),
+        BotCommand("session", "Manage sessions (list/resume/show/timeline)"),
     ]
 
     # Built-in commands
@@ -323,6 +591,10 @@ async def run_telegram_bot_integrated(
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("new_session", new_session_handler))
     app.add_handler(CommandHandler("session", session_handler))
+
+    # Register built-in commands (cost, help, version, info, agents, etc.)
+    for cmd_name in COMMANDS:
+        app.add_handler(CommandHandler(cmd_name, builtin_command_handler))
 
     # Regular text messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
