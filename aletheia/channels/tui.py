@@ -471,6 +471,7 @@ class TUIChannelConnector(BaseChannelConnector):
         elif chunk_type == "function_call":
             # Show function call events from the gateway middleware
             content = payload.get("content", {})
+            agent_name = content.get("agent_name", "orchestrator")
             func_name = content.get("function_name", "unknown")
             arguments = content.get("arguments", {})
 
@@ -479,7 +480,7 @@ class TUIChannelConnector(BaseChannelConnector):
             args_str = ", ".join(args_parts) if args_parts else ""
 
             # Print as a persistent line above the live animated line
-            func_display = f"[dim]⚙ {func_name}({args_str})[/dim]"
+            func_display = f"[dim]⚙ {agent_name}::{func_name}({args_str})[/dim]"
             if self._live:
                 # console.print inside a Live context prints above the
                 # animated line, keeping the thinking animation in place

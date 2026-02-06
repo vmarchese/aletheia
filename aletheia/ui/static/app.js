@@ -927,14 +927,15 @@ function addFunctionCallToThinking(callData) {
     const functionCallsList = document.getElementById('function-calls-list');
     if (!functionCallsList) return;
 
-    const { function_name, arguments: args } = callData;
+    const { agent_name, function_name, arguments: args } = callData;
+    const agentPrefix = agent_name || 'orchestrator';
     const argsFormatted = Object.entries(args || {})
         .map(([key, value]) => `${key}="${value}"`)
         .join(' ');
 
     const callDiv = document.createElement('div');
     callDiv.className = 'function-call-item';
-    callDiv.textContent = `- ${function_name}(${argsFormatted})`;
+    callDiv.textContent = `- ${agentPrefix}::${function_name}(${argsFormatted})`;
     functionCallsList.appendChild(callDiv);
 
     scrollToBottom();

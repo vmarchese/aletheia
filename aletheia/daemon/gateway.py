@@ -9,6 +9,7 @@ import structlog
 from agent_framework import FunctionInvocationContext, FunctionMiddleware
 from websockets.server import WebSocketServerProtocol
 
+from aletheia.agents.middleware import get_current_agent_name
 from aletheia.config import Config, load_config
 from aletheia.daemon.protocol import ProtocolMessage
 from aletheia.daemon.server import WebSocketServer
@@ -60,12 +61,14 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
                 arguments[arg_key] = str_value
 
             try:
+                agent_name = get_current_agent_name() or "orchestrator"
                 chunk_msg = ProtocolMessage.create(
                     "chat_stream_chunk",
                     {
                         "message_id": self.message_id,
                         "chunk_type": "function_call",
                         "content": {
+                            "agent_name": agent_name,
                             "function_name": context.function.name,
                             "arguments": arguments,
                         },
