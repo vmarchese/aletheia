@@ -1,6 +1,7 @@
 """Middleware implementations for logging agent activities."""
 
 import asyncio
+import contextvars
 from collections.abc import Awaitable, Callable
 
 import structlog
@@ -19,6 +20,18 @@ from aletheia.console import get_console_wrapper
 # from aletheia.commands import COMMANDS
 
 logger = structlog.get_logger(__name__)
+
+# Context variable to track the currently executing agent name.
+# This is set by LoggingAgentMiddleware and read by function middlewares
+# to prefix function calls with the agent name.
+_current_agent_name: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_current_agent_name", default=None
+)
+
+
+def get_current_agent_name() -> str | None:
+    """Get the name of the currently executing agent."""
+    return _current_agent_name.get()
 
 
 class ConsoleFunctionMiddleware(FunctionMiddleware):
@@ -49,8 +62,9 @@ class ConsoleFunctionMiddleware(FunctionMiddleware):
             for arg_key, arg_value in context.arguments.model_dump().items():
                 arguments += f'{arg_key}="{arg_value}" '
 
+            agent_name = get_current_agent_name() or "orchestrator"
             console.print(
-                f" • [cyan][bold]{context.function.name}[/bold][/cyan]({arguments})"
+                f" • [cyan][bold]{agent_name}::{context.function.name}[/bold][/cyan]({arguments})"
             )
 
         # Continue to next middleware or function execution
@@ -78,7 +92,7 @@ class LoggingFunctionMiddleware(FunctionMiddleware):
 
 
 class LoggingAgentMiddleware(AgentMiddleware):
-    """Agent middleware that logs execution."""
+    """Agent middleware that logs execution and tracks the current agent name."""
 
     async def process(
         self,
@@ -90,8 +104,14 @@ class LoggingAgentMiddleware(AgentMiddleware):
             f"[Agent::{context.agent.name}] Starting execution {context.metadata}"
         )
 
-        # Continue to next middleware or agent execution
-        await next(context)
+        # Track the current agent name so function middlewares can read it
+        token = _current_agent_name.set(context.agent.name)
+        try:
+            # Continue to next middleware or agent execution
+            await next(context)
+        finally:
+            # Restore previous agent name (handles nested agent calls)
+            _current_agent_name.reset(token)
 
         # Post-processing: Log after agent execution
         logger.debug(
@@ -167,6 +187,7 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
 
             # Send event to queue
             try:
+                agent_name = get_current_agent_name() or "orchestrator"
                 logger.debug(
                     f"[WebUIFunctionMiddleware] Sending function_call event for {context.function.name}"
                 )
@@ -174,6 +195,7 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
                     {
                         "type": "function_call",
                         "content": {
+                            "agent_name": agent_name,
                             "function_name": context.function.name,
                             "arguments": arguments,
                         },
