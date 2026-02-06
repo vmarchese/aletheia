@@ -8,6 +8,7 @@ from typing import Any
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import HTML
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -249,6 +250,7 @@ class TUIChannelConnector(BaseChannelConnector):
         if session.get("name"):
             self.console.print(f"  Name: {session['name']}")
         self.console.print()
+        self._processing = False
 
     async def _handle_session_resumed(self, payload: dict[str, Any]) -> None:
         """Handle session resume confirmation."""
@@ -261,12 +263,14 @@ class TUIChannelConnector(BaseChannelConnector):
         if session.get("name"):
             self.console.print(f"  Name: {session['name']}")
         self.console.print()
+        self._processing = False
 
     async def _handle_session_list(self, payload: dict[str, Any]) -> None:
         """Handle session list response."""
         sessions = payload.get("sessions", [])
         if not sessions:
             self.console.print("\n[yellow]No sessions found[/yellow]\n")
+            self._processing = False
             return
 
         self.console.print("\n[bold]Available Sessions:[/bold]")
@@ -279,12 +283,14 @@ class TUIChannelConnector(BaseChannelConnector):
                 f"- Created: {session.get('created', 'unknown')}"
             )
         self.console.print()
+        self._processing = False
 
     async def _handle_session_metadata(self, payload: dict[str, Any]) -> None:
         """Handle session metadata response."""
         metadata = payload.get("metadata", {})
         if not metadata:
             self.console.print("\n[yellow]No metadata available[/yellow]\n")
+            self._processing = False
             return
 
         self.console.print("\n[bold]Session Info:[/bold]")
@@ -313,12 +319,14 @@ class TUIChannelConnector(BaseChannelConnector):
             self.console.print(f"  [cyan]Cost:[/cyan]     ${total_cost:.4f}")
 
         self.console.print()
+        self._processing = False
 
     async def _handle_timeline_data(self, payload: dict[str, Any]) -> None:
         """Handle timeline data response."""
         timeline = payload.get("timeline", [])
         if not timeline:
             self.console.print("\n[yellow]No timeline entries found[/yellow]\n")
+            self._processing = False
             return
 
         type_styles = {
@@ -344,6 +352,7 @@ class TUIChannelConnector(BaseChannelConnector):
             self.console.print()
 
         self.console.print("[dim]" + "-" * 80 + "[/dim]\n")
+        self._processing = False
 
     async def _show_thinking_animation(self) -> None:
         """Show thinking animation until first content arrives."""
@@ -553,10 +562,14 @@ class TUIChannelConnector(BaseChannelConnector):
                         break
 
                     # Build prompt with session ID if available
+                    # Use prompt_toolkit's HTML formatting (not Rich markup)
                     if self._active_session_id:
-                        prompt_text = f"[{self._active_session_id}] You: "
+                        prompt_text = HTML(
+                            f"[<b><ansiyellow>{self._active_session_id}</ansiyellow></b>] "
+                            "<b>You:</b> "
+                        )
                     else:
-                        prompt_text = "You: "
+                        prompt_text = HTML("<b>You:</b> ")
 
                     # Get user input using prompt_toolkit (without patch_stdout for better Rich rendering)
                     user_input = await self.prompt_session.prompt_async(prompt_text)
@@ -621,12 +634,14 @@ class TUIChannelConnector(BaseChannelConnector):
                 if not password.strip():
                     password = None
 
+            self._processing = True
             await self.create_session(
                 name=name, password=password, unsafe=unsafe, verbose=verbose
             )
 
         elif cmd == "/list_sessions":
             # Legacy alias — redirect to /session list
+            self._processing = True
             await self.list_sessions()
 
         elif cmd == "/session":
@@ -672,11 +687,13 @@ class TUIChannelConnector(BaseChannelConnector):
                     if not password.strip():
                         password = None
 
+                self._processing = True
                 await self.resume_session(
                     session_id=session_id, password=password, unsafe=unsafe
                 )
 
             elif action == "list":
+                self._processing = True
                 await self.list_sessions()
 
             elif action == "show":
@@ -687,6 +704,7 @@ class TUIChannelConnector(BaseChannelConnector):
                     )
                     return
                 self.console.print("[yellow]Fetching session metadata...[/yellow]")
+                self._processing = True
                 await self.request_session_metadata(
                     session_id=self._active_session_id, unsafe=True
                 )
@@ -701,6 +719,7 @@ class TUIChannelConnector(BaseChannelConnector):
                 self.console.print(
                     "[yellow]Generating timeline (this may take a moment)...[/yellow]"
                 )
+                self._processing = True
                 await self.request_timeline(
                     session_id=self._active_session_id, unsafe=True
                 )
