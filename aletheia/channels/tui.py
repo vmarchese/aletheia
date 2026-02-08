@@ -573,7 +573,10 @@ class TUIChannelConnector(BaseChannelConnector):
                         prompt_text = HTML("<b>You:</b> ")
 
                     # Get user input using prompt_toolkit (without patch_stdout for better Rich rendering)
-                    user_input = await self.prompt_session.prompt_async(prompt_text)
+                    # Explicitly set is_password=False to reset after any password prompts
+                    user_input = await self.prompt_session.prompt_async(
+                        prompt_text, is_password=False
+                    )
 
                     if not user_input.strip():
                         continue
@@ -628,12 +631,25 @@ class TUIChannelConnector(BaseChannelConnector):
 
             # Prompt for password if not in unsafe mode
             if not unsafe:
-                password = await self.prompt_session.prompt_async(
-                    "Session password (optional, press Enter to skip): ",
-                    is_password=True,
-                )
-                if not password.strip():
-                    password = None
+                while True:
+                    password = await self.prompt_session.prompt_async(
+                        "Password (press Enter to skip): ",
+                        is_password=True,
+                    )
+                    if not password.strip():
+                        password = None
+                        break
+
+                    confirm = await self.prompt_session.prompt_async(
+                        "Confirm password: ",
+                        is_password=True,
+                    )
+                    if password == confirm:
+                        break
+                    self.console.print(
+                        "[bold red]Passwords do not match. "
+                        "Please try again.[/bold red]"
+                    )
 
             self._processing = True
             await self.create_session(
@@ -682,7 +698,7 @@ class TUIChannelConnector(BaseChannelConnector):
 
                 if not unsafe:
                     password = await self.prompt_session.prompt_async(
-                        "Session password (press Enter if none): ",
+                        "Password: ",
                         is_password=True,
                     )
                     if not password.strip():
