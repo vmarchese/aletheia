@@ -62,7 +62,7 @@ cd aletheia
 ```bash
 uv venv --python python3.12
 source ./.venv/bin/activate
-uv pip install -e .
+uv pip install -e . --prerelease=allow
 ```
 
 ## Quick Start
