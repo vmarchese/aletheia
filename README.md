@@ -44,28 +44,38 @@ Aletheia uses a **daemon-based architecture** with a central gateway that manage
 
 Aletheia requires Python 3.12 and uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
-### 1. Install uv
+### Automatic Installation 
+
+
+```
+curl https://raw.githubusercontent.com/vmarchese/aletheia/refs/heads/main/install.sh | sh
+```
+
+### Manual Installation
+
+#### 1. Install uv
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 2. Clone the repository
+#### 2. Clone the repository
 
 ```bash
 git clone https://github.com/your-org/aletheia.git
 cd aletheia
 ```
 
-### 3. Create venv and install dependencies
+#### 3. Create venv and install dependencies
 
 ```bash
 uv venv --python python3.12
 source ./.venv/bin/activate
-uv pip install -e .
+uv pip install -e . --prerelease=allow
 ```
 
 ## Quick Start
+
 
 ### 1. Start the Gateway Daemon
 
