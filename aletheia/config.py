@@ -253,6 +253,14 @@ class Config(BaseSettings):
         default=8765,
         description="Gateway daemon WebSocket port",
     )
+    web_host: str = Field(
+        default="127.0.0.1",
+        description="Web channel HTTP server bind address",
+    )
+    web_port: int = Field(
+        default=8000,
+        description="Web channel HTTP server port",
+    )
     daemon_pid_file: str | None = Field(
         default=None,
         description="PID file location for daemon mode",

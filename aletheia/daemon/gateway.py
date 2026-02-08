@@ -121,13 +121,18 @@ class AletheiaGateway:
             self.session_manager.engram = self.engram
 
     async def start(
-        self, host: str = "127.0.0.1", port: int = 8765, web_port: int = 8000
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        web_host: str = "127.0.0.1",
+        web_port: int = 8000,
     ) -> None:
         """Start the gateway daemon and all channel servers.
 
         Args:
             host: Host to bind WebSocket server to
             port: Port for WebSocket server (TUI clients)
+            web_host: Host to bind Web/FastAPI server to
             web_port: Port for Web/FastAPI server
         """
         self.running = True
@@ -146,8 +151,8 @@ class AletheiaGateway:
         enabled_channels.append(f"TUI (ws://{host}:{port})")
 
         # Start Web/FastAPI server (always enabled)
-        await self._start_web_server(host, web_port, ws_port=port)
-        enabled_channels.append(f"Web UI (http://{host}:{web_port})")
+        await self._start_web_server(web_host, web_port, ws_host=host, ws_port=port)
+        enabled_channels.append(f"Web UI (http://{web_host}:{web_port})")
 
         # Start Telegram bot (conditional)
         telegram_enabled = await self._start_telegram_bot()
@@ -1006,7 +1011,7 @@ class AletheiaGateway:
         await self.websocket_server.broadcast(message)
 
     async def _start_web_server(
-        self, host: str, port: int, ws_port: int = 8765
+        self, host: str, port: int, ws_host: str = "127.0.0.1", ws_port: int = 8765
     ) -> None:
         """Start the Web/FastAPI server as part of the gateway process.
 
@@ -1014,8 +1019,9 @@ class AletheiaGateway:
         WebSocket server, then serves its FastAPI app via uvicorn.
 
         Args:
-            host: Host to bind to
+            host: Host to bind web server to
             port: Port for the web server
+            ws_host: Host of the gateway's WebSocket server
             ws_port: Port of the gateway's WebSocket server
         """
         try:
@@ -1024,7 +1030,7 @@ class AletheiaGateway:
             from aletheia.channels.web import WebChannelConnector
 
             # Create web channel connector and connect to gateway's WebSocket
-            self.web_channel = WebChannelConnector(gateway_url=f"ws://{host}:{ws_port}")
+            self.web_channel = WebChannelConnector(gateway_url=f"ws://{ws_host}:{ws_port}")
             await self.web_channel.connect()
 
             # Get the FastAPI app from the connector
