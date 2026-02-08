@@ -979,6 +979,12 @@ def telegram_allowed_users() -> None:
 def start_daemon(
     host: str = typer.Option(None, "--host", help="Host to bind (overrides config)"),
     port: int = typer.Option(None, "--port", help="Port to bind (overrides config)"),
+    web_host: str = typer.Option(
+        None, "--web-host", help="Web channel host to bind (overrides config)"
+    ),
+    web_port: int = typer.Option(
+        None, "--web-port", help="Web channel port to bind (overrides config)"
+    ),
     enable_memory: bool = typer.Option(
         True,
         "--enable-memory/--disable-memory",
@@ -999,15 +1005,20 @@ def start_daemon(
         # Use config values or override with CLI args
         daemon_host = host or config.daemon_host
         daemon_port = port or config.daemon_port
+        web_channel_host = web_host or config.web_host
+        web_channel_port = web_port or config.web_port
 
         console.print(
             f"[green]Starting Aletheia gateway on ws://{daemon_host}:{daemon_port}[/green]"
+        )
+        console.print(
+            f"[green]Starting Aletheia web channel on http://{web_channel_host}:{web_channel_port}[/green]"
         )
         console.print("[dim]Press Ctrl+C to stop[/dim]\n")
 
         # Create and start gateway
         gateway = AletheiaGateway(config, enable_memory=enable_memory)
-        asyncio.run(gateway.start(daemon_host, daemon_port))
+        asyncio.run(gateway.start(daemon_host, daemon_port, web_channel_host, web_channel_port))
 
     except KeyboardInterrupt:
         console.print("\n[cyan]Gateway stopped.[/cyan]")
