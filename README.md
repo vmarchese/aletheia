@@ -48,7 +48,7 @@ Aletheia requires Python 3.12 and uses [uv](https://github.com/astral-sh/uv) for
 
 
 ```
-curl https://raw.githubusercontent.com/vmarchese/aletheia/refs/heads/main/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/vmarchese/aletheia/refs/heads/main/install.sh | sh
 ```
 
 ### Manual Installation

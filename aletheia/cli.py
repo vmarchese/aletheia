@@ -791,9 +791,9 @@ def knowledge_add(
 ) -> None:
     """Add a document to the knowledge base."""
     try:
-        from aletheia.knowledge import ChromaKnowledge
+        from aletheia.knowledge import SqliteKnowledge
 
-        knowledge = ChromaKnowledge()
+        knowledge = SqliteKnowledge()
 
         meta_dict = {}
         if metadata:
@@ -824,9 +824,9 @@ def knowledge_delete(
 ) -> None:
     """Delete a document from the knowledge base."""
     try:
-        from aletheia.knowledge import ChromaKnowledge
+        from aletheia.knowledge import SqliteKnowledge
 
-        knowledge = ChromaKnowledge()
+        knowledge = SqliteKnowledge()
 
         logger.debug(f"Deleting document ID '{id}' from knowledge base")
         knowledge.delete_document(id=id)
@@ -842,9 +842,9 @@ def knowledge_delete(
 def knowledge_list() -> None:
     """List all documents in the knowledge base."""
     try:
-        from aletheia.knowledge import ChromaKnowledge
+        from aletheia.knowledge import SqliteKnowledge
 
-        knowledge = ChromaKnowledge()
+        knowledge = SqliteKnowledge()
 
         ids, documents = knowledge.list_documents()
         if not documents:
@@ -864,6 +864,32 @@ def knowledge_list() -> None:
         console.print(table)
     except Exception as e:
         console.print(f"[red]Error listing documents: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@knowledge_app.command("search")
+def knowledge_search(
+    query: str = typer.Argument(..., help="Search query"),
+    n_results: int = typer.Option(5, "--n", "-n", help="Number of results to return"),
+) -> None:
+    """Search the knowledge base and return matching chunks."""
+    try:
+        from aletheia.knowledge import SqliteKnowledge
+
+        knowledge = SqliteKnowledge(n_results=n_results)
+
+        chunks = knowledge.search(query)
+        if not chunks:
+            console.print("[yellow]No matching chunks found[/yellow]")
+            return
+
+        console.print()
+        for i, chunk in enumerate(chunks, 1):
+            console.print(f"[magenta]--- Chunk {i} ---[/magenta]")
+            console.print(chunk)
+            console.print()
+    except Exception as e:
+        console.print(f"[red]Error searching knowledge base: {e}[/red]")
         raise typer.Exit(1)
 
 
