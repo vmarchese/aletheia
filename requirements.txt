@@ -8,8 +8,6 @@ azure-ai-agents==1.2.0b5
     # via aletheia (pyproject.toml)
 boto3==1.41.3
     # via aletheia (pyproject.toml)
-chromadb==1.4.0
-    # via aletheia (pyproject.toml)
 cryptography==46.0.3
     # via aletheia (pyproject.toml)
 dateparser==1.2.2

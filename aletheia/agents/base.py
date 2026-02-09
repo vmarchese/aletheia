@@ -21,7 +21,7 @@ from aletheia.agents.middleware import (
 )
 from aletheia.agents.skills import SkillLoader
 from aletheia.engram.tools import Engram
-from aletheia.knowledge import ChromaKnowledge, KnowledgePlugin
+from aletheia.knowledge import KnowledgePlugin, SqliteKnowledge
 from aletheia.mcp.mcp import load_mcp_tools
 from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.dockerscript.dockerscript_plugin import DockerScriptPlugin
@@ -196,7 +196,7 @@ class BaseAgent(ABC):
         logging_function_middleware = LoggingFunctionMiddleware()
 
         ## Adding knowledge
-        knowledge_plugin = KnowledgePlugin(ChromaKnowledge())
+        knowledge_plugin = KnowledgePlugin(SqliteKnowledge())
         _tools.append(knowledge_plugin.query)
 
         # Build middleware list
