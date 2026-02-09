@@ -404,7 +404,36 @@ function setTheme(theme) {
         sunIcon.style.display = 'block';
         moonIcon.style.display = 'none';
     }
+
+    // Re-theme all existing ECharts instances
+    document.querySelectorAll('.chart-canvas').forEach(function(el) {
+        const instance = echarts.getInstanceByDom(el);
+        if (instance) {
+            const chartIndex = parseInt(el.dataset.chartIndex);
+            const msgDiv = el.closest('.message');
+            if (msgDiv && msgDiv.dataset.structuredData) {
+                try {
+                    const parsedData = JSON.parse(msgDiv.dataset.structuredData);
+                    if (parsedData.findings && parsedData.findings.charts && parsedData.findings.charts[chartIndex]) {
+                        instance.setOption(buildChartOptions(parsedData.findings.charts[chartIndex]));
+                    }
+                } catch (e) {
+                    console.warn('Failed to re-theme chart:', e);
+                }
+            }
+        }
+    });
 }
+
+// Resize all ECharts instances on window resize
+window.addEventListener('resize', function() {
+    document.querySelectorAll('.chart-canvas').forEach(function(el) {
+        const instance = echarts.getInstanceByDom(el);
+        if (instance) {
+            instance.resize();
+        }
+    });
+});
 
 // API Functions
 function initSidebar() {
@@ -1376,6 +1405,168 @@ function createStructuredMessage() {
     scrollToBottom();
 }
 
+// ============================================
+// Chart Rendering (ECharts)
+// ============================================
+
+function getEChartsTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    return {
+        backgroundColor: 'transparent',
+        textColor: isDark ? '#c9d1d9' : '#24292f',
+        axisLineColor: isDark ? '#30363d' : '#d0d7de',
+        splitLineColor: isDark ? 'rgba(48,54,61,0.6)' : 'rgba(208,215,222,0.6)',
+        tooltipBg: isDark ? '#161b22' : '#ffffff',
+        tooltipBorder: isDark ? '#30363d' : '#d0d7de',
+        seriesColors: ['#58a6ff', '#3fb950', '#d2a8ff', '#f0883e', '#ff7b72', '#79c0ff', '#56d364']
+    };
+}
+
+function buildChartOptions(chart) {
+    console.log('[buildChartOptions] Building options for chart:', chart.name, 'display_hint:', chart.display_hint);
+    console.log('[buildChartOptions] Chart data entries:', chart.data ? chart.data.length : 0);
+    if (chart.data && chart.data[0]) {
+        console.log('[buildChartOptions] Labels:', chart.data[0].labels);
+        console.log('[buildChartOptions] Metrics count:', chart.data[0].metrics ? chart.data[0].metrics.length : 0);
+    }
+    const theme = getEChartsTheme();
+    const isPie = chart.display_hint === 'pie';
+    const isStacked = chart.display_hint === 'stacked_lines' || chart.display_hint === 'stacked_areas';
+    const isArea = chart.display_hint === 'basic_area' || chart.display_hint === 'stacked_areas';
+
+    if (isPie) {
+        const chartData = chart.data[0];
+        const metric = chartData.metrics[0];
+        return {
+            backgroundColor: theme.backgroundColor,
+            tooltip: {
+                trigger: 'item',
+                backgroundColor: theme.tooltipBg,
+                borderColor: theme.tooltipBorder,
+                textStyle: { color: theme.textColor },
+                formatter: function(params) {
+                    return `${params.name}: ${params.value} ${metric.unit} (${params.percent}%)`;
+                }
+            },
+            legend: {
+                orient: 'vertical',
+                right: 10,
+                top: 'center',
+                textStyle: { color: theme.textColor }
+            },
+            series: [{
+                name: metric.name,
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: true,
+                itemStyle: { borderRadius: 4, borderColor: theme.tooltipBg, borderWidth: 2 },
+                label: { color: theme.textColor },
+                data: chartData.labels.map((label, i) => ({
+                    value: metric.values[i],
+                    name: label
+                }))
+            }],
+            color: theme.seriesColors
+        };
+    }
+
+    // Line / Area charts
+    const chartData = chart.data[0];
+    const labels = chartData.labels;
+
+    const series = chartData.metrics.map((metric) => ({
+        name: `${metric.name} (${metric.unit})`,
+        type: 'line',
+        smooth: true,
+        data: metric.values,
+        ...(isArea ? { areaStyle: { opacity: 0.3 } } : {}),
+        ...(isStacked ? { stack: 'Total' } : {}),
+    }));
+
+    return {
+        backgroundColor: theme.backgroundColor,
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: theme.tooltipBg,
+            borderColor: theme.tooltipBorder,
+            textStyle: { color: theme.textColor }
+        },
+        legend: {
+            data: series.map(s => s.name),
+            textStyle: { color: theme.textColor },
+            top: 0
+        },
+        grid: {
+            left: '3%', right: '4%', bottom: '3%', top: 40,
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: labels,
+            axisLine: { lineStyle: { color: theme.axisLineColor } },
+            axisLabel: { color: theme.textColor, fontSize: 11 },
+            splitLine: { lineStyle: { color: theme.splitLineColor } }
+        },
+        yAxis: {
+            type: 'value',
+            axisLine: { lineStyle: { color: theme.axisLineColor } },
+            axisLabel: { color: theme.textColor, fontSize: 11 },
+            splitLine: { lineStyle: { color: theme.splitLineColor } }
+        },
+        series: series,
+        color: theme.seriesColors
+    };
+}
+
+function renderCharts(chartsData) {
+    console.log('[renderCharts] Called with chartsData:', chartsData);
+    if (!chartsData || !Array.isArray(chartsData) || chartsData.length === 0) {
+        console.log('[renderCharts] No charts data, returning empty string');
+        return '';
+    }
+
+    console.log('[renderCharts] Rendering', chartsData.length, 'chart(s)');
+    let html = '<div class="charts-container">';
+    chartsData.forEach((chart, index) => {
+        const chartId = `chart-${Date.now()}-${index}`;
+        console.log('[renderCharts] Chart', index, ':', chart.name, 'id:', chartId);
+        html += `<div class="chart-wrapper">`;
+        html += `<h4 class="chart-title">${escapeHtml(chart.name)}</h4>`;
+        html += `<div class="chart-canvas" id="${chartId}" data-chart-index="${index}"></div>`;
+        html += `</div>`;
+    });
+    html += '</div>';
+    console.log('[renderCharts] Generated HTML length:', html.length);
+    return html;
+}
+
+function initializeCharts(containerElement, chartsData) {
+    console.log('[initializeCharts] Called. containerElement:', containerElement, 'chartsData:', chartsData);
+    if (!chartsData || !Array.isArray(chartsData) || chartsData.length === 0) {
+        console.log('[initializeCharts] No charts data, returning');
+        return;
+    }
+
+    const chartCanvases = containerElement.querySelectorAll('.chart-canvas');
+    console.log('[initializeCharts] Found', chartCanvases.length, 'chart-canvas elements in DOM');
+    chartCanvases.forEach((canvas, index) => {
+        console.log('[initializeCharts] Canvas', index, '- id:', canvas.id, 'offsetWidth:', canvas.offsetWidth, 'offsetHeight:', canvas.offsetHeight, 'clientWidth:', canvas.clientWidth, 'clientHeight:', canvas.clientHeight);
+        if (index < chartsData.length) {
+            try {
+                const instance = echarts.init(canvas);
+                console.log('[initializeCharts] ECharts instance created for canvas', index);
+                const options = buildChartOptions(chartsData[index]);
+                console.log('[initializeCharts] Options built for canvas', index, ':', JSON.stringify(options).substring(0, 300));
+                instance.setOption(options);
+                console.log('[initializeCharts] setOption completed for canvas', index);
+            } catch (e) {
+                console.error('[initializeCharts] Error initializing chart', index, ':', e);
+            }
+        }
+    });
+}
+
 function renderStructuredMessageFallback(contentDiv, data, error) {
     console.error('[renderStructuredMessageFallback] Rendering fallback due to error:', error);
     console.log('[renderStructuredMessageFallback] Data:', data);
@@ -1480,6 +1671,14 @@ function renderStructuredMessage(msgDiv, data) {
             if (data.findings.details) {
                 html += `<div class="section-details">${marked.parse(data.findings.details)}</div>`;
             }
+            // Charts
+            console.log('[renderStructuredMessage] Checking for charts. data.findings.charts:', data.findings.charts);
+            if (data.findings.charts && Array.isArray(data.findings.charts) && data.findings.charts.length > 0) {
+                console.log('[renderStructuredMessage] Found', data.findings.charts.length, 'chart(s), rendering');
+                html += renderCharts(data.findings.charts);
+            } else {
+                console.log('[renderStructuredMessage] No charts found in findings');
+            }
             if (data.findings.tool_outputs && Array.isArray(data.findings.tool_outputs) && data.findings.tool_outputs.length > 0) {
                 html += `<div class="tool-outputs-container">`;
                 html += `<h4 class="tool-outputs-title">Tool Outputs (${data.findings.tool_outputs.length})</h4>`;
@@ -1581,6 +1780,16 @@ function renderStructuredMessage(msgDiv, data) {
         console.log('[renderStructuredMessage] HTML preview:', html.substring(0, 200));
         contentDiv.innerHTML = html;
         console.log('[renderStructuredMessage] HTML set successfully, contentDiv.innerHTML length:', contentDiv.innerHTML.length);
+
+        // Initialize ECharts instances after DOM is set
+        console.log('[renderStructuredMessage] Checking charts for ECharts init. data.findings:', data.findings ? 'exists' : 'missing', 'charts:', data.findings?.charts);
+        if (data.findings && data.findings.charts && data.findings.charts.length > 0) {
+            console.log('[renderStructuredMessage] Initializing ECharts for', data.findings.charts.length, 'chart(s)');
+            initializeCharts(contentDiv, data.findings.charts);
+        } else {
+            console.log('[renderStructuredMessage] Skipping ECharts init - no charts');
+        }
+
         scrollToBottom();
     } catch (error) {
         // Fallback: render simplified view with just findings summary and details

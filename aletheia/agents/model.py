@@ -19,9 +19,29 @@ def _pydantic_default(self: json.JSONEncoder, obj: Any) -> Any:
 json.JSONEncoder.default = _pydantic_default  # type: ignore[assignment]
 
 
+class ChartMetrics(BaseModel):
+    """Represents a single metric series in a chart."""
+    name: str  # Name of the metric
+    values: list[float]  # Values for the metric, corresponding to the labels in ChartData
+    unit: str  # Unit of the metric (e.g., "ms", "%", "requests/s")
+    description: str  # Description of the metric to help users understand what it represents
+
+
+class ChartData(BaseModel):
+    """Represents the data for a chart."""
+    labels: list[str]  # Label for the data point
+    metrics: list[ChartMetrics] # Metrics for the data point
+
+
+class Chart(BaseModel):
+    """Represents a chart."""
+    name: str  # Name of the chart
+    display_hint: str  # A hint to help the user understand what the chart represents
+    data: list[ChartData]  # The chart data
+
+
 class ToolOutput(BaseModel):
     """Holds the output from a tool used by the agent."""
-
     tool_name: str  # Name of the tool
     command: str  # Command executed
     output: str  # Verbatim output from the tool
@@ -38,6 +58,7 @@ class Findings(BaseModel):
     additional_output: str = ""  # Any additional output or observations
     skill_used: str = ""  # Skill used to derive the findings
     knowledge_searched: bool = False  # Whether external knowledge was searched
+    charts: list[Chart] = []  # List of charts generated as part of the findings
 
 
 class Decisions(BaseModel):

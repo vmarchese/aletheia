@@ -315,6 +315,28 @@ Your response **MUST** be a valid JSON object conforming to the `AgentResponse` 
     "additional_output": "<optional extra observations or empty string>",
     "skill_used": "<skill name if a skill was loaded, or empty string>",
     "knowledge_searched": <true if knowledge was queried, false otherwise>
+    "charts": [ 
+       {
+         "name": "<name of this chart",
+         "display_hint": "<a string that represents a hint to display the chart>",
+         "data": [
+             { 
+                "labels": [... list of labels],
+                "metrics": [
+                    {
+                      "name": "<name of the series>",
+                      "values": [... metrics values, same cardinality of labels above],
+                      "unit": "< the metric unit>",
+                      "description": "< the metric description>"
+                    },
+                    ...
+                ]
+             }
+         ]
+
+       }
+
+    ]
   },
   "decisions": {
     "approach": "<description of the approach taken>",
@@ -345,6 +367,70 @@ Your response **MUST** be a valid JSON object conforming to the `AgentResponse` 
 | `decisions` | Optional | Include when you made deliberate choices about approach or tools. Omit or set to `null` if not applicable. |
 | `next_actions` | Optional | Include when there are follow-up steps or suggestions. `next_requests` should contain 2–5 contextual, natural-language suggestions. |
 | `errors` | Optional | Include only if errors were encountered. Omit or set to `null` otherwise. |
+
+#### Chart details
+If in the findings there are data that can be represented as a chart, use the `findings.chart` property with the following rules:
+
+| Field | Notes | 
+|---|---|
+| `charts` | This is an array of the charts |
+| `charts[].name` | The name of the chart | 
+| `charts[].display_hint` | The display hint for the channel, it MUST be in the list of allowed hints below | 
+| `charts[].data` | The list of series to be displayed | 
+| `charts[].data[].labels` | The labels of the series, they must have the same cardinality of ALL the metrics in this chart | 
+| `charts[].data[].metrics` | An array of series containing the values | 
+| `charts[].data[].metrics[].name` | The name of this series | 
+| `charts[].data[].metrics[].description` | The description of this series | 
+| `charts[].data[].metrics[].values` | The values of this series. Same cardinality of `charts[].data[].labels` for this chart | 
+| `charts[].data[].metrics[].unit` | The unit of this series | 
+
+**Examples:**
+
+A chart representing the CPU usage of a system
+```json
+...
+"charts": [
+   "name" : "System metrics",
+   "display_hint": "basic_line",
+   "data": [
+      {
+         "labels": ["00:00", "01:00", "02:00", "03:00"],
+         "metrics": [
+            {"name": "CPU usage", "values": [10.0, 12.0, 20.0, 50.0], "unit": "percentage", "description": "the cpu usage percentage"}
+         ]
+      }
+   ]
+]
+```
+
+A chart representing the response times of a series of url
+
+```json
+...
+"charts": [
+   "name" : "Response times",
+   "display_hint": "stacked_lines",
+   "data": [
+      {
+         "labels": ["10:00", "10:10", "10:20", "10:30",...],
+         "metrics": [
+            {"name": "/home", "values": [200.0, 560.0, 300.0, 250.0], "unit": "ms", "description": "response times of the home"},
+            {"name": "/info", "values": [220.0, 260.0, 100.0, 50.0], "unit": "ms", "description": "response times of the info page"},
+         ]
+      }
+   ]
+]
+```
+
+#### Display hints
+For the `display_hint` property use ONE of the following:
+
+- `basic_line`: for a basic line chart
+- `stacked_lines`: for a multi-series chart with stacked lines
+- `basic_area`: for a basic area chart
+- `stacked_areas`: for a multi-series chart with stacked areas
+- `pie`: for a pie chart
+
 
 ### Common Mistakes to Avoid
 
