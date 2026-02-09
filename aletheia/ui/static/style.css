@@ -751,12 +751,48 @@ textarea {
     }
 }
 
+.suggestions-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .suggestions-title {
     font-size: 0.75rem;
     text-transform: uppercase;
     color: var(--text-secondary);
     font-weight: 600;
     letter-spacing: 0.05em;
+}
+
+.suggestions-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.suggestions-toggle:hover {
+    color: var(--text-primary);
+    background-color: var(--hover-bg, rgba(255, 255, 255, 0.05));
+}
+
+.suggestions-toggle.collapsed svg {
+    transform: rotate(-90deg);
+}
+
+.suggestions-toggle svg {
+    transition: transform 0.2s ease;
+}
+
+.suggestions-pills.collapsed {
+    display: none;
 }
 
 .suggestions-pills {

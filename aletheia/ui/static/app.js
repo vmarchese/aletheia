@@ -1312,11 +1312,33 @@ function renderNextRequestSuggestions(suggestions) {
     // Show container and render suggestions
     suggestionsContainer.style.display = 'flex';
 
-    // Create title
+    // Create header row with title and toggle button
+    const header = document.createElement('div');
+    header.className = 'suggestions-header';
+
     const title = document.createElement('span');
     title.className = 'suggestions-title';
     title.textContent = 'Quick actions:';
-    suggestionsContainer.appendChild(title);
+    header.appendChild(title);
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'suggestions-toggle';
+    toggleBtn.title = 'Hide suggestions';
+    toggleBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+    toggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const pills = suggestionsContainer.querySelector('.suggestions-pills');
+        if (pills) {
+            const isCollapsed = pills.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('collapsed', isCollapsed);
+            toggleBtn.title = isCollapsed ? 'Show suggestions' : 'Hide suggestions';
+        }
+    });
+
+    header.appendChild(toggleBtn);
+    suggestionsContainer.appendChild(header);
 
     // Create wrapper for pills
     const pillsWrapper = document.createElement('div');
