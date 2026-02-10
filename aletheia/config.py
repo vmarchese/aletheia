@@ -229,6 +229,11 @@ class Config(BaseSettings):
         description="Enable loading of user-defined agents",
     )
 
+    knowledge_enabled: bool = Field(
+        default=True,
+        description="Enable knowledge querying for agents",
+    )
+
     disabled_agents: list[str] = Field(
         default_factory=list,
         description="List of agent names to disable (both built-in and user-defined)",
