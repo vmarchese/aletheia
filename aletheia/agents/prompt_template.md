@@ -426,6 +426,7 @@ A chart representing the response times of a series of url
 For the `display_hint` property use ONE of the following:
 
 - `basic_line`: for a basic line chart
+- `multi_lines`: for a multi-series chart with lines displayed (not stacked)
 - `stacked_lines`: for a multi-series chart with stacked lines
 - `basic_area`: for a basic area chart
 - `stacked_areas`: for a multi-series chart with stacked areas
