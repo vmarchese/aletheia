@@ -465,8 +465,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     message_text = update.message.text
     session_id = active_session.get_metadata().id
 
-    # Send "typing" indicator
-    await update.message.chat.send_action("typing")
+    async def _keep_typing() -> None:
+        """Send 'typing' action every 5 seconds until cancelled."""
+        while True:
+            await update.message.chat.send_action("typing")  # type: ignore[union-attr]
+            await asyncio.sleep(5)
+
+    typing_task = asyncio.create_task(_keep_typing())
 
     try:
         # Stream response from gateway's session manager
@@ -535,6 +540,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Error: {e}")
+    finally:
+        typing_task.cancel()
 
 
 def _convert_markdown_to_html(text: str) -> str:
