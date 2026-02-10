@@ -501,6 +501,25 @@ async def builtin_command_handler(
         )
 
 
+async def _send_charts(update: Update, charts: list) -> None:
+    """Render and send chart images to the Telegram chat.
+
+    Args:
+        update: Telegram update (must have a valid message).
+        charts: List of :class:`Chart` model instances from agent findings.
+    """
+    from aletheia.channels.chart_renderer import render_chart_to_png
+
+    for chart in charts:
+        try:
+            chart_dict = chart.model_dump()
+            png_buf = render_chart_to_png(chart_dict)
+            if png_buf and update.message:
+                await update.message.reply_photo(photo=png_buf, caption=chart.name)
+        except Exception as e:
+            logger.warning(f"Failed to send chart: {e}")
+
+
 async def custom_command_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -597,6 +616,10 @@ async def custom_command_handler(
                     # Split and send messages
                     for chunk_text in split_message(formatted):
                         await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+                    # Send chart images if present
+                    if agent_response.findings and agent_response.findings.charts:
+                        await _send_charts(update, agent_response.findings.charts)
 
                 except (json.JSONDecodeError, ValueError) as e:
                     # Fallback to raw text
@@ -742,6 +765,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     logger.debug(f"Telegram: Sending {len(chunks)} message chunk(s)")
                     for chunk_text in chunks:
                         await update.message.reply_text(chunk_text, parse_mode="HTML")
+
+                    # Send chart images if present
+                    if agent_response.findings and agent_response.findings.charts:
+                        await _send_charts(update, agent_response.findings.charts)
 
                     logger.debug("Telegram: Response sent successfully")
 

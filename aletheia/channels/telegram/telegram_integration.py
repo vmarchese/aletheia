@@ -473,6 +473,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Session manager yields JSON chunks
         chunk_count = 0
         response_markdown = ""
+        charts_data: list[dict] = []
 
         async for chunk in session_manager.send_message(message_text, "telegram"):
             chunk_count += 1
@@ -488,6 +489,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     logger.info(
                         f"Telegram: Formatted to markdown, length: {len(response_markdown)}"
                     )
+
+                    # Extract charts for rendering
+                    findings = parsed.get("findings", {})
+                    if isinstance(findings, dict):
+                        charts_data = findings.get("charts", [])
 
             elif chunk_type == "json_error":
                 # JSON parsing failed - use raw content
@@ -510,6 +516,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             logger.warning("Telegram: No output to send")
             await update.message.reply_text("✅ Done (no output)")
+
+        # Send chart images if present
+        if charts_data:
+            from aletheia.channels.chart_renderer import render_chart_to_png
+
+            for chart_dict in charts_data:
+                try:
+                    chart_name = chart_dict.get("name", "Chart")
+                    png_buf = render_chart_to_png(chart_dict)
+                    if png_buf:
+                        await update.message.reply_photo(
+                            photo=png_buf, caption=chart_name
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to send chart: {e}")
 
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
