@@ -160,6 +160,12 @@ class BaseAgent(ABC):
             soul_content = self.load_soul()
             has_soul = soul_content is not None
 
+        # Adding knowledge
+        knowledge_enabled = config.knowledge_enabled if config else True
+        if knowledge_enabled:
+            knowledge_plugin = KnowledgePlugin(SqliteKnowledge())
+            _tools.append(knowledge_plugin.query)
+
         rendered_instructions = ""
         if instructions:
             rendered_instructions = instructions
@@ -171,6 +177,7 @@ class BaseAgent(ABC):
                     llm_client=client,
                     custom_instructions=custom_instructions,
                     memory_enabled=(engram is not None),
+                    knowledge_enabled=knowledge_enabled,
                     soul=soul_content,
                     has_soul=has_soul,
                 )
@@ -187,6 +194,7 @@ class BaseAgent(ABC):
                     llm_client=client,
                     custom_instructions=custom_instructions,
                     memory_enabled=(engram is not None),
+                    knowledge_enabled=knowledge_enabled,
                     soul=soul_content,
                     has_soul=has_soul,
                 )
@@ -194,10 +202,6 @@ class BaseAgent(ABC):
         console_function_middleware = ConsoleFunctionMiddleware()
         logging_agent_middleware = LoggingAgentMiddleware()
         logging_function_middleware = LoggingFunctionMiddleware()
-
-        ## Adding knowledge
-        knowledge_plugin = KnowledgePlugin(SqliteKnowledge())
-        _tools.append(knowledge_plugin.query)
 
         # Build middleware list
         middleware_list = [
