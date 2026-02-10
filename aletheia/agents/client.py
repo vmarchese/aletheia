@@ -34,6 +34,9 @@ class LLMClient:
                 self.model = os.environ.get(
                     f"ALETHEIA_{self.agent_name.upper()}_OPENAI_MODEL"
                 )
+                logger.info(
+                    f"LLMClient: Found model override for agent {self.agent_name}: {self.model}"
+                )
                 self._client = OpenAIChatClient(
                     api_key=os.environ.get(
                         f"ALETHEIA_{self.agent_name.upper()}_OPENAI_API_KEY", "none"
@@ -52,6 +55,7 @@ class LLMClient:
         # Then check for Bedrock
         endpoint = os.environ.get("ALETHEIA_OPENAI_ENDPOINT", "")
         if "bedrock" in endpoint and BEDROCK_AVAILABLE:
+            logger.info("LLMClient: Detected Bedrock endpoint, initializing BedrockChatClient")
             self.model = os.environ.get(
                 "ALETHEIA_OPENAI_MODEL", "anthropic.claude-3-sonnet-20240229-v1:0"
             )
@@ -59,21 +63,44 @@ class LLMClient:
             self._client = BedrockChatClient(model_id=self.model, region=region)
             self.provider = "bedrock"
         # Then check for missing Azure OpenAI configuration and default to OpenAI
-        elif os.environ.get("AZURE_OPENAI_ENDPOINT") is None:
+        elif os.environ.get("AZURE_OPENAI_ENDPOINT") is None or "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME" not in os.environ:
             if os.environ.get("ALETHEIA_OPENAI_ENDPOINT") is not None:
+                self.endpoint = os.environ.get("ALETHEIA_OPENAI_ENDPOINT")
+                logger.info("LLMClient: Detected ALETHEIA_OPENAI_ENDPOINT, initializing OpenAIChatClient")
                 api_key = os.environ.get("ALETHEIA_OPENAI_API_KEY", "none")
                 self.model = os.environ.get("ALETHEIA_OPENAI_MODEL", "gpt-4o")
                 self._client = OpenAIChatClient(
                     api_key=api_key,
-                    base_url=os.environ.get("ALETHEIA_OPENAI_ENDPOINT"),
+                    base_url=self.endpoint,
+                    model_id=self.model,
+                )
+                self.provider = "openai"
+            elif os.environ.get("OPENAI_API_KEY") is not None:
+                self.model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+                self.endpoint = os.environ.get("OPENAI_BASE_URL")
+                logger.info("LLMClient: Detected OPENAI_API_KEY, initializing OpenAIChatClient")
+                self._client = OpenAIChatClient(
+                    api_key=os.environ.get("OPENAI_API_KEY"),
+                    base_url=self.endpoint,
                     model_id=self.model,
                 )
                 self.provider = "openai"
         # Finally, check for Azure OpenAI configuration
         else:
+            logger.info("LLMClient: Detected AZURE_OPENAI_CHAT_DEPLOYMENT_NAME, initializing AzureOpenAIChatClient")
             self.model = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
+            self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
             self._client = AzureOpenAIChatClient(credential=AzureCliCredential())
             self.provider = "azure"
+
+        if self._client is not None:
+            logger.info(
+                "LLM client initialized",
+                provider=self.provider,
+                model=self.model,
+                endpoint=str(self.endpoint) if self.endpoint else None,
+                agent_name=self.agent_name,
+            )
 
     def get_client(self):
         """Returns the initialized LLM client.

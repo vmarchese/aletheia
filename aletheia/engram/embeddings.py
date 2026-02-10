@@ -23,7 +23,7 @@ class EmbeddingProvider:
     def __init__(self, model: str = "text-embedding-3-small") -> None:
         from openai import OpenAI
 
-        sync_openai_env_vars()
+#        sync_openai_env_vars()
         self._model = model
         self._client = OpenAI()
         logger.info(f"embedding_provider_initialized model={model}")
@@ -60,6 +60,6 @@ class EmbeddingProvider:
     def __setstate__(self, state: dict[str, object]) -> None:
         from openai import OpenAI
 
-        sync_openai_env_vars()
+#        sync_openai_env_vars()
         self.__dict__.update(state)
         self._client = OpenAI()
