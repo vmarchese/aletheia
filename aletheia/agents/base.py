@@ -266,7 +266,7 @@ class BaseAgent(ABC):
                 content = file.read()
                 return content
         except (OSError, FileNotFoundError, IsADirectoryError, PermissionError) as e:
-            logger.error(
+            logger.warning(
                 f"BaseAgent::load_custom_instructions:: Error loading custom instructions for agent {self.name}: {e}"
             )
             return None

@@ -513,9 +513,13 @@ async def _send_charts(update: Update, charts: list) -> None:
     for chart in charts:
         try:
             chart_dict = chart.model_dump()
-            png_buf = render_chart_to_png(chart_dict)
-            if png_buf and update.message:
-                await update.message.reply_photo(photo=png_buf, caption=chart.name)
+            result = render_chart_to_png(chart_dict)
+            if result.image and update.message:
+                await update.message.reply_photo(
+                    photo=result.image, caption=chart.name
+                )
+            elif result.error and update.message:
+                await update.message.reply_text(f"⚠️ {result.error}")
         except Exception as e:
             logger.warning(f"Failed to send chart: {e}")
 

@@ -529,10 +529,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             for chart_dict in charts_data:
                 try:
                     chart_name = chart_dict.get("name", "Chart")
-                    png_buf = render_chart_to_png(chart_dict)
-                    if png_buf:
+                    result = render_chart_to_png(chart_dict)
+                    if result.image:
                         await update.message.reply_photo(
-                            photo=png_buf, caption=chart_name
+                            photo=result.image, caption=chart_name
+                        )
+                    elif result.error:
+                        await update.message.reply_text(
+                            f"⚠️ {result.error}"
                         )
                 except Exception as e:
                     logger.warning(f"Failed to send chart: {e}")

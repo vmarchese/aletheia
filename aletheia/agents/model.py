@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 # Install a custom default handler so all SerializableModel instances
 # work with json.dumps() directly.
@@ -25,6 +25,12 @@ class ChartMetrics(BaseModel):
     values: list[float]  # Values for the metric, corresponding to the labels in ChartData
     unit: str  # Unit of the metric (e.g., "ms", "%", "requests/s")
     description: str  # Description of the metric to help users understand what it represents
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def coerce_none_values(cls, v: list[Any]) -> list[float]:
+        """Replace None entries with 0.0 so LLM-generated gaps don't fail validation."""
+        return [0.0 if x is None else x for x in v]
 
 
 class ChartData(BaseModel):
