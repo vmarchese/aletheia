@@ -1,12 +1,26 @@
 """Tests for verbose mode and structlog logging configuration."""
 
 import logging
+
 import pytest
 import structlog
-from pathlib import Path
 
-from aletheia.utils.logging import setup_logging, enable_session_file_logging
 from aletheia.utils.command import run_command, set_verbose_commands
+from aletheia.utils.logging import (
+    disable_session_file_logging,
+    enable_session_file_logging,
+    setup_logging,
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging():
+    """Reset logging state after each test."""
+    yield
+    # Clean up any session file handlers
+    disable_session_file_logging()
+    # Reset to default
+    setup_logging(level="INFO")
 
 
 class TestSetupLogging:
@@ -22,31 +36,23 @@ class TestSetupLogging:
         """Test that DEBUG level can be set."""
         setup_logging(level="DEBUG")
         assert logging.root.level == logging.DEBUG
-        # Reset
-        setup_logging(level="INFO")
 
     def test_setup_logging_warning_level(self):
         """Test that WARNING level can be set."""
         setup_logging(level="WARNING")
         assert logging.root.level == logging.WARNING
-        # Reset
-        setup_logging(level="INFO")
 
     def test_setup_logging_env_var(self, monkeypatch):
         """Test that ALETHEIA_LOG_LEVEL env var is respected."""
         monkeypatch.setenv("ALETHEIA_LOG_LEVEL", "DEBUG")
         setup_logging()
         assert logging.root.level == logging.DEBUG
-        # Reset
-        setup_logging(level="INFO")
 
     def test_setup_logging_param_overrides_env(self, monkeypatch):
         """Test that explicit level param overrides env var."""
         monkeypatch.setenv("ALETHEIA_LOG_LEVEL", "DEBUG")
         setup_logging(level="WARNING")
         assert logging.root.level == logging.WARNING
-        # Reset
-        setup_logging(level="INFO")
 
 
 class TestSessionFileLogging:
@@ -54,7 +60,7 @@ class TestSessionFileLogging:
 
     def test_enable_session_file_logging(self, tmp_path):
         """Test that session file logging creates trace file and handler."""
-        setup_logging(level="DEBUG")
+        setup_logging(level="INFO")
 
         initial_handler_count = len(logging.root.handlers)
         enable_session_file_logging(tmp_path)
@@ -63,25 +69,13 @@ class TestSessionFileLogging:
         assert len(logging.root.handlers) == initial_handler_count + 1
 
         # Log something and check it appears in the file
-        logger = structlog.get_logger("test")
-        logger.info("Test session log message")
-
-        # The structlog PrintLoggerFactory writes to stderr, not through stdlib
-        # But stdlib loggers bridged through should go to the file
         stdlib_logger = logging.getLogger("test_stdlib")
-        stdlib_logger.info("Test stdlib message")
+        stdlib_logger.debug("Test debug message in trace file")
 
         trace_file = tmp_path / "aletheia_trace.log"
         assert trace_file.exists()
         content = trace_file.read_text()
-        assert "Test stdlib message" in content
-
-        # Cleanup: remove the added handler
-        for handler in logging.root.handlers[:]:
-            if isinstance(handler, logging.FileHandler):
-                if str(tmp_path) in str(getattr(handler, "baseFilename", "")):
-                    logging.root.removeHandler(handler)
-                    handler.close()
+        assert "Test debug message in trace file" in content
 
     def test_enable_session_file_logging_creates_dir(self, tmp_path):
         """Test that session dir is created if it doesn't exist."""
@@ -94,13 +88,6 @@ class TestSessionFileLogging:
         assert session_dir.exists()
         assert (session_dir / "aletheia_trace.log").exists()
 
-        # Cleanup
-        for handler in logging.root.handlers[:]:
-            if isinstance(handler, logging.FileHandler):
-                if str(session_dir) in str(getattr(handler, "baseFilename", "")):
-                    logging.root.removeHandler(handler)
-                    handler.close()
-
     def test_setup_logging_with_session_dir(self, tmp_path):
         """Test setup_logging with session_dir parameter."""
         setup_logging(level="DEBUG", session_dir=tmp_path)
@@ -108,12 +95,83 @@ class TestSessionFileLogging:
         trace_file = tmp_path / "aletheia_trace.log"
         assert trace_file.exists()
 
-        # Cleanup
-        for handler in logging.root.handlers[:]:
-            if isinstance(handler, logging.FileHandler):
-                if str(tmp_path) in str(getattr(handler, "baseFilename", "")):
-                    logging.root.removeHandler(handler)
-                    handler.close()
+    def test_enable_lowers_root_to_debug(self, tmp_path):
+        """Test that enabling session logging lowers root logger to DEBUG."""
+        setup_logging(level="INFO")
+        assert logging.root.level == logging.INFO
+
+        enable_session_file_logging(tmp_path)
+        assert logging.root.level == logging.DEBUG
+
+    def test_enable_pins_console_handlers_to_original_level(self, tmp_path):
+        """Test that console handlers keep the original level after enable."""
+        setup_logging(level="INFO")
+
+        enable_session_file_logging(tmp_path)
+
+        # Console (StreamHandler, not FileHandler) should be pinned to INFO
+        for handler in logging.root.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler
+            ):
+                assert handler.level == logging.INFO
+
+    def test_enable_captures_debug_in_file_not_console(self, tmp_path):
+        """Test that DEBUG messages go to file but console stays at INFO."""
+        setup_logging(level="INFO")
+        enable_session_file_logging(tmp_path)
+
+        # Write a debug message via stdlib
+        stdlib_logger = logging.getLogger("test_capture")
+        stdlib_logger.debug("debug-only-in-file")
+
+        # Verify it's in the trace file
+        trace_file = tmp_path / "aletheia_trace.log"
+        content = trace_file.read_text()
+        assert "debug-only-in-file" in content
+
+    def test_disable_session_file_logging(self, tmp_path):
+        """Test that disable removes handler and restores levels."""
+        setup_logging(level="INFO")
+        enable_session_file_logging(tmp_path)
+
+        # Verify enabled state
+        assert logging.root.level == logging.DEBUG
+        file_handlers = [
+            h for h in logging.root.handlers if isinstance(h, logging.FileHandler)
+        ]
+        assert len(file_handlers) == 1
+
+        disable_session_file_logging()
+
+        # Root logger restored to INFO
+        assert logging.root.level == logging.INFO
+
+        # File handler removed
+        file_handlers = [
+            h for h in logging.root.handlers if isinstance(h, logging.FileHandler)
+        ]
+        assert len(file_handlers) == 0
+
+    def test_disable_noop_when_not_enabled(self):
+        """Test that disable is safe to call when not enabled."""
+        setup_logging(level="INFO")
+        # Should not raise
+        disable_session_file_logging()
+        assert logging.root.level == logging.INFO
+
+    def test_enable_disable_roundtrip(self, tmp_path):
+        """Test that enable followed by disable restores original state."""
+        setup_logging(level="INFO")
+
+        original_handler_count = len(logging.root.handlers)
+        original_level = logging.root.level
+
+        enable_session_file_logging(tmp_path)
+        disable_session_file_logging()
+
+        assert logging.root.level == original_level
+        assert len(logging.root.handlers) == original_handler_count
 
 
 class TestVerboseCommandExecution:

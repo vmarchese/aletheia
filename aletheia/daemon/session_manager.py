@@ -61,6 +61,12 @@ class GatewaySessionManager:
         # Initialize chat history logger
         self.chat_logger = ChatHistoryLogger(session.session_path)
 
+        # Enable verbose file logging if requested
+        if session.get_metadata().verbose:
+            from aletheia.utils.logging import enable_session_file_logging
+
+            enable_session_file_logging(session.session_path)
+
         self.active_session = session
         return session
 
@@ -88,11 +94,22 @@ class GatewaySessionManager:
         # Initialize chat history logger
         self.chat_logger = ChatHistoryLogger(session.session_path)
 
+        # Re-enable verbose file logging if session was created with verbose
+        if session.get_metadata().verbose:
+            from aletheia.utils.logging import enable_session_file_logging
+
+            enable_session_file_logging(session.session_path)
+
         self.active_session = session
         return session
 
     async def close_active_session(self) -> None:
         """Close the currently active session and cleanup orchestrator."""
+        # Disable session file logging if it was enabled
+        from aletheia.utils.logging import disable_session_file_logging
+
+        disable_session_file_logging()
+
         if self.orchestrator:
             try:
                 await self.orchestrator.cleanup()
