@@ -9,7 +9,11 @@ from aletheia.utils.command import (
     run_command,
     set_verbose_commands,
 )
-from aletheia.utils.logging import enable_session_file_logging, setup_logging
+from aletheia.utils.logging import (
+    disable_session_file_logging,
+    enable_session_file_logging,
+    setup_logging,
+)
 from aletheia.utils.session_persistence import (
     generate_timestamp,
     sanitize_filename,
@@ -24,6 +28,7 @@ __all__ = [
     "run_command",
     "setup_logging",
     "enable_session_file_logging",
+    "disable_session_file_logging",
     "save_logs_to_session",
     "save_metrics_to_session",
     "save_traces_to_session",
