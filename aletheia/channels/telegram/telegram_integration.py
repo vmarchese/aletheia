@@ -150,11 +150,25 @@ async def session_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif args[0] == "resume" and len(args) > 1:
         # Resume session
         session_id = args[1]
+
+        # Check if session is encrypted — Telegram cannot handle encrypted sessions
+        sessions = session_manager.list_sessions()
+        target = next((s for s in sessions if s["id"] == session_id), None)
+        if target is None:
+            await update.message.reply_text(f"❌ Session {session_id} not found.")
+            return
+        if not target.get("unsafe", False):
+            await update.message.reply_text(
+                "🔒 Encrypted sessions cannot be resumed from Telegram.\n"
+                "Use the TUI or create a new session with /new."
+            )
+            return
+
         try:
             session = await session_manager.resume_session(
                 session_id=session_id,
                 password=None,
-                unsafe=False,
+                unsafe=True,
             )
             metadata = session.get_metadata()
             await update.message.reply_text(
