@@ -184,10 +184,49 @@ class CostInfo(Command):
             console.print("No usage data available yet. Send a message first.")
 
 
+class Reload(Command):
+    """Reload skills and custom commands from disk."""
+
+    def __init__(self):
+        super().__init__("reload", "Reload skills and custom commands")
+
+    def execute(self, console, *args, **kwargs):
+        """Reload skills for all agents and report results."""
+        config = kwargs.get("config")
+        orchestrator = kwargs.get("orchestrator")
+
+        # Custom commands are always loaded fresh - just confirm count
+        custom_count = 0
+        if config:
+            custom_commands = get_custom_commands(config)
+            custom_count = len(custom_commands)
+
+        console.print(
+            f"Custom commands: {custom_count} loaded (always fresh from disk)"
+        )
+
+        # Reload skills for orchestrator and sub-agents
+        if orchestrator:
+            skill_count = orchestrator.reload_skills()
+            console.print(f"Orchestrator skills: {skill_count} reloaded")
+
+            for agent in getattr(orchestrator, "sub_agent_instances", []):
+                if hasattr(agent, "reload_skills"):
+                    agent_skill_count = agent.reload_skills()
+                    console.print(
+                        f"Agent '{agent.name}' skills: {agent_skill_count} reloaded"
+                    )
+
+            console.print("Reload complete.")
+        else:
+            console.print("No active orchestrator - create a session first.")
+
+
 COMMANDS["help"] = Help()
 COMMANDS["version"] = Version()
 COMMANDS["info"] = INFO()
 COMMANDS["cost"] = CostInfo()
+COMMANDS["reload"] = Reload()
 
 
 # =================================================================

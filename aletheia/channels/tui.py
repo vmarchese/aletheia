@@ -60,20 +60,14 @@ THINKING_MESSAGES = [
 class TUICommandCompleter(Completer):
     """Command completer for TUI slash commands."""
 
-    def __init__(self):
-        """Initialize TUI command completer."""
-        self._commands_cache: dict[str, str] | None = None
-
     def _get_all_commands(self) -> dict[str, str]:
-        """Get all available commands with descriptions."""
-        if self._commands_cache is not None:
-            return self._commands_cache
-
+        """Get all available commands with descriptions (always fresh from disk)."""
         all_commands: dict[str, str] = {}
 
         # TUI-specific commands
         all_commands["new_session"] = "Create a new session"
         all_commands["session"] = "Session management (list/show/timeline/resume)"
+        all_commands["reload"] = "Reload skills and custom commands"
         all_commands["exit"] = "Disconnect and exit"
 
         # Built-in commands from aletheia.commands
@@ -84,7 +78,7 @@ class TUICommandCompleter(Completer):
             for name, cmd_obj in COMMANDS.items():
                 all_commands[name] = cmd_obj.description
 
-            # Add custom commands
+            # Add custom commands (always fresh from disk)
             try:
                 config = load_config()
                 custom_cmds = get_custom_commands(config)
@@ -98,7 +92,6 @@ class TUICommandCompleter(Completer):
         except Exception:
             pass  # Ignore if built-in commands can't be loaded
 
-        self._commands_cache = all_commands
         return all_commands
 
     def get_completions(self, document: Document, complete_event):
@@ -233,6 +226,9 @@ class TUIChannelConnector(BaseChannelConnector):
                 await self._handle_session_metadata(message.payload)
             elif message.type == "timeline_data":
                 await self._handle_timeline_data(message.payload)
+            elif message.type == "commands_updated":
+                # Tab completion always loads fresh from disk, no action needed
+                self.logger.debug("Commands updated on disk")
             elif message.type == "error":
                 await self._handle_error(message.payload)
         except Exception as e:
@@ -776,18 +772,18 @@ class TUIChannelConnector(BaseChannelConnector):
                     COMMANDS[cmd_name].execute(self.console)
                 elif cmd_name == "agents":
                     COMMANDS[cmd_name].execute(self.console)
-                elif cmd_name == "cost":
+                elif cmd_name in ("cost", "reload"):
                     if not self._active_session_id:
                         self.console.print(
                             "[bold red]No active session.[/bold red] "
                             "Use /new_session or /session resume first."
                         )
                     elif self.websocket:
-                        # Delegate to gateway which has access to usage data
+                        # Delegate to gateway which has access to session/orchestrator
                         self._processing = True
                         msg = ProtocolMessage.create(
                             "command_execute",
-                            {"message": "/cost", "channel": "tui"},
+                            {"message": f"/{cmd_name}", "channel": "tui"},
                         )
                         await self.websocket.send(msg.to_json())
                 else:

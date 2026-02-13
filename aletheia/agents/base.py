@@ -125,6 +125,7 @@ class BaseAgent(ABC):
 
         # Loading skills
         _skills = []
+        _skill_loaders: list[SkillLoader] = []
         if config is not None:
             skills_directory = self.config.skills_directory
             skill_directories = [skills_directory] if skills_directory else []
@@ -136,8 +137,12 @@ class BaseAgent(ABC):
 
             for skill_dir in skill_directories:
                 skillloader = SkillLoader(os.path.join(skill_dir, self.name.lower()))
+                _skill_loaders.append(skillloader)
                 if skillloader.skills:
                     _skills.extend(skillloader.skills)
+
+        # Store skill loaders for runtime reload
+        self._skill_loaders = _skill_loaders
 
         if len(_skills) > 0:
             docker_plugin = DockerScriptPlugin(
@@ -147,6 +152,10 @@ class BaseAgent(ABC):
             _tools.append(skillloader.get_skill_instructions)
             _tools.append(skillloader.load_file)
             _tools.append(docker_plugin.sandbox_run)
+
+        # Always register list_available_skills for runtime skill discovery
+        if _skill_loaders:
+            _tools.append(_skill_loaders[0].list_available_skills)
 
         client = LLMClient(agent_name=self.name)
 
@@ -167,6 +176,7 @@ class BaseAgent(ABC):
             _tools.append(knowledge_plugin.query)
 
         rendered_instructions = ""
+        agent_info = None
         if instructions:
             rendered_instructions = instructions
             if render_instructions:
@@ -198,6 +208,20 @@ class BaseAgent(ABC):
                     soul=soul_content,
                     has_soul=has_soul,
                 )
+
+        # Store template context for hot-reload of skills
+        self._render_instructions = render_instructions
+        self._instructions_source = instructions if instructions else prompt_template
+        self._agent_info = agent_info
+        self._render_context = {
+            "plugins": plugins,
+            "llm_client": client,
+            "custom_instructions": custom_instructions,
+            "memory_enabled": (engram is not None),
+            "knowledge_enabled": knowledge_enabled,
+            "soul": soul_content,
+            "has_soul": has_soul,
+        }
 
         console_function_middleware = ConsoleFunctionMiddleware()
         logging_agent_middleware = LoggingAgentMiddleware()
@@ -244,6 +268,46 @@ class BaseAgent(ABC):
 
         # Wrap with Bedrock response format support if needed
         wrap_bedrock_chat_client(client.get_client(), client.get_provider())
+
+    def reload_skills(self) -> int:
+        """Re-scan skills from disk and hot-patch agent instructions.
+
+        Re-reads all skill directories, re-renders the Jinja2 prompt template
+        with the updated skills list, and patches the live ChatAgent's
+        instructions. The conversation thread is preserved.
+
+        Returns:
+            Number of skills found after reload.
+        """
+        if not self._render_instructions or not self._instructions_source:
+            logger.debug(
+                f"[BaseAgent::{self.name}] Skipping reload: "
+                "render_instructions disabled or no template source"
+            )
+            return 0
+
+        # Re-scan skills from all loaders
+        _skills: list = []
+        for loader in self._skill_loaders:
+            loader.skills = loader.load_skills()
+            _skills.extend(loader.skills)
+
+        # Re-render the prompt template with updated skills
+        template = Template(self._instructions_source)
+        render_ctx = dict(self._render_context)
+        render_ctx["skills"] = _skills
+        if self._agent_info:
+            render_ctx["agent_info"] = self._agent_info
+        new_instructions = template.render(**render_ctx)
+
+        # Hot-patch the live ChatAgent instructions
+        self.agent.default_options["instructions"] = new_instructions
+        logger.info(
+            f"[BaseAgent::{self.name}] Reloaded skills. "
+            f"Found {len(_skills)} skills. Instructions updated."
+        )
+
+        return len(_skills)
 
     async def cleanup(self):
         """Clean up MCP tool connections."""
