@@ -302,7 +302,9 @@ async def handle_session_timeline(
         await update.message.chat.send_action("typing")
 
         # Generate timeline
-        response = await timeline_agent.agent.run(message, response_format=Timeline)
+        response = await timeline_agent.agent.run(
+            message, options={"response_format": Timeline}
+        )
 
         if response:
             timeline_data = json.loads(str(response.text))
@@ -515,9 +517,7 @@ async def _send_charts(update: Update, charts: list) -> None:
             chart_dict = chart.model_dump()
             result = render_chart_to_png(chart_dict)
             if result.image and update.message:
-                await update.message.reply_photo(
-                    photo=result.image, caption=chart.name
-                )
+                await update.message.reply_photo(photo=result.image, caption=chart.name)
             elif result.error and update.message:
                 await update.message.reply_text(f"⚠️ {result.error}")
         except Exception as e:
@@ -588,7 +588,7 @@ async def custom_command_handler(
                     ChatMessage(role="user", contents=[TextContent(text=expanded)])
                 ],
                 thread=orchestrator.thread,
-                response_format=AgentResponse,
+                options={"response_format": AgentResponse},
             ):
                 # Track usage from response contents
                 if chunk and chunk.contents:
@@ -724,7 +724,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     ChatMessage(role="user", contents=[TextContent(text=user_message)])
                 ],
                 thread=orchestrator.thread,
-                response_format=AgentResponse,
+                options={"response_format": AgentResponse},
             ):
                 # Track usage from response contents
                 if chunk and chunk.contents:

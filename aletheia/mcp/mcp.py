@@ -2,10 +2,12 @@
 Module for defining MCP server configurations.
 """
 
+import json
 from pathlib import Path
 
-import yaml
 from agent_framework import MCPStdioTool, MCPStreamableHTTPTool
+
+from aletheia.config import get_config_dir
 
 
 class MCPServer:
@@ -14,7 +16,7 @@ class MCPServer:
     def __init__(
         self,
         name: str,
-        agents: str,
+        agents: list[str],
         description: str,
         server_type: str,
         url: str = None,
@@ -34,23 +36,28 @@ class MCPServer:
         self.env = env if env is not None else {}
 
 
-def load_mcp_tools(agent: str, yaml_file: str = None) -> list[MCPServer]:
-    """Load MCP server configurations from a YAML file.
+def load_mcp_tools(agent: str, config_file: str | None = None) -> list:
+    """Load MCP server configurations from a JSON file.
 
     Args:
-        yaml_file: Path to the YAML file containing MCP server configurations.
+        agent: Name of the agent to filter servers for.
+        config_file: Path to the JSON file containing MCP server configurations.
+                     Defaults to {config_dir}/mcp.json.
     """
 
-    if yaml_file is None:
-        package_dir = Path(__file__).parent
-        yaml_file = package_dir / "mcp_servers.yaml"
+    if config_file is None:
+        config_file = str(get_config_dir() / "mcp.json")
 
-    with open(yaml_file, encoding="utf-8") as file:
+    config_path = Path(config_file)
+    if not config_path.exists():
+        return []
+
+    with open(config_path, encoding="utf-8") as file:
         content = file.read()
-        servers_data = yaml.safe_load(content)
+        servers_data = json.loads(content)
         servers = []
-        for server_info in servers_data.get("mcp_servers", []):
-            allowed_agents = server_info.get("agents", "").split(",")
+        for server_info in servers_data.get("mcpServers", []):
+            allowed_agents = server_info.get("agents", [])
             if agent not in allowed_agents:
                 continue
             server = MCPServer(
@@ -74,6 +81,7 @@ def load_mcp_tools(agent: str, yaml_file: str = None) -> list[MCPServer]:
                     description=server.description,
                     command=server.command,
                     args=server.args,
+                    env=server.env,
                 )
                 tools.append(tool)
             elif server.server_type == "streamable_http":

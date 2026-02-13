@@ -204,8 +204,9 @@ class Config(BaseSettings):
     # =================================================================
     # MCP Servers Configuration (flat)
     # =================================================================
-    mcp_servers_yaml: str | None = Field(
-        default=None, description="Path to MCP servers YAML configuration file"
+    mcp_servers_config: str | None = Field(
+        default=None,
+        description="Path to MCP servers JSON configuration file (mcp.json)",
     )
 
     # =================================================================

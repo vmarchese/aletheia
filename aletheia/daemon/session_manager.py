@@ -166,7 +166,7 @@ class GatewaySessionManager:
                     ChatMessage(role=Role.USER, contents=[TextContent(text=message)])
                 ],
                 thread=self.orchestrator.thread,
-                response_format=AgentResponse,
+                options={"response_format": AgentResponse},
             ),
             output_format_type=AgentResponse,
         )

@@ -336,15 +336,13 @@ async def get_session_timeline(
 
         message = ChatMessage(
             role=Role.USER,
-            contents=[
-                TextContent(
-                    text=f"""
+            contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       """
-                )
-            ],
+                                       """)],
         )
-        response = await timeline_agent.agent.run(message, response_format=Timeline)
+        response = await timeline_agent.agent.run(
+            message, options={"response_format": Timeline}
+        )
 
         # Parse JSON from response
         try:
@@ -482,7 +480,7 @@ async def run_agent_step(
         async for response in orchestrator.agent.run_stream(
             messages=[ChatMessage(role="user", contents=[TextContent(text=message)])],
             thread=orchestrator.current_thread,
-            response_format=AgentResponse,
+            options={"response_format": AgentResponse},
         ):
             if response and str(response.text) != "":
                 json_buffer += str(response.text)

@@ -487,6 +487,73 @@ agent:
     - Always add a joke about kittens after greeting
 ```    
 
+## MCP Support (Experimental)
+
+Aletheia supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers, allowing agents to use external tools via stdio or streamable HTTP transports.
+
+### Configuration
+
+Create an `mcp.json` file in your Aletheia config directory:
+- **Linux**: `~/.config/aletheia/mcp.json`
+- **macOS**: `~/Library/Application Support/aletheia/mcp.json`
+- **Windows**: `%LOCALAPPDATA%\aletheia\mcp.json`
+
+### Format
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "My MCP Server",
+      "type": "stdio",
+      "agents": ["aws", "orchestrator"],
+      "description": "Description of what this server provides",
+      "command": "uvx",
+      "args": ["my-mcp-server@latest"],
+      "env": {
+        "LOG_LEVEL": "ERROR"
+      }
+    },
+    {
+      "name": "Remote MCP Server",
+      "type": "streamable_http",
+      "agents": ["orchestrator"],
+      "description": "A remote MCP server",
+      "url": "https://example.com/api/mcp",
+      "bearer": "your-token-here"
+    }
+  ]
+}
+```
+
+### Server Properties
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | Yes | Display name for the MCP server |
+| `type` | string | Yes | Transport type: `stdio` or `streamable_http` |
+| `agents` | string[] | Yes | List of agent names that can use this server |
+| `description` | string | Yes | Description of the server's capabilities |
+| `command` | string | stdio only | Command to execute |
+| `args` | string[] | No | Command arguments |
+| `env` | object | No | Environment variables for the server process |
+| `url` | string | http only | URL for streamable HTTP server |
+| `bearer` | string | No | Bearer token for HTTP authentication |
+
+### Custom Config Path
+
+You can specify a custom path to the config file in `config.yaml`:
+
+```yaml
+mcp_servers_config: /custom/path/to/mcp.json
+```
+
+Or via environment variable:
+
+```bash
+export ALETHEIA_MCP_SERVERS_CONFIG=/custom/path/to/mcp.json
+```
+
 ## Advanced Configuration
 
 ### Complete Configuration Options
@@ -502,6 +569,7 @@ agent:
 | `commands_directory` | Custom commands path | `{config}/commands` |
 | `custom_instructions_dir` | Agent instructions path | `{config}/instructions` |
 | `user_agents_directory` | User agents path | `{config}/agents` |
+| `mcp_servers_config` | MCP servers JSON config path | `{config}/mcp.json` |
 | `telegram_bot_token` | Telegram bot token | `None` |
 | `telegram_allowed_users` | Allowed Telegram user IDs | `[]` |
 
