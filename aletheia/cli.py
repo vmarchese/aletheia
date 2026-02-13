@@ -364,7 +364,6 @@ async def init_orchestrator(
     return orchestrator
 
 
-
 def safe_md(s: str) -> str:
     """Ensure that Markdown code fences are properly closed."""
     fences = s.count("```")
@@ -375,7 +374,6 @@ def safe_md(s: str) -> str:
 def version() -> None:
     """Display the version of Aletheia."""
     typer.echo(f"Aletheia version {__version__}")
-
 
 
 @session_app.command("list")
@@ -437,6 +435,7 @@ def session_delete(
         typer.echo(f"Error deleting session: {e}", err=True)
         raise typer.Exit(1)
 
+
 @session_app.command("timeline")
 def session_timeline(
     session_id: str = typer.Argument(..., help="Session ID to export"),
@@ -489,16 +488,12 @@ def session_timeline(
 
         message = ChatMessage(
             role=Role.USER,
-            contents=[
-                TextContent(
-                    text=f"""
+            contents=[TextContent(text=f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
-                                       """
-                )
-            ],
+                                       """)],
         )
         response = asyncio.run(
-            timeline_agent.agent.run(message, response_format=Timeline)
+            timeline_agent.agent.run(message, options={"response_format": Timeline})
         )
 
         if response:
@@ -1044,7 +1039,9 @@ def start_daemon(
 
         # Create and start gateway
         gateway = AletheiaGateway(config, enable_memory=enable_memory)
-        asyncio.run(gateway.start(daemon_host, daemon_port, web_channel_host, web_channel_port))
+        asyncio.run(
+            gateway.start(daemon_host, daemon_port, web_channel_host, web_channel_port)
+        )
 
     except KeyboardInterrupt:
         console.print("\n[cyan]Gateway stopped.[/cyan]")

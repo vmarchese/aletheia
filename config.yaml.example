@@ -60,9 +60,10 @@ prometheus_credentials_type: env
 # Uncomment to override:
 # custom_instructions_dir: /custom/path/to/instructions
 
-# Path to MCP servers YAML configuration file
-# Uncomment to specify:
-# mcp_servers_yaml: /path/to/mcp-servers.yaml
+# Path to MCP servers JSON configuration file
+# By default, loads from {config_dir}/mcp.json if present
+# Uncomment to override with a custom path:
+# mcp_servers_config: /path/to/mcp.json
 
 # Temporary folder for storing intermediate files
 temp_folder: /tmp/aletheia

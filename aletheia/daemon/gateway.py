@@ -885,7 +885,7 @@ class AletheiaGateway:
             )
 
             agent_response = await timeline_agent.agent.run(
-                message, response_format=Timeline
+                message, options={"response_format": Timeline}
             )
 
             if agent_response and agent_response.text:
@@ -1030,7 +1030,9 @@ class AletheiaGateway:
             from aletheia.channels.web import WebChannelConnector
 
             # Create web channel connector and connect to gateway's WebSocket
-            self.web_channel = WebChannelConnector(gateway_url=f"ws://{ws_host}:{ws_port}")
+            self.web_channel = WebChannelConnector(
+                gateway_url=f"ws://{ws_host}:{ws_port}"
+            )
             await self.web_channel.connect()
 
             # Get the FastAPI app from the connector

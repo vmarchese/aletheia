@@ -116,12 +116,12 @@ class BaseAgent(ABC):
 
         # mcp tools
         self.mcp_tools = []
-        if config and config.mcp_servers_yaml:
-            mcp_tools = load_mcp_tools(
-                agent=self.name, yaml_file=config.mcp_servers_yaml
-            )
-            self.mcp_tools.extend(mcp_tools)
-            _tools.extend(mcp_tools)
+        mcp_tools = load_mcp_tools(
+            agent=self.name,
+            config_file=config.mcp_servers_config if config else None,
+        )
+        self.mcp_tools.extend(mcp_tools)
+        _tools.extend(mcp_tools)
 
         # Loading skills
         _skills = []
@@ -231,6 +231,16 @@ class BaseAgent(ABC):
             middleware=middleware_list,
             temperature=config.llm_temperature if config else 0.0,
         )
+
+        # Enable detailed error messages in verbose mode
+        if session and session.get_metadata().verbose:
+            fic = getattr(
+                self.agent.chat_client,
+                "function_invocation_configuration",
+                None,
+            )
+            if fic is not None:
+                fic.include_detailed_errors = True
 
         # Wrap with Bedrock response format support if needed
         wrap_bedrock_chat_client(client.get_client(), client.get_provider())

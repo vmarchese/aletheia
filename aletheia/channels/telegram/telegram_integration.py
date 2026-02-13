@@ -311,7 +311,7 @@ async def _handle_session_timeline(
         )
 
         agent_response = await timeline_agent.agent.run(
-            message, response_format=Timeline
+            message, options={"response_format": Timeline}
         )
 
         if not agent_response or not agent_response.text:
@@ -549,9 +549,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                             photo=result.image, caption=chart_name
                         )
                     elif result.error:
-                        await update.message.reply_text(
-                            f"⚠️ {result.error}"
-                        )
+                        await update.message.reply_text(f"⚠️ {result.error}")
                 except Exception as e:
                     logger.warning(f"Failed to send chart: {e}")
 
