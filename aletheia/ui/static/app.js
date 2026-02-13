@@ -830,6 +830,14 @@ function connectStream(sessionId) {
             console.log('Stream finished (done event received). Refreshing session metadata...');
             fetchSessionMetadata(currentSessionId);
 
+        } else if (data.type === 'commands_updated') {
+            // Refresh available commands for autocomplete
+            console.log('[SSE] Commands updated, refreshing command list');
+            if (data.commands && Array.isArray(data.commands)) {
+                availableCommands = data.commands;
+            } else {
+                loadCommands();
+            }
         } else if (data.type === 'error') {
             stopThinking();
             setProcessing(false);

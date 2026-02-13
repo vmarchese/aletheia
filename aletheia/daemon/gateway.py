@@ -14,6 +14,7 @@ from aletheia.config import Config, load_config
 from aletheia.daemon.protocol import ProtocolMessage
 from aletheia.daemon.server import WebSocketServer
 from aletheia.daemon.session_manager import GatewaySessionManager
+from aletheia.daemon.watcher import ConfigWatcher
 from aletheia.engram.tools import Engram
 from aletheia.session import Session, SessionError, SessionNotFoundError
 
@@ -113,6 +114,8 @@ class AletheiaGateway:
         self.web_server = None
         self.web_channel: Any = None
         self.telegram_task = None
+        self.config_watcher: ConfigWatcher | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         if enable_memory:
             from aletheia.config import get_config_dir
@@ -136,6 +139,7 @@ class AletheiaGateway:
             web_port: Port for Web/FastAPI server
         """
         self.running = True
+        self._loop = asyncio.get_running_loop()
 
         # Track which channels are enabled
         enabled_channels = []
@@ -144,6 +148,17 @@ class AletheiaGateway:
         if self.engram:
             self.engram.start_watcher()
             self.logger.info("Memory system (Engram) enabled")
+
+        # Start ConfigWatcher for skills and commands hot-reload
+        skills_dirs = ConfigWatcher.get_skills_directories(self.config)
+        self.config_watcher = ConfigWatcher(
+            skills_directories=skills_dirs,
+            commands_directory=self.config.commands_directory,
+            on_skills_changed=self._on_skills_changed,
+            on_commands_changed=self._on_commands_changed,
+        )
+        self.config_watcher.start()
+        self.logger.info("ConfigWatcher started for skills and commands")
 
         # Start WebSocket server (for TUI)
         await self.websocket_server.start(self.handle_connection)
@@ -205,6 +220,10 @@ class AletheiaGateway:
         # Stop Engram watcher
         if self.engram:
             self.engram.stop_watcher()
+
+        # Stop ConfigWatcher
+        if self.config_watcher:
+            self.config_watcher.stop()
 
         # Close active session
         await self.session_manager.close_active_session()
@@ -715,6 +734,10 @@ class AletheiaGateway:
             mock_console = MockConsole()
 
             kwargs: dict[str, Any] = {"config": config}
+            if command_name == "reload":
+                orchestrator = self.session_manager.get_orchestrator()
+                if orchestrator:
+                    kwargs["orchestrator"] = orchestrator
             if command_name == "cost":
                 session = self.session_manager.get_active_session()
                 if session:
@@ -751,6 +774,10 @@ class AletheiaGateway:
                 "chat_stream_end", {"message_id": message_id, "usage": {}}
             )
             await websocket.send(end_msg.to_json())
+
+            # After /reload, broadcast updated commands to all channels
+            if command_name == "reload":
+                await self._broadcast_commands_updated()
 
         except Exception as e:
             error_msg = ProtocolMessage.create(
@@ -1005,6 +1032,69 @@ class AletheiaGateway:
                 {"code": "CHAT_ERROR", "message": str(e)},
             )
             await websocket.send(error_msg.to_json())
+
+    def _on_skills_changed(self) -> None:
+        """Callback invoked by ConfigWatcher when skill files change."""
+        self.logger.info("Skills changed on disk, reloading agent instructions")
+        orchestrator = self.session_manager.get_orchestrator()
+        if not orchestrator:
+            self.logger.debug("No active orchestrator, skipping skills reload")
+            return
+
+        orchestrator.reload_skills()
+        for agent in getattr(orchestrator, "sub_agent_instances", []):
+            if hasattr(agent, "reload_skills"):
+                agent.reload_skills()
+
+    def _on_commands_changed(self) -> None:
+        """Callback invoked by ConfigWatcher when command files change.
+
+        Broadcasts a commands_updated event to all channels so they can
+        refresh their command lists.
+        """
+        self.logger.info("Custom commands changed on disk, notifying channels")
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_commands_updated(), self._loop
+            )
+
+    async def _broadcast_commands_updated(self) -> None:
+        """Broadcast updated command list to all connected channels."""
+        try:
+            from aletheia.commands import COMMANDS, get_custom_commands
+
+            config = load_config()
+            commands_list = []
+
+            for name, cmd_obj in COMMANDS.items():
+                commands_list.append(
+                    {
+                        "name": name,
+                        "description": cmd_obj.description,
+                        "type": "built-in",
+                    }
+                )
+
+            try:
+                custom_cmds = get_custom_commands(config)
+                for command_name, custom_cmd in custom_cmds.items():
+                    commands_list.append(
+                        {
+                            "name": command_name,
+                            "description": f"{custom_cmd.name}: {custom_cmd.description}",
+                            "type": "custom",
+                        }
+                    )
+            except Exception:
+                pass
+
+            commands_list.sort(key=lambda x: x["name"])
+
+            await self.websocket_server.broadcast(
+                {"type": "commands_updated", "payload": {"commands": commands_list}}
+            )
+        except Exception as e:
+            self.logger.error(f"Error broadcasting commands update: {e}")
 
     async def broadcast_to_channels(self, message: dict[str, Any]) -> None:
         """Broadcast message to all connected channels."""

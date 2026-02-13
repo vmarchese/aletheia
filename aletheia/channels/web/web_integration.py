@@ -81,6 +81,18 @@ class WebChannelConnector(BaseChannelConnector):
             await self._handle_stream_error("No active session")
             return
 
+        # Push commands_updated to SSE stream so the frontend can refresh
+        if msg_type == "commands_updated":
+            session_id = self._active_session_id or "default"
+            if session_id in self._stream_queues:
+                await self._stream_queues[session_id].put(
+                    {
+                        "type": "commands_updated",
+                        "commands": message.payload.get("commands", []),
+                    }
+                )
+            return
+
         # Request-response messages - resolve pending futures
         if msg_type in self._pending_responses:
             future = self._pending_responses.pop(msg_type)

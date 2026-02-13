@@ -213,6 +213,23 @@ class SkillLoader:
         _, instructions = self.parse_frontmatter(content)
         return instructions
 
+    def list_available_skills(self) -> str:
+        """
+        Lists all currently available skills by re-scanning the skills directory.
+
+        Returns:
+            A formatted string listing all available skills with their names,
+            paths, and descriptions. Returns a message if none found.
+        """
+        current_skills = self.load_skills()
+        if not current_skills:
+            return "No skills available."
+
+        lines = ["Available skills:\n"]
+        for skill in current_skills:
+            lines.append(f"- **{skill.name}** ({skill.path}): {skill.description}")
+        return "\n".join(lines)
+
     def load_file(
         self,
         location: Annotated[str, "Path to the skill directory"],

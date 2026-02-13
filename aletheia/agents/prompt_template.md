@@ -172,6 +172,7 @@ If a tool output exceeds 500 lines:
 
 When a task is multi-step or complex:
 - Check for a matching skill first and load it with `get_skill_instructions(path)` if relevant.
+- If you need to check for newly added or updated skills, use `list_available_skills()` to get the current list from disk.
 - Comply strictly with all skill instructions immediately after loading.
 - *Never* create or run scripts not explicitly mentioned in skill instructions.
 
