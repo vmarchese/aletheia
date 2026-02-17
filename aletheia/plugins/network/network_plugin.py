@@ -8,7 +8,7 @@ import subprocess
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.base import BasePlugin
@@ -151,7 +151,7 @@ class NetworkPlugin(BasePlugin):
             log_prefix="NetworkPlugin::openssl_sclient::",
         )
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [
             self.is_ip_in_cidr,

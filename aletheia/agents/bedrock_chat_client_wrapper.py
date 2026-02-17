@@ -12,10 +12,8 @@ from typing import Any
 
 import structlog
 from agent_framework import (
-    ChatMessage,
-    FunctionResultContent,
-    Role,
-    TextContent,
+    Content,
+    Message,
 )
 from agent_framework._types import (
     ChatResponseUpdate,
@@ -245,7 +243,7 @@ class BedrockChatClientTraceWrapper:
         return session_dir
 
     def _dump_input_messages(
-        self, messages: list[ChatMessage], chat_options: ChatOptions, request_id: str
+        self, messages: list[Message], chat_options: ChatOptions, request_id: str
     ):
         """Dump the input messages as they arrive to the wrapper (before cleaning).
 
@@ -465,8 +463,8 @@ class BedrockChatClientTraceWrapper:
             return str(obj)
 
     def _clean_messages_for_bedrock(
-        self, messages: list[ChatMessage]
-    ) -> list[ChatMessage]:
+        self, messages: list[Message]
+    ) -> list[Message]:
         """Clean messages to ensure Bedrock API compliance.
 
         Bedrock has strict rules:
@@ -490,9 +488,6 @@ class BedrockChatClientTraceWrapper:
         Returns:
             Cleaned list of chat messages
         """
-        from agent_framework import ChatMessage, TextContent
-        from agent_framework._types import FunctionCallContent, FunctionResultContent
-
         cleaned_messages = []
 
         # Track which tool calls we're filtering out so we can also remove their results
@@ -505,7 +500,7 @@ class BedrockChatClientTraceWrapper:
                 continue
 
             # Check if this is a tool message
-            if msg.role == Role.TOOL or str(msg.role).lower() == "tool":
+            if msg.role == "tool" or str(msg.role).lower() == "tool":
                 # Build a map of call_ids in this message
                 call_ids_with_use = set()
                 call_ids_with_result = set()
@@ -517,10 +512,10 @@ class BedrockChatClientTraceWrapper:
                     if not call_id:
                         continue
 
-                    is_tool_use = isinstance(content, FunctionCallContent) or (
+                    is_tool_use = (isinstance(content, Content) and content.type == "function_call") or (
                         hasattr(content, "name") and hasattr(content, "call_id")
                     )
-                    is_tool_result = isinstance(content, FunctionResultContent) or (
+                    is_tool_result = (isinstance(content, Content) and content.type == "function_result") or (
                         hasattr(content, "call_id") and not hasattr(content, "name")
                     )
 
@@ -548,10 +543,10 @@ class BedrockChatClientTraceWrapper:
             # Determine the effective role for Bedrock
             # Bedrock converts "tool" role to "user" role, so we do it here to have full control
             effective_role = msg.role
-            is_tool_message = msg.role == Role.TOOL or str(msg.role).lower() == "tool"
+            is_tool_message = msg.role == "tool" or str(msg.role).lower() == "tool"
 
             if is_tool_message:
-                effective_role = Role.USER
+                effective_role = "user"
                 self._log_trace(
                     f"Converting message {i} from role=tool to role=user (Bedrock requirement)"
                 )
@@ -575,14 +570,14 @@ class BedrockChatClientTraceWrapper:
 
                 for content in msg.contents:
                     is_tool_use = (
-                        isinstance(content, FunctionCallContent)
+                        (isinstance(content, Content) and content.type == "function_call")
                         or (hasattr(content, "name") and hasattr(content, "call_id"))
                         or (
                             hasattr(content, "name") and hasattr(content, "tool_use_id")
                         )
                     )
                     is_tool_result = (
-                        isinstance(content, FunctionResultContent)
+                        (isinstance(content, Content) and content.type == "function_result")
                         or (
                             hasattr(content, "call_id") and not hasattr(content, "name")
                         )
@@ -591,7 +586,7 @@ class BedrockChatClientTraceWrapper:
                             and not hasattr(content, "name")
                         )
                     )
-                    is_text = isinstance(content, TextContent) or hasattr(
+                    is_text = (isinstance(content, Content) and content.type == "text") or hasattr(
                         content, "text"
                     )
 
@@ -636,8 +631,8 @@ class BedrockChatClientTraceWrapper:
                             getattr(tool_result, "tool_use_id", None),
                         )
 
-                        # Create a NEW FunctionResultContent object (deep copy to avoid mutation)
-                        new_result = FunctionResultContent(
+                        # Create a NEW Content object (deep copy to avoid mutation)
+                        new_result = Content.from_function_result(
                             call_id=call_id,
                             result=getattr(tool_result, "result", None),
                             exception=getattr(tool_result, "exception", None),
@@ -664,17 +659,18 @@ class BedrockChatClientTraceWrapper:
                         # Create a text representation of the tool call
                         tool_call_text = f"[Tool Call: {name} (id: {call_id})]"
 
-                        # Add input if available
-                        if hasattr(tool_call, "input") and tool_call.input:
+                        # Add arguments if available
+                        tool_call_args = getattr(tool_call, "arguments", getattr(tool_call, "input", None))
+                        if tool_call_args:
                             import json
 
                             try:
-                                input_str = json.dumps(tool_call.input, indent=2)
+                                input_str = json.dumps(tool_call_args, indent=2)
                                 tool_call_text += f"\nInput: {input_str}"
                             except:
-                                tool_call_text += f"\nInput: {tool_call.input}"
+                                tool_call_text += f"\nInput: {tool_call_args}"
 
-                        text_contents.append(TextContent(text=tool_call_text))
+                        text_contents.append(Content.from_text(tool_call_text))
                         self._log_trace(
                             f"Converted tool call {name} to text representation"
                         )
@@ -718,7 +714,7 @@ class BedrockChatClientTraceWrapper:
                             except:
                                 tool_result_text += f"\nOutput: {tool_result.content}"
 
-                        text_contents.append(TextContent(text=tool_result_text))
+                        text_contents.append(Content.from_text(tool_result_text))
                         self._log_trace(
                             f"Converted paired tool result ({call_id}) to text representation"
                         )
@@ -728,8 +724,8 @@ class BedrockChatClientTraceWrapper:
                     # - Text contents (including converted tool calls and paired results)
                     user_contents = orphaned_results + text_contents + other_contents
                     if user_contents:
-                        user_msg = ChatMessage(
-                            role=Role.USER,
+                        user_msg = Message(
+                            role="user",
                             contents=user_contents,
                             author_name=getattr(msg, "author_name", None),
                             message_id=getattr(msg, "message_id", None),
@@ -751,16 +747,10 @@ class BedrockChatClientTraceWrapper:
             # Normal processing for non-mixed-content messages
             # Filter contents based on effective role
             new_contents = []
-            has_tool_use = False
-            has_tool_result = False
-            has_text = False
-
             for content in msg.contents:
-                content_type = type(content).__name__
-
                 # Identify tool use (FunctionCallContent with name and call_id)
                 is_tool_use = (
-                    isinstance(content, FunctionCallContent)
+                    (isinstance(content, Content) and content.type == "function_call")
                     or (hasattr(content, "name") and hasattr(content, "call_id"))
                     or (
                         hasattr(content, "name") and hasattr(content, "tool_use_id")
@@ -769,7 +759,7 @@ class BedrockChatClientTraceWrapper:
 
                 # Identify tool result (FunctionResultContent)
                 is_tool_result = (
-                    isinstance(content, FunctionResultContent)
+                    (isinstance(content, Content) and content.type == "function_result")
                     or (hasattr(content, "call_id") and not hasattr(content, "name"))
                     or (
                         hasattr(content, "tool_use_id") and not hasattr(content, "name")
@@ -777,7 +767,7 @@ class BedrockChatClientTraceWrapper:
                 )
 
                 # Identify text content
-                is_text = isinstance(content, TextContent) or hasattr(content, "text")
+                is_text = (isinstance(content, Content) and content.type == "text") or hasattr(content, "text")
 
                 # Get call_id for tracking
                 call_id = None
@@ -787,7 +777,7 @@ class BedrockChatClientTraceWrapper:
                     call_id = content.tool_use_id
 
                 # Apply filtering rules based on EFFECTIVE role (after tool->user conversion)
-                if effective_role == Role.ASSISTANT:
+                if effective_role == "assistant":
                     # Assistant messages can have tool uses and text, but NOT tool results
                     if is_tool_result:
                         self._log_trace(
@@ -799,22 +789,20 @@ class BedrockChatClientTraceWrapper:
 
                     # Create NEW content object to avoid mutating input
                     if is_tool_use:
-                        new_content = FunctionCallContent(
-                            name=getattr(content, "name", "unknown"),
+                        new_content = Content.from_function_call(
                             call_id=call_id,
-                            input=getattr(content, "input", {}),
+                            name=getattr(content, "name", "unknown"),
+                            arguments=getattr(content, "arguments", getattr(content, "input", {})),
                         )
                         new_contents.append(new_content)
-                        has_tool_use = True
                     elif is_text:
-                        new_content = TextContent(text=getattr(content, "text", ""))
+                        new_content = Content.from_text(getattr(content, "text", ""))
                         new_contents.append(new_content)
-                        has_text = True
                     else:
                         # For other content types, append as-is (rare case)
                         new_contents.append(content)
 
-                elif effective_role == Role.USER:
+                elif effective_role == "user":
                     # User messages can have tool results and text, but NOT tool uses
                     # This is CRITICAL because tool role messages become user messages in Bedrock
                     if is_tool_use:
@@ -841,17 +829,15 @@ class BedrockChatClientTraceWrapper:
 
                     # Create NEW content object to avoid mutating input
                     if is_tool_result:
-                        new_content = FunctionResultContent(
+                        new_content = Content.from_function_result(
                             call_id=call_id,
                             result=getattr(content, "result", None),
                             exception=getattr(content, "exception", None),
                         )
                         new_contents.append(new_content)
-                        has_tool_result = True
                     elif is_text:
-                        new_content = TextContent(text=getattr(content, "text", ""))
+                        new_content = Content.from_text(getattr(content, "text", ""))
                         new_contents.append(new_content)
-                        has_text = True
                     else:
                         # For other content types, append as-is (rare case)
                         new_contents.append(content)
@@ -859,7 +845,7 @@ class BedrockChatClientTraceWrapper:
                 else:
                     # For other roles (like SYSTEM), create new TextContent objects
                     if is_text:
-                        new_content = TextContent(text=getattr(content, "text", ""))
+                        new_content = Content.from_text(getattr(content, "text", ""))
                         new_contents.append(new_content)
                     else:
                         # For non-text content in system messages, append as-is
@@ -868,7 +854,7 @@ class BedrockChatClientTraceWrapper:
             # Only include the message if it has content after filtering
             if new_contents:
                 # Create a new message with filtered contents and effective role
-                cleaned_msg = ChatMessage(
+                cleaned_msg = Message(
                     role=effective_role,  # Use effective role (tool->user conversion)
                     contents=new_contents,
                     author_name=getattr(msg, "author_name", None),
@@ -901,11 +887,11 @@ class BedrockChatClientTraceWrapper:
 
             # If this is an assistant message, collect all tool use call_ids
             # AND create new content objects to avoid mutating input
-            if msg.role == Role.ASSISTANT:
+            if msg.role == "assistant":
                 new_contents = []
                 for content in msg.contents:
                     is_tool_use = (
-                        isinstance(content, FunctionCallContent)
+                        (isinstance(content, Content) and content.type == "function_call")
                         or (hasattr(content, "name") and hasattr(content, "call_id"))
                         or (
                             hasattr(content, "name") and hasattr(content, "tool_use_id")
@@ -919,23 +905,23 @@ class BedrockChatClientTraceWrapper:
                             available_tool_uses.add(call_id)
                             self._log_trace(f"Message {i}: Found tool use {call_id}")
 
-                        # Create NEW FunctionCallContent
-                        new_content = FunctionCallContent(
-                            name=getattr(content, "name", "unknown"),
+                        # Create NEW function call Content
+                        new_content = Content.from_function_call(
                             call_id=call_id,
-                            input=getattr(content, "input", {}),
+                            name=getattr(content, "name", "unknown"),
+                            arguments=getattr(content, "arguments", getattr(content, "input", {})),
                         )
                         new_contents.append(new_content)
-                    elif isinstance(content, TextContent) or hasattr(content, "text"):
+                    elif (isinstance(content, Content) and content.type == "text") or hasattr(content, "text"):
                         # Create NEW TextContent
-                        new_content = TextContent(text=getattr(content, "text", ""))
+                        new_content = Content.from_text(getattr(content, "text", ""))
                         new_contents.append(new_content)
                     else:
                         # For other content types, append as-is (rare case)
                         new_contents.append(content)
 
                 # Create new assistant message with new content objects
-                new_msg = ChatMessage(
+                new_msg = Message(
                     role=msg.role,
                     contents=new_contents,
                     author_name=getattr(msg, "author_name", None),
@@ -946,13 +932,13 @@ class BedrockChatClientTraceWrapper:
                 validated_messages.append(new_msg)
 
             # If this is a user message, validate all tool results have corresponding tool uses
-            elif msg.role == Role.USER:
+            elif msg.role == "user":
                 valid_contents = []
                 orphaned_results = []
 
                 for content in msg.contents:
                     is_tool_result = (
-                        isinstance(content, FunctionResultContent)
+                        (isinstance(content, Content) and content.type == "function_result")
                         or (
                             hasattr(content, "call_id") and not hasattr(content, "name")
                         )
@@ -968,8 +954,8 @@ class BedrockChatClientTraceWrapper:
                         )
                         if call_id and call_id in available_tool_uses:
                             # Valid - has corresponding tool use
-                            # Create NEW FunctionResultContent to avoid mutating input
-                            new_content = FunctionResultContent(
+                            # Create NEW function result Content to avoid mutating input
+                            new_content = Content.from_function_result(
                                 call_id=call_id,
                                 result=getattr(content, "result", None),
                                 exception=getattr(content, "exception", None),
@@ -986,8 +972,8 @@ class BedrockChatClientTraceWrapper:
                             )
                     else:
                         # Not a tool result - create new TextContent if it's text
-                        if isinstance(content, TextContent) or hasattr(content, "text"):
-                            new_content = TextContent(text=getattr(content, "text", ""))
+                        if (isinstance(content, Content) and content.type == "text") or hasattr(content, "text"):
+                            new_content = Content.from_text(getattr(content, "text", ""))
                             valid_contents.append(new_content)
                         else:
                             # For other content types, append as-is (rare case)
@@ -995,7 +981,7 @@ class BedrockChatClientTraceWrapper:
 
                 # Only add the message if it has valid contents after filtering orphaned results
                 if valid_contents:
-                    validated_msg = ChatMessage(
+                    validated_msg = Message(
                         role=msg.role,
                         contents=valid_contents,
                         author_name=getattr(msg, "author_name", None),
@@ -1023,7 +1009,7 @@ class BedrockChatClientTraceWrapper:
 
         return validated_messages
 
-    def _has_tool_content(self, messages: list[ChatMessage]) -> bool:
+    def _has_tool_content(self, messages: list[Message]) -> bool:
         """Check if any message in the conversation contains tool-related content.
 
         Args:
@@ -1032,21 +1018,19 @@ class BedrockChatClientTraceWrapper:
         Returns:
             True if any message contains tool use or tool result content
         """
-        from agent_framework._types import FunctionCallContent, FunctionResultContent
-
         for msg in messages:
             if not hasattr(msg, "contents") or not msg.contents:
                 continue
 
             for content in msg.contents:
                 # Check for tool use (FunctionCallContent)
-                is_tool_use = isinstance(content, FunctionCallContent) or (
+                is_tool_use = (isinstance(content, Content) and content.type == "function_call") or (
                     hasattr(content, "name")
                     and (hasattr(content, "call_id") or hasattr(content, "tool_use_id"))
                 )
 
                 # Check for tool result (FunctionResultContent)
-                is_tool_result = isinstance(content, FunctionResultContent) or (
+                is_tool_result = (isinstance(content, Content) and content.type == "function_result") or (
                     (hasattr(content, "call_id") or hasattr(content, "tool_use_id"))
                     and not hasattr(content, "name")
                 )
@@ -1090,7 +1074,7 @@ class BedrockChatClientTraceWrapper:
         return text
 
     async def _traced_get_streaming_response(
-        self, *, messages: list[ChatMessage], options: dict[str, Any], **kwargs
+        self, *, messages: list[Message], options: dict[str, Any], **kwargs
     ) -> AsyncIterable[ChatResponseUpdate]:
         """Traced get_streaming_response method that logs all details for debugging.
 
@@ -1380,7 +1364,7 @@ class BedrockChatClientTraceWrapper:
                         for content in msg.contents:
                             # Check if this is a FunctionResultContent
                             is_function_result = (
-                                isinstance(content, FunctionResultContent)
+                                (isinstance(content, Content) and content.type == "function_result")
                                 or
                                 # Also check by attributes (call_id without name indicates result)
                                 (
@@ -1546,7 +1530,6 @@ CRITICAL RULES:
 
         # Track response data for dumping
         response_chunks = []
-        response_error = None
 
         try:
             # Call the original method and trace the response
@@ -1569,7 +1552,7 @@ CRITICAL RULES:
                     has_text_content = False
 
                     for content in chunk.contents:
-                        if isinstance(content, TextContent) and hasattr(
+                        if isinstance(content, Content) and content.type == "text" and hasattr(
                             content, "text"
                         ):
                             # Strip markdown code blocks from text
@@ -1587,7 +1570,7 @@ CRITICAL RULES:
                                 )
 
                             # Create new TextContent with cleaned text
-                            modified_content = TextContent(text=cleaned_text)
+                            modified_content = Content.from_text(cleaned_text)
                             modified_contents.append(modified_content)
                             has_text_content = True
                         else:
@@ -1660,8 +1643,12 @@ CRITICAL RULES:
                             content_info["call_id"] = content.call_id
                         if hasattr(content, "tool_use_id"):
                             content_info["tool_use_id"] = content.tool_use_id
-                        if hasattr(content, "input"):
-                            content_info["input"] = str(content.input)[
+                        if hasattr(content, "arguments"):
+                            content_info["arguments"] = str(content.arguments)[
+                                :500
+                            ]  # Limit size
+                        elif hasattr(content, "input"):
+                            content_info["arguments"] = str(content.input)[
                                 :500
                             ]  # Limit size
 
@@ -1687,7 +1674,6 @@ CRITICAL RULES:
             self._dump_bedrock_response(response_data, request_id)
 
         except Exception as e:
-            response_error = e
             self._log_trace(f"ERROR in Bedrock call: {str(e)}")
             self._log_trace(f"Error type: {type(e).__name__}")
 

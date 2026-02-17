@@ -18,8 +18,8 @@ from pathlib import Path
 import structlog
 import typer
 from agent_framework import (
-    ChatMessage,
-    Role,
+    Content,
+    Message,
 )
 from rich.markdown import Markdown
 from rich.table import Table
@@ -486,9 +486,9 @@ def session_timeline(
             description="Timeline Agent for generating session timeline",
         )
 
-        message = ChatMessage(
-            role=Role.USER,
-            contents=[TextContent(text=f"""
+        message = Message(
+            role="user",
+            contents=[Content.from_text(f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        """)],
         )

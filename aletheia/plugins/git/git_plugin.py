@@ -16,7 +16,7 @@ import subprocess
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.plugins.base import BasePlugin
 from aletheia.plugins.loader import PluginInfoLoader
@@ -101,6 +101,6 @@ class GitPlugin(BasePlugin):
         except (OSError, subprocess.SubprocessError) as e:
             return f"Exception during git clone: {e}"
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.git_clone_repo]

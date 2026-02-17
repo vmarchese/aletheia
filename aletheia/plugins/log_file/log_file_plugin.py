@@ -13,7 +13,7 @@ import os
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
@@ -79,6 +79,6 @@ class LogFilePlugin:
         )
         return f"Error: Log file '{file_path}' not found in session data directory."
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.fetch_logs_from_file]

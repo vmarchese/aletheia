@@ -6,8 +6,8 @@ from collections.abc import Awaitable, Callable
 
 import structlog
 from agent_framework import (
+    AgentContext,
     AgentMiddleware,
-    AgentRunContext,
     ChatContext,
     ChatMiddleware,
     FunctionInvocationContext,
@@ -40,10 +40,10 @@ class ConsoleFunctionMiddleware(FunctionMiddleware):
     async def process(
         self,
         context: FunctionInvocationContext,
-        next: Callable[[FunctionInvocationContext], Awaitable[None]],
+        call_next: Callable[[FunctionInvocationContext], Awaitable[None]],
     ) -> None:
         if get_console_wrapper().get_output_functions() is False:
-            await next(context)
+            await call_next(context)
             return
         console = get_console_wrapper().get_console()
 
@@ -68,7 +68,7 @@ class ConsoleFunctionMiddleware(FunctionMiddleware):
             )
 
         # Continue to next middleware or function execution
-        await next(context)
+        await call_next(context)
 
 
 class LoggingFunctionMiddleware(FunctionMiddleware):
@@ -77,7 +77,7 @@ class LoggingFunctionMiddleware(FunctionMiddleware):
     async def process(
         self,
         context: FunctionInvocationContext,
-        next: Callable[[FunctionInvocationContext], Awaitable[None]],
+        call_next: Callable[[FunctionInvocationContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before function execution
         logger.debug(
@@ -85,7 +85,7 @@ class LoggingFunctionMiddleware(FunctionMiddleware):
         )
 
         # Continue to next middleware or function execution
-        await next(context)
+        await call_next(context)
 
         # Post-processing: Log after function execution
         logger.debug(f"[Function::{context.function.name}] Function completed")
@@ -96,8 +96,8 @@ class LoggingAgentMiddleware(AgentMiddleware):
 
     async def process(
         self,
-        context: AgentRunContext,
-        next: Callable[[AgentRunContext], Awaitable[None]],
+        context: AgentContext,
+        call_next: Callable[[AgentContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before agent execution
         logger.debug(
@@ -108,7 +108,7 @@ class LoggingAgentMiddleware(AgentMiddleware):
         token = _current_agent_name.set(context.agent.name)
         try:
             # Continue to next middleware or agent execution
-            await next(context)
+            await call_next(context)
         finally:
             # Restore previous agent name (handles nested agent calls)
             _current_agent_name.reset(token)
@@ -125,7 +125,7 @@ class LoggingChatMiddleware(ChatMiddleware):
     async def process(
         self,
         context: ChatContext,
-        next: Callable[[ChatContext], Awaitable[None]],
+        call_next: Callable[[ChatContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Log before AI call
         print(f"[Chat] Sending {len(context.messages)} messages to AI")
@@ -133,7 +133,7 @@ class LoggingChatMiddleware(ChatMiddleware):
             print(f"[Chat] Message from {msg.role}: {msg.text}")
 
         # Continue to next middleware or AI service
-        await next(context)
+        await call_next(context)
 
         # Post-processing: Log after AI response
         print("[Chat] AI response received")
@@ -153,7 +153,7 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
     async def process(
         self,
         context: FunctionInvocationContext,
-        next: Callable[[FunctionInvocationContext], Awaitable[None]],
+        call_next: Callable[[FunctionInvocationContext], Awaitable[None]],
     ) -> None:
         # Pre-processing: Send function call event
         # Skip functions we don't want to show
@@ -206,4 +206,4 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
                 logger.debug(f"[WebUIFunctionMiddleware] Error sending event: {e}")
 
         # Continue to next middleware or function execution
-        await next(context)
+        await call_next(context)

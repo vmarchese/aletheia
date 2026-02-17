@@ -14,7 +14,7 @@ import os
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 from scapy.all import ICMP, IP, TCP, UDP, Ether, rdpcap
 
 from aletheia.config import Config
@@ -145,6 +145,6 @@ class PCAPFilePlugin:
             logger.error(f"Error reading pcap file {file_path}: {e}")
             return f"Error reading pcap file: {e}"
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.read_pcap_from_file]

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 from pydantic import Field
 
 from aletheia.config import Config
@@ -1271,7 +1271,7 @@ class KubernetesPlugin(BasePlugin):
                 }
             )
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         return [
             self.fetch_kubernetes_logs,
             self.list_kubernetes_pods,

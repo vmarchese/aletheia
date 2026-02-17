@@ -1,17 +1,17 @@
 """Base agent class for all specialist agents."""
 
 import os
+import types
 from abc import ABC
 from collections.abc import Sequence
 from pathlib import Path
 
 import structlog
 import yaml
-from agent_framework import ChatAgent, ToolProtocol
+from agent_framework import Agent, ChatMessageStore, FunctionTool, tool
 from jinja2 import Template
 
 from aletheia.agents.bedrock_chat_client_wrapper import wrap_bedrock_chat_client
-from aletheia.agents.chat_message_store import ChatMessageStoreSingleton
 from aletheia.agents.client import LLMClient
 from aletheia.agents.deepcopy_patch import patch_deepcopy
 from aletheia.agents.middleware import (
@@ -78,7 +78,7 @@ class BaseAgent(ABC):
         scratchpad: Scratchpad = None,
         session: Session = None,
         plugins: Sequence[BasePlugin] = None,
-        tools: Sequence[ToolProtocol] = None,
+        tools: Sequence[FunctionTool] = None,
         render_instructions: bool = True,
         config=None,
         additional_middleware: Sequence = None,
@@ -245,26 +245,48 @@ class BaseAgent(ABC):
             f"[BaseAgent::{self.name}] Final middleware list: {middleware_list}"
         )
 
-        self.agent = ChatAgent(
+        # Wrap raw callables as FunctionTool so they serialize for the LLM API
+        _wrapped_tools = []
+        for t in _tools:
+            if isinstance(t, FunctionTool) or not callable(t):
+                _wrapped_tools.append(t)
+            else:
+                _wrapped_tools.append(tool(t))
+
+        self.agent = Agent(
+            client=client.get_client(),
+            instructions=rendered_instructions,
             name=self.name,
             description=description,
-            instructions=rendered_instructions,
-            chat_client=client.get_client(),
-            tools=_tools,
-            chat_store=ChatMessageStoreSingleton.get_instance,
+            tools=_wrapped_tools,
             middleware=middleware_list,
-            temperature=config.llm_temperature if config else 0.0,
+            default_options={"temperature": config.llm_temperature if config else 0.0},
+        )
+
+        # Workaround for framework bug: the post-hook incorrectly uses
+        # response_id as conversation_id, which causes Azure/OpenAI to fail
+        # with "unexpected keyword argument 'conversation_id'" on subsequent
+        # calls. Override to skip service_thread_id and use local message store.
+        async def _local_thread_update(self_agent, thread, response_conversation_id):
+            if thread.message_store is None:
+                if self_agent.chat_message_store_factory is not None:
+                    thread.message_store = self_agent.chat_message_store_factory()
+                else:
+                    thread._message_store = ChatMessageStore()
+
+        self.agent._update_thread_with_type_and_conversation_id = types.MethodType(
+            _local_thread_update, self.agent
         )
 
         # Enable detailed error messages in verbose mode
         if session and session.get_metadata().verbose:
             fic = getattr(
-                self.agent.chat_client,
+                self.agent.client,
                 "function_invocation_configuration",
                 None,
             )
             if fic is not None:
-                fic.include_detailed_errors = True
+                fic["include_detailed_errors"] = True
 
         # Wrap with Bedrock response format support if needed
         wrap_bedrock_chat_client(client.get_client(), client.get_provider())

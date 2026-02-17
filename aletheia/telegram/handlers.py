@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from agent_framework import ChatMessage, TextContent, UsageContent, UsageDetails
+from agent_framework import Content, Message, add_usage_details
 from telegram import Chat, Update
 from telegram.ext import ContextTypes
 
@@ -276,7 +276,7 @@ async def handle_session_timeline(
             return
 
         # Use TimelineAgent to generate structured timeline
-        from agent_framework import ChatMessage, Role, TextContent
+        from agent_framework import Content, Message
 
         from aletheia.agents.instructions_loader import Loader
         from aletheia.agents.model import Timeline
@@ -289,11 +289,11 @@ async def handle_session_timeline(
             description="Timeline Agent for generating session timeline",
         )
 
-        message = ChatMessage(
-            role=Role.USER,
+        message = Message(
+            role="user",
             contents=[
-                TextContent(
-                    text=f"Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal}\n\n"
+                Content.from_text(
+                    f"Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal}\n\n"
                 )
             ],
         )
@@ -576,25 +576,26 @@ async def custom_command_handler(
 
     try:
         # Track token usage
-        completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
+        completion_usage: dict[str, int] = {"input_token_count": 0, "output_token_count": 0}
 
         # Use continuous typing indicator while processing
         async with continuous_typing(update.message.chat):
             # Stream response from orchestrator - accumulate all chunks first
             json_buffer = ""
 
-            async for chunk in orchestrator.agent.run_stream(
+            async for chunk in orchestrator.agent.run(
                 messages=[
-                    ChatMessage(role="user", contents=[TextContent(text=expanded)])
+                    Message(role="user", contents=[Content.from_text(expanded)])
                 ],
+                stream=True,
                 thread=orchestrator.thread,
                 options={"response_format": AgentResponse},
             ):
                 # Track usage from response contents
                 if chunk and chunk.contents:
                     for content in chunk.contents:
-                        if isinstance(content, UsageContent):
-                            completion_usage += content.details
+                        if isinstance(content, Content) and content.type == "usage":
+                            completion_usage = add_usage_details(completion_usage, content.usage_details)
 
                 # Just accumulate - don't try to parse yet
                 if chunk and chunk.text:
@@ -635,8 +636,8 @@ async def custom_command_handler(
                     )
 
         # Update session usage if we tracked any tokens
-        input_tokens = completion_usage.input_token_count or 0
-        output_tokens = completion_usage.output_token_count or 0
+        input_tokens = completion_usage.get("input_token_count", 0)
+        output_tokens = completion_usage.get("output_token_count", 0)
         if input_tokens > 0 or output_tokens > 0:
             orchestrator.session.update_usage(input_tokens, output_tokens)
 
@@ -706,7 +707,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     try:
         # Track token usage
-        completion_usage = UsageDetails(input_token_count=0, output_token_count=0)
+        completion_usage: dict[str, int] = {"input_token_count": 0, "output_token_count": 0}
 
         logger.debug(
             "operation started: telegram_message_handler",
@@ -719,18 +720,19 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             # Stream response from orchestrator - accumulate all chunks first
             json_buffer = ""
 
-            async for chunk in orchestrator.agent.run_stream(
+            async for chunk in orchestrator.agent.run(
                 messages=[
-                    ChatMessage(role="user", contents=[TextContent(text=user_message)])
+                    Message(role="user", contents=[Content.from_text(user_message)])
                 ],
+                stream=True,
                 thread=orchestrator.thread,
                 options={"response_format": AgentResponse},
             ):
                 # Track usage from response contents
                 if chunk and chunk.contents:
                     for content in chunk.contents:
-                        if isinstance(content, UsageContent):
-                            completion_usage += content.details
+                        if isinstance(content, Content) and content.type == "usage":
+                            completion_usage = add_usage_details(completion_usage, content.usage_details)
 
                 # Just accumulate - don't try to parse yet
                 if chunk and chunk.text:
@@ -787,8 +789,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     )
 
         # Update session usage if we tracked any tokens
-        input_tokens = completion_usage.input_token_count or 0
-        output_tokens = completion_usage.output_token_count or 0
+        input_tokens = completion_usage.get("input_token_count", 0)
+        output_tokens = completion_usage.get("output_token_count", 0)
         if input_tokens > 0 or output_tokens > 0:
             orchestrator.session.update_usage(input_tokens, output_tokens)
             logger.debug(

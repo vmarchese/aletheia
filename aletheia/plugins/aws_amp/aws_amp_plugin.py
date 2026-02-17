@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 
 import requests
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.session import Session as BotocoreSession
@@ -333,6 +333,6 @@ class AWSAMPPlugin(BasePlugin):
         """
         return list(PROMQL_TEMPLATES.keys())
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.fetch_prometheus_metrics, self.get_series]

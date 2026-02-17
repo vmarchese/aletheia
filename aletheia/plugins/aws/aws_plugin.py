@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 import boto3
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 from botocore.exceptions import ProfileNotFound
 
 from aletheia.config import Config
@@ -855,7 +855,7 @@ class AWSPlugin(BasePlugin):
                 e, "aws_ec2_describe_security_group_outbound_rules"
             )
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Returns the list of tools provided by the AWSPlugin."""
         return [
             self.aws_profiles,

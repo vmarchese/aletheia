@@ -7,7 +7,7 @@ from typing import Annotated
 
 import docker
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.base import BasePlugin
@@ -166,6 +166,6 @@ class DockerScriptPlugin(BasePlugin):
             )
             return f"Error executing script: {e}"
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Returns the list of tools provided by the DockerScriptPlugin."""
         return [self.sandbox_run]
