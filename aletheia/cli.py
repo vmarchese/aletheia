@@ -165,7 +165,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(kubernetes_fetcher)
     plugins.append(kubernetes_fetcher.agent.as_tool())
@@ -177,7 +176,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(log_file_fetcher)
     plugins.append(log_file_fetcher.agent.as_tool())
@@ -189,7 +187,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(sysdiag_agent)
     plugins.append(sysdiag_agent.agent.as_tool())
@@ -201,7 +198,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(pcap_file_fetcher)
     plugins.append(pcap_file_fetcher.agent.as_tool())
@@ -213,7 +209,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(aws_amp_agent)
     plugins.append(aws_amp_agent.agent.as_tool())
@@ -225,7 +220,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(aws_agent)
     plugins.append(aws_agent.agent.as_tool())
@@ -237,7 +231,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(azure_agent)
     plugins.append(azure_agent.agent.as_tool())
@@ -249,7 +242,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     agent_instances.append(network_agent)
     plugins.append(network_agent.agent.as_tool())
@@ -261,7 +253,6 @@ def _build_plugins(
         session=session,
         scratchpad=scratchpad,
         additional_middleware=additional_middleware,
-        engram=engram,
     )
     plugins.append(security_agent.agent.as_tool())
 
@@ -276,7 +267,6 @@ def _build_plugins(
             session=session,
             scratchpad=scratchpad,
             additional_middleware=additional_middleware,
-            engram=engram,
         )
         agent_instances.append(code_analyzer)
         plugins.append(code_analyzer.agent.as_tool())
@@ -289,7 +279,6 @@ def _build_plugins(
             session=session,
             scratchpad=scratchpad,
             additional_middleware=additional_middleware,
-            engram=engram,
         )
         plugins.extend(user_tools)
         agent_instances.extend(user_instances)
