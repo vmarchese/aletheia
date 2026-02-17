@@ -4,7 +4,7 @@ import subprocess
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
@@ -62,6 +62,6 @@ class CopilotPlugin:
             logger.error(f"OS error when launching copilot: {str(e)}")
             return f"Error launching copilot: {e}"
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.code_analyze]

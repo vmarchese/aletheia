@@ -251,7 +251,7 @@ async def _handle_session_timeline(
     """Handle /session timeline - generate and display session timeline."""
     import json
 
-    from agent_framework import ChatMessage, Role, TextContent
+    from agent_framework import Content, Message
 
     from aletheia.agents.instructions_loader import Loader
     from aletheia.agents.model import Timeline
@@ -299,11 +299,11 @@ async def _handle_session_timeline(
             description="Timeline Agent for generating session timeline",
         )
 
-        message = ChatMessage(
-            role=Role.USER,
+        message = Message(
+            role="user",
             contents=[
-                TextContent(
-                    text=f"Generate a timeline of the following "
+                Content.from_text(
+                    f"Generate a timeline of the following "
                     f"troubleshooting session scratchpad data:\n\n"
                     f"{journal_content}"
                 )

@@ -7,7 +7,7 @@ import subprocess
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.base import BasePlugin
@@ -117,6 +117,6 @@ class SecurityPlugin(BasePlugin):
             command, save_key=f"nmap_{target}", log_prefix="Security::nmap::"
         )
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Returns a list of tools provided by the SecurityPlugin."""
         return [self.httpx, self.sslscan, self.nmap]

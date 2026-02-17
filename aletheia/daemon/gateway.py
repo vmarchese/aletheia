@@ -34,7 +34,7 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
     async def process(
         self,
         context: FunctionInvocationContext,
-        next: Any,
+        call_next: Any,
     ) -> None:
         """Intercept function calls and send them via WebSocket."""
         logger = structlog.get_logger("aletheia.daemon.gateway.middleware")
@@ -79,7 +79,7 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
             except Exception as e:
                 logger.debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
 
-        await next(context)
+        await call_next()
 
 
 class AletheiaGateway:
@@ -743,12 +743,10 @@ class AletheiaGateway:
                 if session:
                     metadata = session.get_metadata()
                     if metadata.total_input_tokens or metadata.total_output_tokens:
-                        from agent_framework import UsageDetails
-
-                        kwargs["completion_usage"] = UsageDetails(
-                            input_token_count=metadata.total_input_tokens,
-                            output_token_count=metadata.total_output_tokens,
-                        )
+                        kwargs["completion_usage"] = {
+                            "input_token_count": metadata.total_input_tokens,
+                            "output_token_count": metadata.total_output_tokens,
+                        }
 
             command.execute(*args, console=mock_console, **kwargs)
 
@@ -840,7 +838,7 @@ class AletheiaGateway:
         self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
     ) -> None:
         """Handle timeline generation request."""
-        from agent_framework import ChatMessage, Role, TextContent
+        from agent_framework import Content, Message
 
         from aletheia.agents.instructions_loader import Loader
         from aletheia.agents.model import Timeline
@@ -900,11 +898,11 @@ class AletheiaGateway:
                 description="Timeline Agent for generating session timeline",
             )
 
-            message = ChatMessage(
-                role=Role.USER,
+            message = Message(
+                role="user",
                 contents=[
-                    TextContent(
-                        text=f"Generate a timeline of the following "
+                    Content.from_text(
+                        f"Generate a timeline of the following "
                         f"troubleshooting session scratchpad data:\n\n"
                         f"{journal_content}"
                     )

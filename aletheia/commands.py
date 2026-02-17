@@ -164,11 +164,11 @@ class CostInfo(Command):
         config = kwargs.get("config")
         if (
             completion_usage
-            and completion_usage.input_token_count
-            and completion_usage.output_token_count
+            and completion_usage.get("input_token_count")
+            and completion_usage.get("output_token_count")
         ):
-            input_token = completion_usage.input_token_count
-            output_token = completion_usage.output_token_count
+            input_token = completion_usage.get("input_token_count", 0)
+            output_token = completion_usage.get("output_token_count", 0)
             total_tokens = input_token + output_token
             total_cost = (input_token * config.cost_per_input_token) + (
                 output_token * config.cost_per_output_token

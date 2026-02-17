@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.encryption import (
     DecryptionError,
@@ -156,6 +156,6 @@ class Scratchpad(BasePlugin):
         self._save_to_disk()
         return "Entry added to scratchpad."
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by the Scratchpad plugin."""
         return [self.write_journal_entry, self.read_scratchpad]

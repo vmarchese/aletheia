@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from agent_framework import ChatMessage, Role, TextContent, UsageContent, UsageDetails
+from agent_framework import AgentSession, Content, Message, UsageDetails, add_usage_details
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -228,9 +228,9 @@ async def get_session_metadata(
             if hasattr(orchestrator, "completion_usage"):
                 usage = orchestrator.completion_usage
                 # Sync to be sure (though run_agent_step should have saved it)
-                if usage.input_token_count > 0:
+                if usage.get("input_token_count", 0) > 0:
                     session.update_usage(
-                        usage.input_token_count, usage.output_token_count
+                        usage.get("input_token_count", 0), usage.get("output_token_count", 0)
                     )
 
         # Load fresh metadata (or use what we have)
@@ -334,9 +334,9 @@ async def get_session_timeline(
             description="Timeline Agent",
         )
 
-        message = ChatMessage(
-            role=Role.USER,
-            contents=[TextContent(text=f"""
+        message = Message(
+            role="user",
+            contents=[Content.from_text(f"""
                                        Generate a timeline of the following troubleshooting session scratchpad data:\n\n{journal_content}\n\n
                                        """)],
         )
@@ -453,10 +453,10 @@ async def get_or_create_orchestrator(
 
     if not hasattr(orchestrator, "completion_usage"):
         meta = session.get_metadata()
-        orchestrator.completion_usage = UsageDetails(
-            input_token_count=meta.total_input_tokens,
-            output_token_count=meta.total_output_tokens,
-        )
+        orchestrator.completion_usage: UsageDetails = {
+            "input_token_count": meta.total_input_tokens,
+            "output_token_count": meta.total_output_tokens,
+        }
 
     active_investigations[session_id] = orchestrator
     return orchestrator
@@ -466,20 +466,19 @@ async def run_agent_step(
     orchestrator: Orchestrator, message: str, queue: asyncio.Queue
 ):
     try:
-        thread = orchestrator.agent.get_new_thread()  # Or maintain thread state?
-        # In CLI it maintains thread. We should probably cache thread too or use same thread.
-        # For simplicity, let's assume single thread per session for now or store it on orchestrator.
-        if not hasattr(orchestrator, "current_thread"):
-            orchestrator.current_thread = orchestrator.agent.get_new_thread()
+        # Maintain a single AgentSession per orchestrator for conversation state
+        if not hasattr(orchestrator, "agent_session"):
+            orchestrator.agent_session = AgentSession()
 
         # Buffer for accumulating JSON text
         json_buffer = ""
         last_sent_data = {}
         parsed_successfully = False  # Track if JSON parsing ever succeeded
 
-        async for response in orchestrator.agent.run_stream(
-            messages=[ChatMessage(role="user", contents=[TextContent(text=message)])],
-            thread=orchestrator.current_thread,
+        async for response in orchestrator.agent.run(
+            messages=[Message(role="user", contents=[Content.from_text(message)])],
+            stream=True,
+            session=orchestrator.agent_session,
             options={"response_format": AgentResponse},
         ):
             if response and str(response.text) != "":
@@ -560,12 +559,14 @@ async def run_agent_step(
 
             if response and response.contents:
                 for content in response.contents:
-                    if isinstance(content, UsageContent):
-                        orchestrator.completion_usage += content.details
+                    if isinstance(content, Content) and content.type == "usage":
+                        orchestrator.completion_usage = add_usage_details(
+                            orchestrator.completion_usage, content.usage_details
+                        )
                         # Persist usage to session metadata
                         orchestrator.session.update_usage(
-                            input_tokens=orchestrator.completion_usage.input_token_count,
-                            output_tokens=orchestrator.completion_usage.output_token_count,
+                            input_tokens=orchestrator.completion_usage.get("input_token_count", 0),
+                            output_tokens=orchestrator.completion_usage.get("output_token_count", 0),
                         )
 
         # Fallback: If JSON parsing never succeeded, send raw buffer as text_fallback
@@ -593,9 +594,9 @@ async def run_agent_step(
             {
                 "type": "usage",
                 "content": {
-                    "input_tokens": orchestrator.completion_usage.input_token_count,
-                    "output_tokens": orchestrator.completion_usage.output_token_count,
-                    "total_tokens": orchestrator.completion_usage.total_token_count,
+                    "input_tokens": orchestrator.completion_usage.get("input_token_count", 0),
+                    "output_tokens": orchestrator.completion_usage.get("output_token_count", 0),
+                    "total_tokens": orchestrator.completion_usage.get("input_token_count", 0) + orchestrator.completion_usage.get("output_token_count", 0),
                 },
             }
         )

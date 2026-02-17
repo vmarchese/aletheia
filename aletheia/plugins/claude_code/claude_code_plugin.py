@@ -4,7 +4,7 @@ import subprocess
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.base import BasePlugin
@@ -71,6 +71,6 @@ class ClaudeCodePlugin(BasePlugin):
             logger.error(f"Unexpected error launching claude code: {str(e)}")
             raise
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.code_analyze]

@@ -8,7 +8,7 @@ from typing import Annotated
 
 import dateparser
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.loader import PluginInfoLoader
@@ -107,6 +107,6 @@ class UtilsPlugin:
             )
             return False
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [self.utils_gunzip_file, self.utils_get_date_offset, self.ip_in_cidr]

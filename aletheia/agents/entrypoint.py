@@ -2,7 +2,7 @@
 
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.agents.base import BaseAgent
 from aletheia.engram.tools import Engram
@@ -25,7 +25,7 @@ class Orchestrator(BaseAgent):
         instructions: str,
         session: Session,
         scratchpad: Scratchpad,
-        sub_agents: list[ToolProtocol],
+        sub_agents: list[FunctionTool],
         config=None,
         additional_middleware=None,
         engram: Engram | None = None,

@@ -16,7 +16,7 @@ from typing import Annotated, Any
 
 import requests
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 
 from aletheia.config import Config
 from aletheia.plugins.base import BasePlugin
@@ -574,7 +574,7 @@ class PrometheusPlugin(BasePlugin):
         if hasattr(self, "session"):
             self.session.close()
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Get the list of tools provided by this plugin."""
         return [
             self.fetch_prometheus_metrics,

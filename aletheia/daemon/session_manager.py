@@ -4,8 +4,7 @@ import json
 from collections.abc import AsyncIterator
 
 import structlog
-from agent_framework import AgentResponse as MSAgentResponse
-from agent_framework import ChatMessage, Role, TextContent
+from agent_framework import AgentSession, Content, Message
 
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.instructions_loader import Loader
@@ -160,29 +159,28 @@ class GatewaySessionManager:
         logger = structlog.get_logger(__name__)
 
         # Send to orchestrator and stream response
-        agent_resp = await MSAgentResponse.from_agent_response_generator(
-            self.orchestrator.agent.run_stream(
-                messages=[
-                    ChatMessage(role=Role.USER, contents=[TextContent(text=message)])
-                ],
-                thread=self.orchestrator.thread,
-                options={"response_format": AgentResponse},
-            ),
-            output_format_type=AgentResponse,
+        stream = self.orchestrator.agent.run(
+            messages=[
+                Message(role="user", contents=[Content.from_text(message)])
+            ],
+            stream=True,
+            session=self.orchestrator.agent_session,
+            options={"response_format": AgentResponse},
         )
+        agent_resp = await stream.get_final_response()
+
+        input_tokens = agent_resp.usage_details.get("input_token_count", 0)
+        output_tokens = agent_resp.usage_details.get("output_token_count", 0)
 
         self.active_session.update_usage(
-            input_tokens=agent_resp.usage_details.input_token_count,
-            output_tokens=agent_resp.usage_details.output_token_count,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
         usage = {
-            "input_tokens": agent_resp.usage_details.input_token_count,
-            "output_tokens": agent_resp.usage_details.output_token_count,
-            "total_tokens": (
-                agent_resp.usage_details.input_token_count
-                + agent_resp.usage_details.output_token_count
-            ),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
         }
 
         logger.debug("Session manager: Completed streaming response - {agent_resp}")
@@ -267,8 +265,8 @@ class GatewaySessionManager:
             engram=self.engram,
         )
 
-        # Initialize thread
-        orchestrator.thread = orchestrator.agent.get_new_thread()
+        # Initialize session for conversation state
+        orchestrator.agent_session = AgentSession()
 
         # Store for cleanup
         orchestrator.sub_agent_instances = agent_instances

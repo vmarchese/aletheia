@@ -5,7 +5,7 @@ import subprocess
 from typing import Annotated
 
 import structlog
-from agent_framework import ToolProtocol
+from agent_framework import FunctionTool
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.keys import KeyClient
 from azure.keyvault.secrets import SecretClient
@@ -557,7 +557,7 @@ class AzurePlugin(BasePlugin):
         else:
             return json.dumps({"error": response.error.message})
 
-    def get_tools(self) -> list[ToolProtocol]:
+    def get_tools(self) -> list[FunctionTool]:
         """Returns the list of tools provided by this plugin."""
         return [
             self.azure_accounts,
