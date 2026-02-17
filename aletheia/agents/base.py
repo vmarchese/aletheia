@@ -1,14 +1,13 @@
 """Base agent class for all specialist agents."""
 
 import os
-import types
 from abc import ABC
 from collections.abc import Sequence
 from pathlib import Path
 
 import structlog
 import yaml
-from agent_framework import Agent, ChatMessageStore, FunctionTool, tool
+from agent_framework import Agent, AgentSession, FunctionTool, tool
 from jinja2 import Template
 
 from aletheia.agents.bedrock_chat_client_wrapper import wrap_bedrock_chat_client
@@ -261,21 +260,6 @@ class BaseAgent(ABC):
             tools=_wrapped_tools,
             middleware=middleware_list,
             default_options={"temperature": config.llm_temperature if config else 0.0},
-        )
-
-        # Workaround for framework bug: the post-hook incorrectly uses
-        # response_id as conversation_id, which causes Azure/OpenAI to fail
-        # with "unexpected keyword argument 'conversation_id'" on subsequent
-        # calls. Override to skip service_thread_id and use local message store.
-        async def _local_thread_update(self_agent, thread, response_conversation_id):
-            if thread.message_store is None:
-                if self_agent.chat_message_store_factory is not None:
-                    thread.message_store = self_agent.chat_message_store_factory()
-                else:
-                    thread._message_store = ChatMessageStore()
-
-        self.agent._update_thread_with_type_and_conversation_id = types.MethodType(
-            _local_thread_update, self.agent
         )
 
         # Enable detailed error messages in verbose mode

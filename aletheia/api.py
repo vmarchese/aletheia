@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from agent_framework import Content, Message, UsageDetails, add_usage_details
+from agent_framework import AgentSession, Content, Message, UsageDetails, add_usage_details
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -466,11 +466,9 @@ async def run_agent_step(
     orchestrator: Orchestrator, message: str, queue: asyncio.Queue
 ):
     try:
-        thread = orchestrator.agent.get_new_thread()  # Or maintain thread state?
-        # In CLI it maintains thread. We should probably cache thread too or use same thread.
-        # For simplicity, let's assume single thread per session for now or store it on orchestrator.
-        if not hasattr(orchestrator, "current_thread"):
-            orchestrator.current_thread = orchestrator.agent.get_new_thread()
+        # Maintain a single AgentSession per orchestrator for conversation state
+        if not hasattr(orchestrator, "agent_session"):
+            orchestrator.agent_session = AgentSession()
 
         # Buffer for accumulating JSON text
         json_buffer = ""
@@ -480,7 +478,7 @@ async def run_agent_step(
         async for response in orchestrator.agent.run(
             messages=[Message(role="user", contents=[Content.from_text(message)])],
             stream=True,
-            thread=orchestrator.current_thread,
+            session=orchestrator.agent_session,
             options={"response_format": AgentResponse},
         ):
             if response and str(response.text) != "":

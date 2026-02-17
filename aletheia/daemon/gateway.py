@@ -79,7 +79,7 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
             except Exception as e:
                 logger.debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
 
-        await call_next(context)
+        await call_next()
 
 
 class AletheiaGateway:

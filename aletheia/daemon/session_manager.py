@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 
 import structlog
-from agent_framework import Content, Message
+from agent_framework import AgentSession, Content, Message
 
 from aletheia.agents.entrypoint import Orchestrator
 from aletheia.agents.instructions_loader import Loader
@@ -164,7 +164,7 @@ class GatewaySessionManager:
                 Message(role="user", contents=[Content.from_text(message)])
             ],
             stream=True,
-            thread=self.orchestrator.thread,
+            session=self.orchestrator.agent_session,
             options={"response_format": AgentResponse},
         )
         agent_resp = await stream.get_final_response()
@@ -265,8 +265,8 @@ class GatewaySessionManager:
             engram=self.engram,
         )
 
-        # Initialize thread
-        orchestrator.thread = orchestrator.agent.get_new_thread()
+        # Initialize session for conversation state
+        orchestrator.agent_session = AgentSession()
 
         # Store for cleanup
         orchestrator.sub_agent_instances = agent_instances

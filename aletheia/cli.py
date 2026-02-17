@@ -18,6 +18,7 @@ from pathlib import Path
 import structlog
 import typer
 from agent_framework import (
+    AgentSession,
     Content,
     Message,
 )
@@ -355,8 +356,8 @@ async def init_orchestrator(
         engram=engram,
     )
 
-    # Initialize thread
-    orchestrator.thread = orchestrator.agent.get_new_thread()
+    # Initialize session for conversation state
+    orchestrator.agent_session = AgentSession()
 
     # Store for cleanup
     orchestrator.sub_agent_instances = agent_instances

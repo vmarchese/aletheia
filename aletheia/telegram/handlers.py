@@ -588,7 +588,7 @@ async def custom_command_handler(
                     Message(role="user", contents=[Content.from_text(expanded)])
                 ],
                 stream=True,
-                thread=orchestrator.thread,
+                session=orchestrator.agent_session,
                 options={"response_format": AgentResponse},
             ):
                 # Track usage from response contents
@@ -725,7 +725,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     Message(role="user", contents=[Content.from_text(user_message)])
                 ],
                 stream=True,
-                thread=orchestrator.thread,
+                session=orchestrator.agent_session,
                 options={"response_format": AgentResponse},
             ):
                 # Track usage from response contents
