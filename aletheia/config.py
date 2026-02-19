@@ -94,6 +94,11 @@ class Config(BaseSettings):
         default=0.0, description="Cost per output token"
     )
 
+    max_context_window: int = Field(
+        default=1000000,
+        description="Maximum context window size in tokens for the configured model",
+    )
+
     code_analyzer: str = Field(
         default="", description="Code analyzer to use (claude, copilot)"
     )

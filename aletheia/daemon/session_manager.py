@@ -160,9 +160,7 @@ class GatewaySessionManager:
 
         # Send to orchestrator and stream response
         stream = self.orchestrator.agent.run(
-            messages=[
-                Message(role="user", contents=[Content.from_text(message)])
-            ],
+            messages=[Message(role="user", contents=[Content.from_text(message)])],
             stream=True,
             session=self.orchestrator.agent_session,
             options={"response_format": AgentResponse},
@@ -177,10 +175,15 @@ class GatewaySessionManager:
             output_tokens=output_tokens,
         )
 
+        max_context = self.config.max_context_window
         usage = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
+            "max_context_window": max_context,
+            "context_utilization": (
+                round(input_tokens / max_context * 100, 1) if max_context > 0 else 0
+            ),
         }
 
         logger.debug("Session manager: Completed streaming response - {agent_resp}")

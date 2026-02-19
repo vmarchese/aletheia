@@ -1278,11 +1278,20 @@ function updateLastBotMessageUsage(usageData) {
         else lastMsg.appendChild(footerDiv);
     }
 
-    const usageStr = `Usage: ${usageData.total_tokens} (in: ${usageData.input_tokens}, out: ${usageData.output_tokens})`;
+    let usageStr = `Tokens: ${usageData.total_tokens} (in: ${usageData.input_tokens}, out: ${usageData.output_tokens})`;
+
+    // Add context utilization if available
+    if (usageData.context_utilization !== undefined) {
+        usageStr += ` | Context: ${usageData.context_utilization}%`;
+        if (usageData.context_utilization > 80) {
+            usageStr += ' ⚠️';
+            footerDiv.style.color = '#f59e0b';
+        }
+    }
 
     // Append or replace usage in footer
     // If footer already has timestamp (from Frontmatter), keep it
-    // Format: "Usage: ... • <timestamp>"
+    // Format: "Tokens: ... • <timestamp>"
 
     let currentText = footerDiv.textContent;
     let timestamp = "";

@@ -184,6 +184,57 @@ class CostInfo(Command):
             console.print("No usage data available yet. Send a message first.")
 
 
+class ContextInfo(Command):
+    """Display context window usage information."""
+
+    def __init__(self) -> None:
+        super().__init__("context", "Show context window usage information")
+
+    def execute(self, console: Any, *args: Any, **kwargs: Any) -> None:
+        """Display context window usage info."""
+        completion_usage = kwargs.get("completion_usage")
+        config = kwargs.get("config")
+
+        if not completion_usage or not completion_usage.get("input_token_count"):
+            console.print("No context data available yet. Send a message first.")
+            return
+
+        input_tokens = completion_usage.get("input_token_count", 0)
+        output_tokens = completion_usage.get("output_token_count", 0)
+        max_context = config.max_context_window if config else 128000
+        utilization = (input_tokens / max_context * 100) if max_context > 0 else 0
+
+        message_count = kwargs.get("message_count", 0)
+
+        model_info = kwargs.get("model_info", {})
+        provider = model_info.get("provider", "unknown")
+        model = model_info.get("model", "unknown")
+
+        context_info = "## Context Window Status\n\n"
+        context_info += "| Metric | Value |\n"
+        context_info += "|--------|-------|\n"
+        context_info += f"| Provider | {provider} |\n"
+        context_info += f"| Model | {model} |\n"
+        context_info += f"| Context used | {input_tokens:,} tokens |\n"
+        context_info += f"| Context limit | {max_context:,} tokens |\n"
+        context_info += f"| Utilization | {utilization:.1f}% |\n"
+        context_info += f"| Last output | {output_tokens:,} tokens |\n"
+        context_info += f"| Messages in history | {message_count} |\n"
+
+        bar_len = 30
+        filled = int(bar_len * min(utilization, 100) / 100)
+        bar = "█" * filled + "░" * (bar_len - filled)
+        context_info += f"\n`[{bar}]` {utilization:.1f}%\n"
+
+        if utilization > 80:
+            context_info += (
+                "\n**Warning:** Context window is over 80% full. "
+                "Consider starting a new session.\n"
+            )
+
+        console.print(Markdown(context_info))
+
+
 class Reload(Command):
     """Reload skills and custom commands from disk."""
 
@@ -226,6 +277,7 @@ COMMANDS["help"] = Help()
 COMMANDS["version"] = Version()
 COMMANDS["info"] = INFO()
 COMMANDS["cost"] = CostInfo()
+COMMANDS["context"] = ContextInfo()
 COMMANDS["reload"] = Reload()
 
 

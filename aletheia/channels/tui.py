@@ -141,6 +141,7 @@ class TUIChannelConnector(BaseChannelConnector):
         self._live: Live | None = None
         self._current_response = ""
         self._current_thinking = ""
+        self._last_usage: dict[str, Any] | None = None
         self._stop_event = asyncio.Event()
         self._processing = False  # Track if agent is processing
         self._thinking_task: asyncio.Task | None = None  # Thinking animation task
@@ -412,6 +413,11 @@ class TUIChannelConnector(BaseChannelConnector):
                     )
                     self._live.start()
 
+                # Store usage for display at stream end
+                usage = payload.get("usage")
+                if usage:
+                    self._last_usage = usage
+
                 # Update display with formatted markdown
                 self._current_response = formatted_markdown
                 self._live.update(Markdown(self._current_response))
@@ -500,6 +506,24 @@ class TUIChannelConnector(BaseChannelConnector):
         if self._live:
             self._live.stop()
             self._live = None
+
+        # Show compact context usage if available
+        if self._last_usage:
+            usage = self._last_usage
+            util = usage.get("context_utilization", 0)
+            input_tk = usage.get("input_tokens", 0)
+            output_tk = usage.get("output_tokens", 0)
+            usage_line = (
+                f"[dim]tokens: {input_tk:,} in / {output_tk:,} out"
+                f" | context: {util:.0f}%[/dim]"
+            )
+            if util > 80:
+                usage_line = (
+                    f"[bold yellow]tokens: {input_tk:,} in / {output_tk:,} out"
+                    f" | context: {util:.0f}% ⚠[/bold yellow]"
+                )
+            self.console.print(usage_line)
+            self._last_usage = None
 
         # Print final newline for spacing
         self.console.print()
@@ -772,7 +796,7 @@ class TUIChannelConnector(BaseChannelConnector):
                     COMMANDS[cmd_name].execute(self.console)
                 elif cmd_name == "agents":
                     COMMANDS[cmd_name].execute(self.console)
-                elif cmd_name in ("cost", "reload"):
+                elif cmd_name in ("cost", "reload", "context"):
                     if not self._active_session_id:
                         self.console.print(
                             "[bold red]No active session.[/bold red] "
