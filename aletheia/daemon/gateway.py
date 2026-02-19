@@ -738,7 +738,7 @@ class AletheiaGateway:
                 orchestrator = self.session_manager.get_orchestrator()
                 if orchestrator:
                     kwargs["orchestrator"] = orchestrator
-            if command_name == "cost":
+            if command_name in ("cost", "context"):
                 session = self.session_manager.get_active_session()
                 if session:
                     metadata = session.get_metadata()
@@ -747,6 +747,21 @@ class AletheiaGateway:
                             "input_token_count": metadata.total_input_tokens,
                             "output_token_count": metadata.total_output_tokens,
                         }
+            if command_name == "context":
+                orchestrator = self.session_manager.get_orchestrator()
+                if orchestrator and hasattr(orchestrator, "agent_session"):
+                    messages = orchestrator.agent_session.state.get("memory", {}).get(
+                        "messages", []
+                    )
+                    kwargs["message_count"] = len(messages)
+
+                from aletheia.agents.client import LLMClient
+
+                llm_client = LLMClient()
+                kwargs["model_info"] = {
+                    "provider": llm_client.provider or "unknown",
+                    "model": llm_client.model or "unknown",
+                }
 
             command.execute(*args, console=mock_console, **kwargs)
 
