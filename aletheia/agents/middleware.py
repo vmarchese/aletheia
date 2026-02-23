@@ -59,7 +59,12 @@ class ConsoleFunctionMiddleware(FunctionMiddleware):
 
         if context.function.name not in skipped_functions:
             arguments = ""
-            for arg_key, arg_value in context.arguments.model_dump().items():
+            args = (
+                context.arguments.model_dump()
+                if hasattr(context.arguments, "model_dump")
+                else dict(context.arguments)
+            )
+            for arg_key, arg_value in args.items():
                 arguments += f'{arg_key}="{arg_value}" '
 
             agent_name = get_current_agent_name() or "orchestrator"
@@ -178,7 +183,12 @@ class WebUIFunctionMiddleware(FunctionMiddleware):
             logger.debug("function not in skipped list, preparing to send event")
             # Format arguments
             arguments = {}
-            for arg_key, arg_value in context.arguments.model_dump().items():
+            args = (
+                context.arguments.model_dump()
+                if hasattr(context.arguments, "model_dump")
+                else dict(context.arguments)
+            )
+            for arg_key, arg_value in args.items():
                 # Truncate long values
                 str_value = str(arg_value)
                 if len(str_value) > 100:

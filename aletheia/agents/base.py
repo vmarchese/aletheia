@@ -252,6 +252,26 @@ class BaseAgent(ABC):
             else:
                 _wrapped_tools.append(tool(t))
 
+        # Build context providers for active context management
+        from agent_framework import InMemoryHistoryProvider
+
+        from aletheia.context import ContextWindowProvider
+
+        _max_tokens = config.max_context_window if config else 1_000_000
+        _reserved = (
+            config.context_reserved_ratio
+            if config and hasattr(config, "context_reserved_ratio")
+            else 0.225
+        )
+        self._context_provider = ContextWindowProvider(
+            max_tokens=_max_tokens,
+            reserved_ratio=_reserved,
+        )
+        _context_providers = [
+            InMemoryHistoryProvider(),
+            self._context_provider,
+        ]
+
         self.agent = Agent(
             client=client.get_client(),
             instructions=rendered_instructions,
@@ -260,6 +280,7 @@ class BaseAgent(ABC):
             tools=_wrapped_tools,
             middleware=middleware_list,
             default_options={"temperature": config.llm_temperature if config else 0.0},
+            context_providers=_context_providers,
         )
 
         # Enable detailed error messages in verbose mode

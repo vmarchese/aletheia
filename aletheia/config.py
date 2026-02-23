@@ -99,6 +99,13 @@ class Config(BaseSettings):
         description="Maximum context window size in tokens for the configured model",
     )
 
+    context_reserved_ratio: float = Field(
+        default=0.225,
+        ge=0.0,
+        le=0.5,
+        description="Fraction of context window reserved as buffer",
+    )
+
     code_analyzer: str = Field(
         default="", description="Code analyzer to use (claude, copilot)"
     )

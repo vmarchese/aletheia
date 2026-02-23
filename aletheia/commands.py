@@ -185,54 +185,122 @@ class CostInfo(Command):
 
 
 class ContextInfo(Command):
-    """Display context window usage information."""
+    """Display context window usage information.
+
+    Subcommands:
+        /context       — Visual bar chart and token summary.
+        /context dump  — Full dump of all context sections.
+    """
 
     def __init__(self) -> None:
         super().__init__("context", "Show context window usage information")
 
     def execute(self, console: Any, *args: Any, **kwargs: Any) -> None:
-        """Display context window usage info."""
-        completion_usage = kwargs.get("completion_usage")
-        config = kwargs.get("config")
+        """Dispatch to summary view or dump subcommand."""
+        subcommand = args[0] if args else None
 
-        if not completion_usage or not completion_usage.get("input_token_count"):
-            console.print("No context data available yet. Send a message first.")
+        if subcommand == "dump":
+            channel = kwargs.get("channel", "tui")
+            if channel == "telegram":
+                console.print("The /context dump command is not available on Telegram.")
+                return
+            self._execute_dump(console, **kwargs)
             return
 
-        input_tokens = completion_usage.get("input_token_count", 0)
-        output_tokens = completion_usage.get("output_token_count", 0)
-        max_context = config.max_context_window if config else 128000
-        utilization = (input_tokens / max_context * 100) if max_context > 0 else 0
+        self._execute_summary(console, **kwargs)
 
-        message_count = kwargs.get("message_count", 0)
+    def _execute_summary(self, console: Any, **kwargs: Any) -> None:
+        """Display the visual bar chart context summary."""
+        from aletheia.context import ContextWindow
 
-        model_info = kwargs.get("model_info", {})
-        provider = model_info.get("provider", "unknown")
-        model = model_info.get("model", "unknown")
+        orchestrator = kwargs.get("orchestrator")
+        config = kwargs.get("config")
+        completion_usage = kwargs.get("completion_usage")
 
-        context_info = "## Context Window Status\n\n"
-        context_info += "| Metric | Value |\n"
-        context_info += "|--------|-------|\n"
-        context_info += f"| Provider | {provider} |\n"
-        context_info += f"| Model | {model} |\n"
-        context_info += f"| Context used | {input_tokens:,} tokens |\n"
-        context_info += f"| Context limit | {max_context:,} tokens |\n"
-        context_info += f"| Utilization | {utilization:.1f}% |\n"
-        context_info += f"| Last output | {output_tokens:,} tokens |\n"
-        context_info += f"| Messages in history | {message_count} |\n"
+        if not orchestrator:
+            console.print("No active session. Send a message first.")
+            return
 
-        bar_len = 30
-        filled = int(bar_len * min(utilization, 100) / 100)
-        bar = "█" * filled + "░" * (bar_len - filled)
-        context_info += f"\n`[{bar}]` {utilization:.1f}%\n"
+        context_state: dict[str, Any] = {}
+        if hasattr(orchestrator, "agent_session") and orchestrator.agent_session:
+            context_state = orchestrator.agent_session.state.get("context_window", {})
 
-        if utilization > 80:
-            context_info += (
-                "\n**Warning:** Context window is over 80% full. "
-                "Consider starting a new session.\n"
-            )
+        total_input = 0
+        if completion_usage and completion_usage.get("input_token_count"):
+            total_input = completion_usage.get("input_token_count", 0)
 
-        console.print(Markdown(context_info))
+        llm = LLMClient()
+        ctx = ContextWindow.from_state(
+            state=context_state,
+            config=config,
+            total_input_tokens=total_input,
+            model=llm.model or "unknown",
+            provider=llm.provider or "unknown",
+        )
+        console.print(Markdown(ctx.render()))
+
+    def _execute_dump(self, console: Any, **kwargs: Any) -> None:
+        """Dump the full content of each context section."""
+        from pathlib import Path
+
+        from aletheia.context import ContextWindow
+
+        orchestrator = kwargs.get("orchestrator")
+        config = kwargs.get("config")
+        completion_usage = kwargs.get("completion_usage")
+
+        if not orchestrator:
+            console.print("No active session. Send a message first.")
+            return
+
+        context_state: dict[str, Any] = {}
+        if hasattr(orchestrator, "agent_session") and orchestrator.agent_session:
+            context_state = orchestrator.agent_session.state.get("context_window", {})
+
+        total_input = 0
+        if completion_usage and completion_usage.get("input_token_count"):
+            total_input = completion_usage.get("input_token_count", 0)
+
+        llm = LLMClient()
+        ctx = ContextWindow.from_state(
+            state=context_state,
+            config=config,
+            total_input_tokens=total_input,
+            model=llm.model or "unknown",
+            provider=llm.provider or "unknown",
+        )
+
+        # Retrieve actual content from the orchestrator
+        instructions = ""
+        tools: list[Any] = []
+        if hasattr(orchestrator, "agent") and orchestrator.agent:
+            opts = getattr(orchestrator.agent, "default_options", {})
+            instructions = opts.get("instructions", "")
+            tools = opts.get("tools", [])
+
+        messages: list[Any] = []
+        if hasattr(orchestrator, "agent_session") and orchestrator.agent_session:
+            in_mem = orchestrator.agent_session.state.get("in_memory", {})
+            messages = in_mem.get("messages", [])
+
+        # Read memory file contents from disk
+        memory_contents: list[tuple[str, str]] = []
+        memory_details = context_state.get("memory_tokens_details", [])
+        for file_path, _tokens in memory_details:
+            p = Path(file_path)
+            if p.exists():
+                content = p.read_text(encoding="utf-8")
+                memory_contents.append((str(file_path), content))
+            else:
+                memory_contents.append((str(file_path), "(file not found)"))
+
+        output = ctx.render_dump(
+            instructions=instructions,
+            tools=tools,
+            messages=messages,
+            memory_contents=memory_contents,
+        )
+        console.print(Markdown(output))
 
 
 class Reload(Command):
