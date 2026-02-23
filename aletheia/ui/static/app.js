@@ -741,6 +741,11 @@ function connectStream(sessionId) {
                     `, 'bot');
                 }
             }
+        } else if (data.type === 'context_dump') {
+            // Structured context dump rendering
+            stopThinking();
+            const html = renderContextDump(data.content);
+            appendRawHtmlMessage(html);
         } else if (data.type === 'text') {
             // Legacy text streaming (should not be used anymore, but keep for backwards compat)
             stopThinking();
@@ -1868,6 +1873,154 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// --- Context Dump Rendering ---
+
+function appendRawHtmlMessage(html) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.dataset.complete = 'true';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    renderAvatar(avatar, '/static/icons/owl.png', 'Bot');
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.innerHTML = html;
+
+    const bodyWrapper = document.createElement('div');
+    bodyWrapper.className = 'message-body-wrapper';
+    bodyWrapper.appendChild(contentDiv);
+
+    msgDiv.appendChild(avatar);
+    msgDiv.appendChild(bodyWrapper);
+
+    chatContainer.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+function renderContextDump(data) {
+    const maxTokens = data.max_tokens;
+    const displayUsed = data.display_used || data.estimated_used;
+
+    function fmtTokens(count) {
+        if (count >= 1000) return (count / 1000).toFixed(1) + 'k';
+        return String(count);
+    }
+
+    // Build utilization bar
+    let barHtml = '<div class="ctx-dump-bar">';
+    for (const section of data.sections) {
+        const widthPct = section.pct_of_max;
+        if (widthPct > 0) {
+            barHtml += `<div class="ctx-dump-bar-seg ctx-dump-bar-${section.key}"
+                            style="width: ${widthPct}%"
+                            title="${escapeHtml(section.name)}: ${fmtTokens(section.token_count)} (${section.pct_of_max}%)"></div>`;
+        }
+    }
+    const freePct = data.free_pct || 0;
+    const reservedPct = data.reserved_pct || 0;
+    barHtml += `<div class="ctx-dump-bar-seg ctx-dump-bar-free" style="width: ${freePct}%" title="Free: ${fmtTokens(data.free_tokens)}"></div>`;
+    barHtml += `<div class="ctx-dump-bar-seg ctx-dump-bar-reserved" style="width: ${reservedPct}%" title="Reserved: ${fmtTokens(data.reserved_tokens)}"></div>`;
+    barHtml += '</div>';
+
+    // Legend
+    let legendHtml = '<div class="ctx-dump-legend">';
+    for (const section of data.sections) {
+        legendHtml += `<span class="ctx-dump-legend-item"><span class="ctx-dump-legend-dot ctx-dump-bar-${section.key}"></span>${escapeHtml(section.name)}</span>`;
+    }
+    legendHtml += `<span class="ctx-dump-legend-item"><span class="ctx-dump-legend-dot ctx-dump-bar-free"></span>Free</span>`;
+    legendHtml += `<span class="ctx-dump-legend-item"><span class="ctx-dump-legend-dot ctx-dump-bar-reserved"></span>Reserved</span>`;
+    legendHtml += '</div>';
+
+    // Header
+    let html = `<div class="ctx-dump">`;
+    html += `<div class="ctx-dump-header">`;
+    html += `<div class="ctx-dump-title">Context Window</div>`;
+    html += `<div class="ctx-dump-meta">`;
+    html += `<span class="ctx-dump-model">${escapeHtml(data.model)}</span>`;
+    html += `<span class="ctx-dump-sep">&middot;</span>`;
+    html += `<span>${escapeHtml(data.provider)}</span>`;
+    html += `<span class="ctx-dump-sep">&middot;</span>`;
+    html += `<span class="ctx-dump-usage">${fmtTokens(displayUsed)} / ${fmtTokens(maxTokens)} tokens</span>`;
+    html += `<span class="ctx-dump-pct">${data.utilization_pct}%</span>`;
+    html += `</div>`;
+    html += barHtml;
+    html += legendHtml;
+    html += `</div>`;
+
+    // Sections
+    for (const section of data.sections) {
+        html += `<div class="ctx-dump-section collapsed">`;
+        html += `<div class="ctx-dump-section-hdr" onclick="this.parentElement.classList.toggle('collapsed')">`;
+        html += `<span class="ctx-dump-section-arrow"></span>`;
+        html += `<span class="ctx-dump-section-name">${escapeHtml(section.name)}</span>`;
+        html += `<div class="ctx-dump-section-badges">`;
+        html += `<span class="ctx-dump-badge">${fmtTokens(section.token_count)} tokens</span>`;
+        html += `<span class="ctx-dump-badge">${section.pct_of_used}% of used</span>`;
+        html += `<span class="ctx-dump-badge">${section.pct_of_max}% of max</span>`;
+        html += `</div>`;
+        html += `</div>`;
+
+        html += `<div class="ctx-dump-section-body">`;
+
+        if (section.key === 'system_prompt') {
+            html += `<pre class="ctx-dump-pre"><code>${escapeHtml(section.content || '(empty)')}</code></pre>`;
+        } else if (section.key === 'tools') {
+            if (section.content && section.content.length > 0) {
+                html += `<table class="ctx-dump-tbl"><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>`;
+                for (const tool of section.content) {
+                    html += `<tr><td><code>${escapeHtml(tool.name)}</code></td><td>${escapeHtml(tool.description)}</td></tr>`;
+                }
+                html += `</tbody></table>`;
+            } else {
+                html += `<p class="ctx-dump-empty">No tools registered.</p>`;
+            }
+        } else if (section.key === 'memory_files') {
+            if (section.content && section.content.length > 0) {
+                for (const file of section.content) {
+                    html += `<div class="ctx-dump-file">`;
+                    html += `<div class="ctx-dump-file-hdr"><span class="ctx-dump-file-path">${escapeHtml(file.path)}</span><span class="ctx-dump-badge">${fmtTokens(file.tokens)} tokens</span></div>`;
+                    html += `<pre class="ctx-dump-pre"><code>${escapeHtml(file.content || '(empty)')}</code></pre>`;
+                    html += `</div>`;
+                }
+            } else {
+                html += `<p class="ctx-dump-empty">No memory files found.</p>`;
+            }
+        } else if (section.key === 'messages') {
+            if (section.content && section.content.length > 0) {
+                if (section.total_count > section.content.length) {
+                    html += `<p class="ctx-dump-note">Showing most recent ${section.content.length} of ${section.total_count} messages.</p>`;
+                }
+                for (const msg of section.content) {
+                    html += `<div class="ctx-dump-msg">`;
+                    html += `<span class="ctx-dump-msg-role">${escapeHtml(msg.role)}</span>`;
+                    html += `<span class="ctx-dump-msg-text">${escapeHtml(msg.text)}</span>`;
+                    html += `</div>`;
+                }
+            } else {
+                html += `<p class="ctx-dump-empty">No messages in history.</p>`;
+            }
+        }
+
+        html += `</div>`; // section-body
+        html += `</div>`; // section
+    }
+
+    // Footer summary
+    html += `<div class="ctx-dump-footer">`;
+    html += `<div class="ctx-dump-footer-item"><span>Free</span>${fmtTokens(data.free_tokens)} (${freePct}%)</div>`;
+    html += `<div class="ctx-dump-footer-item"><span>Reserved</span>${fmtTokens(data.reserved_tokens)} (${reservedPct}%)</div>`;
+    if (data.utilization_pct > 80) {
+        html += `<div class="ctx-dump-warn">Context window is over 80% full. Consider starting a new session.</div>`;
+    }
+    html += `</div>`;
+
+    html += `</div>`; // ctx-dump
+
+    return html;
 }
 
 function parseSections(text, skills = null, contentDiv = null) {

@@ -715,6 +715,7 @@ class AletheiaGateway:
             class MockConsole:
                 def __init__(self) -> None:
                     self.file = io.StringIO()
+                    self.structured_data: dict[str, Any] | None = None
                     self.console = Console(
                         file=self.file,
                         force_terminal=False,
@@ -781,15 +782,25 @@ class AletheiaGateway:
             )
             await websocket.send(start_msg.to_json())
 
-            output = mock_console.get_output()
-            chunk_msg = ProtocolMessage.create(
-                "chat_stream_chunk",
-                {
-                    "message_id": message_id,
-                    "chunk_type": "text",
-                    "content": output,
-                },
-            )
+            if mock_console.structured_data is not None:
+                chunk_msg = ProtocolMessage.create(
+                    "chat_stream_chunk",
+                    {
+                        "message_id": message_id,
+                        "chunk_type": "context_dump",
+                        "content": mock_console.structured_data,
+                    },
+                )
+            else:
+                output = mock_console.get_output()
+                chunk_msg = ProtocolMessage.create(
+                    "chat_stream_chunk",
+                    {
+                        "message_id": message_id,
+                        "chunk_type": "text",
+                        "content": output,
+                    },
+                )
             await websocket.send(chunk_msg.to_json())
 
             end_msg = ProtocolMessage.create(

@@ -232,9 +232,10 @@ def test_context_dump_disabled_on_telegram():
 
 
 def test_context_dump_works_on_web():
-    """Test /context dump works on Web channel."""
+    """Test /context dump produces structured data on Web channel."""
     cmd = ContextInfo()
     mock_console = MagicMock()
+    mock_console.structured_data = None
     mock_config = MagicMock()
     mock_config.max_context_window = 100000
     mock_config.context_reserved_ratio = 0.2
@@ -258,10 +259,15 @@ def test_context_dump_works_on_web():
             channel="web",
         )
 
-    mock_console.print.assert_called_once()
-    call_arg = mock_console.print.call_args[0][0]
-    markup = call_arg.markup
-    assert "Context Dump" in markup
+    # Web channel sets structured_data instead of printing markdown
+    assert mock_console.structured_data is not None
+    data = mock_console.structured_data
+    assert data["model"] == "gpt-4o"
+    assert data["provider"] == "openai"
+    assert len(data["sections"]) == 4
+    assert data["sections"][0]["key"] == "system_prompt"
+    assert data["sections"][0]["content"] == "Be helpful."
+    mock_console.print.assert_not_called()
 
 
 def test_context_no_args_still_shows_summary():

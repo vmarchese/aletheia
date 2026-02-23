@@ -380,6 +380,108 @@ class ContextWindow:
 
         return "\n".join(lines)
 
+    def render_dump_data(
+        self,
+        instructions: str = "",
+        tools: list[Any] | None = None,
+        messages: list[Any] | None = None,
+        memory_contents: list[tuple[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """Render context dump as structured data for the web channel.
+
+        Returns a JSON-serializable dict with all context sections and
+        token metrics for rich frontend rendering.
+        """
+        display_used = (
+            self.total_input_tokens
+            if self.total_input_tokens > 0
+            else self.estimated_used
+        )
+        used_for_pct = max(self.estimated_used, 1)
+        max_for_pct = max(self.max_tokens, 1)
+
+        # Map section names to keys and content
+        section_key_map: dict[str, str] = {
+            "System prompt": "system_prompt",
+            "Tools": "tools",
+            "Memory files": "memory_files",
+            "Messages": "messages",
+        }
+
+        # Build tools content
+        tools_content: list[dict[str, str]] = []
+        for t in tools or []:
+            name = getattr(t, "name", str(t))
+            desc = getattr(t, "description", "") or ""
+            if len(desc) > 80:
+                desc = desc[:77] + "..."
+            tools_content.append({"name": name, "description": desc})
+
+        # Build memory content
+        memory_content: list[dict[str, Any]] = []
+        for file_path, content in memory_contents or []:
+            memory_content.append(
+                {
+                    "path": file_path,
+                    "content": content if content else "(empty)",
+                    "tokens": estimate_tokens(content) if content else 0,
+                }
+            )
+
+        # Build messages content (cap at 20)
+        max_show = 20
+        msgs = messages or []
+        messages_content: list[dict[str, str]] = []
+        for msg in msgs[-max_show:]:
+            role = getattr(msg, "role", None) or "unknown"
+            text = _format_message_text(msg)
+            if len(text) > 500:
+                text = text[:497] + "..."
+            messages_content.append({"role": role, "text": text})
+
+        # Map section keys to their content
+        content_map: dict[str, Any] = {
+            "system_prompt": instructions or "",
+            "tools": tools_content,
+            "memory_files": memory_content,
+            "messages": messages_content,
+        }
+
+        sections_data: list[dict[str, Any]] = []
+        for section in self.sections:
+            key = section_key_map.get(section.name, section.name.lower())
+            entry: dict[str, Any] = {
+                "name": section.name,
+                "key": key,
+                "color": section.color,
+                "token_count": section.token_count,
+                "pct_of_used": round(section.token_count / used_for_pct * 100, 1),
+                "pct_of_max": round(section.token_count / max_for_pct * 100, 1),
+                "content": content_map.get(key, ""),
+            }
+            if key == "messages":
+                entry["total_count"] = len(msgs)
+            sections_data.append(entry)
+
+        free_pct = round(
+            max(0, 100 - self.utilization_pct - self.reserved_ratio * 100),
+            1,
+        )
+
+        return {
+            "model": self.model,
+            "provider": self.provider,
+            "max_tokens": self.max_tokens,
+            "estimated_used": self.estimated_used,
+            "display_used": display_used,
+            "utilization_pct": round(self.utilization_pct, 1),
+            "free_tokens": self.free_tokens,
+            "free_pct": free_pct,
+            "reserved_tokens": self.reserved_tokens,
+            "reserved_pct": round(self.reserved_ratio * 100, 1),
+            "sections": sections_data,
+        }
+
 
 def _measure_tools(tools: list[Any]) -> int:
     """Estimate tokens for tool definitions.

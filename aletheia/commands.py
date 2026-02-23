@@ -294,13 +294,22 @@ class ContextInfo(Command):
             else:
                 memory_contents.append((str(file_path), "(file not found)"))
 
-        output = ctx.render_dump(
-            instructions=instructions,
-            tools=tools,
-            messages=messages,
-            memory_contents=memory_contents,
-        )
-        console.print(Markdown(output))
+        channel = kwargs.get("channel", "tui")
+        if channel == "web" and hasattr(console, "structured_data"):
+            console.structured_data = ctx.render_dump_data(
+                instructions=instructions,
+                tools=tools,
+                messages=messages,
+                memory_contents=memory_contents,
+            )
+        else:
+            output = ctx.render_dump(
+                instructions=instructions,
+                tools=tools,
+                messages=messages,
+                memory_contents=memory_contents,
+            )
+            console.print(Markdown(output))
 
 
 class Reload(Command):
