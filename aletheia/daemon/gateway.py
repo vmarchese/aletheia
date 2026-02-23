@@ -55,7 +55,12 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
             and context.function.name not in skipped_functions
         ):
             arguments = {}
-            for arg_key, arg_value in context.arguments.model_dump().items():
+            args = (
+                context.arguments.model_dump()
+                if hasattr(context.arguments, "model_dump")
+                else dict(context.arguments)
+            )
+            for arg_key, arg_value in args.items():
                 str_value = str(arg_value)
                 if len(str_value) > 100:
                     str_value = str_value[:97] + "..."
@@ -710,6 +715,7 @@ class AletheiaGateway:
             class MockConsole:
                 def __init__(self) -> None:
                     self.file = io.StringIO()
+                    self.structured_data: dict[str, Any] | None = None
                     self.console = Console(
                         file=self.file,
                         force_terminal=False,
@@ -733,7 +739,10 @@ class AletheiaGateway:
 
             mock_console = MockConsole()
 
-            kwargs: dict[str, Any] = {"config": config}
+            kwargs: dict[str, Any] = {
+                "config": config,
+                "channel": payload.get("channel", "tui"),
+            }
             if command_name == "reload":
                 orchestrator = self.session_manager.get_orchestrator()
                 if orchestrator:
@@ -749,6 +758,7 @@ class AletheiaGateway:
                         }
             if command_name == "context":
                 orchestrator = self.session_manager.get_orchestrator()
+                kwargs["orchestrator"] = orchestrator
                 if orchestrator and hasattr(orchestrator, "agent_session"):
                     messages = orchestrator.agent_session.state.get("memory", {}).get(
                         "messages", []
@@ -763,7 +773,7 @@ class AletheiaGateway:
                     "model": llm_client.model or "unknown",
                 }
 
-            command.execute(*args, console=mock_console, **kwargs)
+            command.execute(mock_console, *args, **kwargs)
 
             # Send result as stream
             message_id = str(uuid.uuid4())
@@ -772,15 +782,25 @@ class AletheiaGateway:
             )
             await websocket.send(start_msg.to_json())
 
-            output = mock_console.get_output()
-            chunk_msg = ProtocolMessage.create(
-                "chat_stream_chunk",
-                {
-                    "message_id": message_id,
-                    "chunk_type": "text",
-                    "content": output,
-                },
-            )
+            if mock_console.structured_data is not None:
+                chunk_msg = ProtocolMessage.create(
+                    "chat_stream_chunk",
+                    {
+                        "message_id": message_id,
+                        "chunk_type": "context_dump",
+                        "content": mock_console.structured_data,
+                    },
+                )
+            else:
+                output = mock_console.get_output()
+                chunk_msg = ProtocolMessage.create(
+                    "chat_stream_chunk",
+                    {
+                        "message_id": message_id,
+                        "chunk_type": "text",
+                        "content": output,
+                    },
+                )
             await websocket.send(chunk_msg.to_json())
 
             end_msg = ProtocolMessage.create(

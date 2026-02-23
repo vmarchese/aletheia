@@ -807,7 +807,7 @@ class TUIChannelConnector(BaseChannelConnector):
                         self._processing = True
                         msg = ProtocolMessage.create(
                             "command_execute",
-                            {"message": f"/{cmd_name}", "channel": "tui"},
+                            {"message": command, "channel": "tui"},
                         )
                         await self.websocket.send(msg.to_json())
                 else:

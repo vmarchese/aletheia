@@ -197,6 +197,13 @@ class WebChannelConnector(BaseChannelConnector):
                         "content": payload.get("content", {}),
                     }
                 )
+            elif chunk_type == "context_dump":
+                await queue.put(
+                    {
+                        "type": "context_dump",
+                        "content": payload.get("content", {}),
+                    }
+                )
             elif chunk_type == "text":
                 await queue.put(
                     {
