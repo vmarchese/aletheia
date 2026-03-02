@@ -682,23 +682,11 @@ class ContextWindowProvider:
         )
         state["total_estimated"] = total_estimated
 
-        # 7. Trim history if over budget
-        fixed_cost = system_prompt_tokens + tools_tokens + memory_tokens + input_tokens
-        history_budget = self._budget - fixed_cost
-
-        if history_budget < 0:
-            history_budget = 0
-
-        if history_messages and _measure_messages(history_messages) > history_budget:
-            trimmed = self._trim_messages(history_messages, history_budget, session)
-            context.context_messages["in_memory"] = trimmed
-            state["messages_tokens"] = _measure_messages(trimmed) + input_tokens
-            state["messages_trimmed"] = True
-            logger.info(
-                f"Context trimmed: {len(history_messages)} -> {len(trimmed)} messages"
-            )
-        else:
-            state["messages_trimmed"] = False
+        # Message trimming is disabled — context compression in
+        # GatewaySessionManager._maybe_compact_context() handles context
+        # management by summarising the conversation via a CompactionAgent
+        # before the budget is exceeded.
+        state["messages_trimmed"] = False
 
     async def after_run(
         self,

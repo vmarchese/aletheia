@@ -741,6 +741,21 @@ function connectStream(sessionId) {
                     `, 'bot');
                 }
             }
+        } else if (data.type === 'compaction_start') {
+            const pct = data.content?.context_pct || '?';
+            addFunctionCallToThinking({
+                agent_name: 'compaction_agent',
+                function_name: `compacting context (${pct}%)`,
+                arguments: {}
+            });
+        } else if (data.type === 'compaction_end') {
+            const initial = data.content?.initial_pct || '?';
+            const final_pct = data.content?.final_pct || '?';
+            addFunctionCallToThinking({
+                agent_name: 'compaction_agent',
+                function_name: `compaction done (${initial}% → ${final_pct}%)`,
+                arguments: {}
+            });
         } else if (data.type === 'context_dump') {
             // Structured context dump rendering
             stopThinking();

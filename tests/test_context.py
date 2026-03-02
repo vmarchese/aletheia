@@ -458,10 +458,10 @@ class TestContextWindowProvider:
         assert state["messages_trimmed"] is False
 
     @pytest.mark.asyncio
-    async def test_before_run_trims_history(
+    async def test_before_run_no_trimming(
         self, provider: ContextWindowProvider
     ) -> None:
-        """When history exceeds budget, oldest messages should be trimmed."""
+        """Trimming is disabled — compaction handles context management."""
         # Small budget provider
         small_provider = ContextWindowProvider(max_tokens=1000, reserved_ratio=0.2)
 
@@ -472,7 +472,6 @@ class TestContextWindowProvider:
         }
 
         # Create messages that exceed budget
-        # Use to_json() since _serialize_message prefers it
         msgs = []
         for i in range(20):
             msg = MagicMock()
@@ -497,10 +496,9 @@ class TestContextWindowProvider:
                 state=state,
             )
 
-        assert state["messages_trimmed"] is True
-        # Trimmed messages should be fewer than original
-        trimmed = context.context_messages["in_memory"]
-        assert len(trimmed) < len(msgs)
+        assert state["messages_trimmed"] is False
+        # Messages should NOT be trimmed — compaction handles this
+        assert len(context.context_messages["in_memory"]) == len(msgs)
 
     @pytest.mark.asyncio
     async def test_after_run_records_usage(

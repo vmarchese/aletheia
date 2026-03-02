@@ -204,6 +204,13 @@ class WebChannelConnector(BaseChannelConnector):
                         "content": payload.get("content", {}),
                     }
                 )
+            elif chunk_type in ("compaction_start", "compaction_end"):
+                await queue.put(
+                    {
+                        "type": chunk_type,
+                        "content": payload.get("content", {}),
+                    }
+                )
             elif chunk_type == "text":
                 await queue.put(
                     {

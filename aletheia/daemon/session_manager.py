@@ -146,6 +146,7 @@ class GatewaySessionManager:
         Yields:
             dict with keys:
                 - type: "json_chunk" | "json_complete" | "json_error" | "usage"
+                      | "compaction_start" | "compaction_end"
                 - content: JSON string (for json_chunk/json_complete) or error message
                 - parsed: Optional parsed JSON dict (for json_complete)
         """
@@ -157,6 +158,10 @@ class GatewaySessionManager:
             self.chat_logger.log_user_message(message, channel)
 
         logger = structlog.get_logger(__name__)
+
+        # Context compaction check
+        async for chunk in self._maybe_compact_context():
+            yield chunk
 
         # Send to orchestrator and stream response
         stream = self.orchestrator.agent.run(
@@ -176,13 +181,28 @@ class GatewaySessionManager:
         )
 
         max_context = self.config.max_context_window
+        # Sum individual section estimates (same as /context command's
+        # ContextWindow.estimated_used) to stay consistent. We must NOT
+        # use "total_estimated" because it is recorded before message
+        # trimming, while the individual keys are updated after trimming.
+        ctx_state = self.orchestrator.agent_session.state.get(
+            "context_window", {}
+        )
+        estimated_used = (
+            ctx_state.get("system_prompt_tokens", 0)
+            + ctx_state.get("tools_tokens", 0)
+            + ctx_state.get("memory_tokens", 0)
+            + ctx_state.get("messages_tokens", 0)
+        )
         usage = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
             "max_context_window": max_context,
             "context_utilization": (
-                round(input_tokens / max_context * 100, 1) if max_context > 0 else 0
+                round(estimated_used / max_context * 100, 1)
+                if max_context > 0
+                else 0
             ),
         }
 
@@ -234,6 +254,160 @@ class GatewaySessionManager:
     def list_sessions(self) -> list[dict[str, any]]:
         """List all available sessions."""
         return Session.list_sessions()
+
+    async def _maybe_compact_context(
+        self,
+    ) -> AsyncIterator[dict[str, any]]:
+        """Check context utilization and compact if above threshold.
+
+        Yields compaction_start and compaction_end chunks if compaction occurs.
+        """
+        if not self.orchestrator or not self.active_session:
+            return
+
+        logger = structlog.get_logger(__name__)
+
+        # Get context state from previous turn
+        agent_session = self.orchestrator.agent_session
+        ctx_state = agent_session.state.get("context_window", {})
+        # Sum individual section estimates (same as /context command's
+        # ContextWindow.estimated_used). We must NOT use "total_estimated"
+        # because it is recorded before message trimming.
+        estimated_used = (
+            ctx_state.get("system_prompt_tokens", 0)
+            + ctx_state.get("tools_tokens", 0)
+            + ctx_state.get("memory_tokens", 0)
+            + ctx_state.get("messages_tokens", 0)
+        )
+        max_tokens = self.config.max_context_window
+
+        if max_tokens <= 0 or estimated_used <= 0:
+            return
+
+        utilization = estimated_used / max_tokens
+        threshold = self.config.context_compaction_threshold
+
+        if utilization < threshold:
+            return
+
+        # Get current messages from InMemoryHistoryProvider state
+        in_memory_state = agent_session.state.get("in_memory", {})
+        messages = in_memory_state.get("messages", [])
+
+        if len(messages) < 2:
+            return  # Not enough to compact
+
+        initial_pct = round(utilization * 100, 1)
+        logger.info(
+            f"Context at {initial_pct}% (threshold: "
+            f"{threshold * 100}%) - starting compaction"
+        )
+
+        # Yield start notification
+        yield {
+            "type": "compaction_start",
+            "content": {
+                "context_pct": initial_pct,
+                "message": f"Context at {initial_pct}% - compacting...",
+            },
+        }
+
+        # Serialize messages for compaction
+        from aletheia.context import (
+            _serialize_message,
+            estimate_tokens,
+        )
+
+        conversation_text = "\n\n".join(
+            f"[{getattr(msg, 'role', 'unknown')}]: {_serialize_message(msg)}"
+            for msg in messages
+        )
+
+        # Run compaction
+        summary = await self._run_compaction(conversation_text)
+
+        # Replace messages with compacted summary
+        summary_message = Message(
+            role="assistant",
+            contents=[Content.from_text(f"[COMPACTED CONTEXT]\n\n{summary}")],
+        )
+        in_memory_state["messages"] = [summary_message]
+
+        # Calculate new utilization
+        new_msg_tokens = estimate_tokens(summary)
+        fixed_tokens = (
+            ctx_state.get("system_prompt_tokens", 0)
+            + ctx_state.get("tools_tokens", 0)
+            + ctx_state.get("memory_tokens", 0)
+        )
+        new_total = fixed_tokens + new_msg_tokens
+        final_pct = round(new_total / max_tokens * 100, 1) if max_tokens > 0 else 0
+
+        # Write to scratchpad
+        scratchpad = getattr(self.active_session, "scratchpad", None)
+        if scratchpad:
+            scratchpad.write_journal_entry(
+                agent="CompactionAgent",
+                description="Context compaction performed",
+                text=(
+                    f"Initial context: {initial_pct}%\n"
+                    f"Final context: {final_pct}%\n"
+                    f"Messages before: {len(messages)}\n"
+                    f"Messages after: 1"
+                ),
+            )
+
+        logger.info(f"Compaction complete: {initial_pct}% -> {final_pct}%")
+
+        # Yield end notification
+        yield {
+            "type": "compaction_end",
+            "content": {
+                "initial_pct": initial_pct,
+                "final_pct": final_pct,
+                "message": (f"Compaction complete: {initial_pct}% -> {final_pct}%"),
+            },
+        }
+
+    async def _run_compaction(self, conversation_text: str) -> str:
+        """Run the compaction agent on conversation text.
+
+        Args:
+            conversation_text: Serialized conversation history.
+
+        Returns:
+            Compressed summary text.
+        """
+        from aletheia.agents.compaction.compaction_agent import (
+            CompactionAgent,
+        )
+
+        loader = Loader()
+        instructions = loader.load("compaction", "instructions")
+
+        compaction_agent = CompactionAgent(
+            name="compaction_agent",
+            instructions=instructions,
+            description="Compresses conversation context",
+        )
+
+        compaction_session = AgentSession()
+        response = await compaction_agent.agent.run(
+            messages=[
+                Message(
+                    role="user",
+                    contents=[
+                        Content.from_text(
+                            "Compress the following conversation "
+                            "history:\n\n" + conversation_text
+                        )
+                    ],
+                )
+            ],
+            session=compaction_session,
+        )
+
+        return response.text or ""
 
     async def _init_orchestrator(self, session: Session) -> None:
         """Initialize orchestrator for a session (extracted from cli.py)."""
