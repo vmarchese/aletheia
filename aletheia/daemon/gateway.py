@@ -1038,7 +1038,13 @@ class AletheiaGateway:
                 chunk_type = chunk.get("type")
 
                 # Send JSON chunks as-is - channels handle rendering
-                if chunk_type in ("json_chunk", "json_complete", "json_error"):
+                if chunk_type in (
+                    "json_chunk",
+                    "json_complete",
+                    "json_error",
+                    "compaction_start",
+                    "compaction_end",
+                ):
                     chunk_msg = ProtocolMessage.create(
                         "chat_stream_chunk",
                         {

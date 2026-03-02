@@ -106,6 +106,13 @@ class Config(BaseSettings):
         description="Fraction of context window reserved as buffer",
     )
 
+    context_compaction_threshold: float = Field(
+        default=0.8,
+        ge=0.1,
+        le=0.95,
+        description="Context utilization threshold (0.0-1.0) to trigger automatic compaction",
+    )
+
     code_analyzer: str = Field(
         default="", description="Code analyzer to use (claude, copilot)"
     )

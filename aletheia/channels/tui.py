@@ -490,6 +490,23 @@ class TUIChannelConnector(BaseChannelConnector):
             else:
                 self.console.print(func_display)
 
+        elif chunk_type == "compaction_start":
+            content = payload.get("content", {})
+            pct = content.get("context_pct", "?")
+            self.console.print(
+                f"\n[bold yellow]Context at {pct}% "
+                f"- compacting conversation...[/bold yellow]"
+            )
+
+        elif chunk_type == "compaction_end":
+            content = payload.get("content", {})
+            initial = content.get("initial_pct", "?")
+            final = content.get("final_pct", "?")
+            self.console.print(
+                f"[bold green]Compaction complete: "
+                f"{initial}% -> {final}%[/bold green]\n"
+            )
+
         # json_chunk doesn't need handling for TUI - we wait for json_complete
 
     async def _handle_stream_end(self, payload: dict[str, Any]) -> None:

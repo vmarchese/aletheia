@@ -514,6 +514,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     if isinstance(findings, dict):
                         charts_data = findings.get("charts", [])
 
+            elif chunk_type == "compaction_start":
+                content = chunk.get("content", {})
+                pct = content.get("context_pct", "?")
+                await update.message.reply_text(
+                    f"Context at {pct}% - compacting conversation..."
+                )
+
+            elif chunk_type == "compaction_end":
+                content = chunk.get("content", {})
+                initial = content.get("initial_pct", "?")
+                final = content.get("final_pct", "?")
+                await update.message.reply_text(
+                    f"Compaction complete: {initial}% -> {final}%"
+                )
+
             elif chunk_type == "json_error":
                 # JSON parsing failed - use raw content
                 response_markdown = chunk.get("content", "Error parsing response")
