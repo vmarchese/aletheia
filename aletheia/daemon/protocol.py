@@ -1,4 +1,34 @@
-"""WebSocket protocol definitions for Aletheia gateway communication."""
+"""WebSocket protocol definitions for Aletheia gateway communication.
+
+Message types (all carried in ProtocolMessage.type):
+
+Session management:
+  session_create, session_resume, session_close, session_list,
+  session_created, session_resumed, session_closed, session_deleted,
+  session_metadata, session_required
+
+Chat streaming:
+  chat_message, chat_stream_start, chat_stream_chunk, chat_stream_end
+
+Commands:
+  command_list, command_execute, commands_updated
+
+Scratchpad / Timeline:
+  scratchpad_get, scratchpad_data, timeline_get, timeline_data
+
+Async jobs:
+  job_submit      – client → gateway: {message, session_id}
+  job_submitted   – gateway → client: {job_id}
+  job_completed   – gateway → all:    {job_id, session_id}
+  job_failed      – gateway → all:    {job_id, session_id, error}
+  job_status      – client → gateway: {job_id}
+  job_result      – gateway → client: {job: Job.to_dict()}
+  job_list        – client → gateway: {session_id}
+  job_list_response – gateway → client: {jobs: [Job.to_dict(), ...]}
+
+General:
+  error, ping, pong, shutdown, shutdown_ack
+"""
 
 import json
 import uuid
