@@ -69,6 +69,11 @@ class TUICommandCompleter(Completer):
         all_commands["session"] = "Session management (list/show/timeline/resume)"
         all_commands["reload"] = "Reload skills and custom commands"
         all_commands["exit"] = "Disconnect and exit"
+        all_commands["job-start"] = (
+            "Submit an async background job: /job-start <request>"
+        )
+        all_commands["job-view"] = "View job result: /job-view <job-id>"
+        all_commands["job-list"] = "List all jobs for the current session"
 
         # Built-in commands from aletheia.commands
         try:
@@ -230,6 +235,14 @@ class TUIChannelConnector(BaseChannelConnector):
             elif message.type == "commands_updated":
                 # Tab completion always loads fresh from disk, no action needed
                 self.logger.debug("Commands updated on disk")
+            elif message.type == "job_submitted":
+                await self._handle_job_submitted(message.payload)
+            elif message.type == "job_result":
+                await self._handle_job_result(message.payload)
+            elif message.type == "job_list_response":
+                await self._handle_job_list_response(message.payload)
+            elif message.type in ("job_completed", "job_failed"):
+                await self._handle_job_notification(message.type, message.payload)
             elif message.type == "error":
                 await self._handle_error(message.payload)
         except Exception as e:
@@ -575,6 +588,108 @@ class TUIChannelConnector(BaseChannelConnector):
         self._current_thinking = ""
         self._thinking_task = None
 
+    async def _handle_job_submitted(self, payload: dict[str, Any]) -> None:
+        """Handle job_submitted response - print job ID and unblock prompt."""
+        job_id = payload.get("job_id", "unknown")
+        self.console.print(
+            f"\n[bold green]✓[/bold green] Job submitted: "
+            f"[cyan]{job_id}[/cyan]\n"
+            f"  Use [bold]/job-view {job_id}[/bold] to check the result.\n"
+        )
+        self._processing = False
+
+    async def _handle_job_result(self, payload: dict[str, Any]) -> None:
+        """Handle job_result response - display job data."""
+        job = payload.get("job", {})
+        job_id = job.get("job_id", "unknown")
+        status = job.get("status", "unknown")
+
+        if status in ("pending", "running"):
+            self.console.print(
+                f"\n[yellow]Job [cyan]{job_id}[/cyan] is in progress "
+                f"([bold]{status}[/bold]).[/yellow]\n"
+            )
+            self._processing = False
+            return
+
+        if status == "failed":
+            self.console.print(
+                f"\n[bold red]Job [cyan]{job_id}[/cyan] failed:[/bold red] "
+                f"{job.get('error', 'unknown error')}\n"
+            )
+            self._processing = False
+            return
+
+        # Completed - render result the same way as a normal streaming response
+        result = job.get("result") or {}
+        self.console.print(
+            f"\n[bold green]✓[/bold green] Job [cyan]{job_id}[/cyan] result:\n"
+        )
+
+        if result:
+            formatted_markdown = format_response_to_markdown(result)
+            self.console.print(Markdown(formatted_markdown))
+        else:
+            self.console.print("  [dim](no result data)[/dim]")
+
+        self.console.print()
+        self._processing = False
+
+    async def _handle_job_notification(
+        self, msg_type: str, payload: dict[str, Any]
+    ) -> None:
+        """Handle asynchronous job_completed / job_failed push notifications."""
+        job_id = payload.get("job_id", "unknown")
+        if msg_type == "job_completed":
+            self.console.print(
+                f"\n[bold green][ Job {job_id} completed ][/bold green] "
+                f"Use /job-view {job_id} to see the result.\n"
+            )
+        else:
+            error = payload.get("error", "unknown error")
+            self.console.print(
+                f"\n[bold red][ Job {job_id} failed ][/bold red] {error}\n"
+            )
+        # Do NOT change _processing - this is a push notification, not a response
+
+    async def _handle_job_list_response(self, payload: dict[str, Any]) -> None:
+        """Handle job_list_response — display a table of all jobs."""
+        from rich.table import Table
+
+        jobs = payload.get("jobs", [])
+        if not jobs:
+            self.console.print("\n[yellow]No jobs found for this session.[/yellow]\n")
+            self._processing = False
+            return
+
+        tbl = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1))
+        tbl.add_column("ID", style="cyan", no_wrap=True)
+        tbl.add_column("Status", no_wrap=True)
+        tbl.add_column("Message")
+        tbl.add_column("Created", style="dim", no_wrap=True)
+
+        status_colors = {
+            "pending": "yellow",
+            "running": "blue",
+            "completed": "green",
+            "failed": "red",
+        }
+
+        for job in jobs:
+            job_id = job.get("job_id", "?")
+            status = job.get("status", "?")
+            color = status_colors.get(status, "white")
+            msg = (job.get("message") or "")[:50]
+            if len(job.get("message") or "") > 50:
+                msg += "…"
+            created = (job.get("created_at") or "")[:19].replace("T", " ")
+            tbl.add_row(job_id, f"[{color}]{status}[/{color}]", msg, created)
+
+        self.console.print("\n[bold]Jobs:[/bold]")
+        self.console.print(tbl)
+        self.console.print()
+        self._processing = False
+
     async def render_response(self, response: dict[str, Any]) -> None:
         """Render response (used for non-streaming responses)."""
         content = response.get("content", "")
@@ -788,6 +903,57 @@ class TUIChannelConnector(BaseChannelConnector):
                     "  /session timeline - Show session timeline"
                 )
 
+        elif cmd == "/job-start":
+            if not self._active_session_id:
+                self.console.print(
+                    "[bold red]No active session.[/bold red] "
+                    "Use /new_session or /session resume first."
+                )
+                return
+            request_text = parts[1].strip() if len(parts) > 1 else ""
+            if not request_text:
+                self.console.print(
+                    "[bold red]Usage:[/bold red] /job-start <request text>"
+                )
+                return
+            self._processing = True
+            if self.websocket:
+                msg = ProtocolMessage.create(
+                    "job_submit",
+                    {"message": request_text, "session_id": self._active_session_id},
+                )
+                await self.websocket.send(msg.to_json())
+
+        elif cmd == "/job-list":
+            if not self._active_session_id:
+                self.console.print(
+                    "[bold red]No active session.[/bold red] "
+                    "Use /new_session or /session resume first."
+                )
+                return
+            self._processing = True
+            if self.websocket:
+                msg = ProtocolMessage.create(
+                    "job_list", {"session_id": self._active_session_id}
+                )
+                await self.websocket.send(msg.to_json())
+
+        elif cmd == "/job-view":
+            if not self._active_session_id:
+                self.console.print(
+                    "[bold red]No active session.[/bold red] "
+                    "Use /new_session or /session resume first."
+                )
+                return
+            job_id = parts[1].strip() if len(parts) > 1 else ""
+            if not job_id:
+                self.console.print("[bold red]Usage:[/bold red] /job-view <job-id>")
+                return
+            self._processing = True
+            if self.websocket:
+                msg = ProtocolMessage.create("job_status", {"job_id": job_id})
+                await self.websocket.send(msg.to_json())
+
         else:
             # Try built-in commands (help, version, info, agents, cost)
             from aletheia.commands import COMMANDS, expand_custom_command
@@ -809,6 +975,15 @@ class TUIChannelConnector(BaseChannelConnector):
                 # For now, we'll show a simple message
                 if cmd_name == "help":
                     COMMANDS[cmd_name].execute(self.console)
+                    self.console.print(
+                        "\n[bold cyan]Async Jobs:[/bold cyan]\n"
+                        "  [cyan]/job-start[/cyan] [dim]<request>[/dim]"
+                        "   Submit an async background job\n"
+                        "  [cyan]/job-list[/cyan]              "
+                        "   List all jobs for the current session\n"
+                        "  [cyan]/job-view[/cyan] [dim]<job-id>[/dim]"
+                        "    View the result of a job\n"
+                    )
                 elif cmd_name in ["version", "info"]:
                     COMMANDS[cmd_name].execute(self.console)
                 elif cmd_name == "agents":
@@ -836,7 +1011,10 @@ class TUIChannelConnector(BaseChannelConnector):
                     "  /new_session [name] [--unsafe] [--verbose]\n"
                     "  /session resume <id> [--unsafe]\n"
                     "  /session list | show | timeline\n"
-                    "  /help - Show built-in commands\n"
+                    "  /job-start <request>  Submit async background job\n"
+                    "  /job-list             List all jobs for this session\n"
+                    "  /job-view <job-id>    View job result\n"
+                    "  /help                 Show built-in commands\n"
                     "  /exit"
                 )
 

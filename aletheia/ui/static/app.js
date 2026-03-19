@@ -213,6 +213,9 @@ function setupEventListeners() {
         // Hide autocomplete if visible
         hideCommandCompletion();
 
+        const asyncCheckbox = document.getElementById('async-checkbox');
+        const isAsync = asyncCheckbox && asyncCheckbox.checked;
+
         // Add user message
         appendMessage(message, 'user');
 
@@ -221,6 +224,27 @@ function setupEventListeners() {
 
         messageInput.value = '';
         messageInput.style.height = 'auto';
+
+        if (isAsync) {
+            // Submit as async job - does not block the UI
+            try {
+                const body = { message };
+                const response = await fetch(`/sessions/${currentSessionId}/jobs`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) throw new Error('Failed to submit job');
+                const data = await response.json();
+                const jobId = data.job_id;
+                appendMessage(`Job submitted: \`${jobId}\`. You will be notified when it completes.`, 'bot');
+                addJobToSidebar({ job_id: jobId, message, status: 'pending', created_at: new Date().toISOString() });
+                if (asyncCheckbox) asyncCheckbox.checked = false;
+            } catch (error) {
+                appendMessage(`Error submitting job: ${error.message}`, 'bot');
+            }
+            return;
+        }
 
         // Disable input while processing
         setProcessing(true);
@@ -596,6 +620,9 @@ async function loadSession(sessionId, force = false) {
 
     // Connect to SSE
     connectStream(sessionId);
+
+    // Load existing jobs for this session
+    loadJobsForSession(sessionId);
 }
 
 function showPasswordPrompt(sessionId) {
@@ -858,6 +885,18 @@ function connectStream(sessionId) {
             } else {
                 loadCommands();
             }
+        } else if (data.type === 'job_function_call') {
+            appendJobToolCall(data.job_id, data.agent_name, data.function_name);
+        } else if (data.type === 'job_completed') {
+            const jobId = data.job_id;
+            console.log('[SSE] Job completed:', jobId);
+            clearJobToolCalls(jobId);
+            updateJobInSidebar(jobId, 'completed');
+        } else if (data.type === 'job_failed') {
+            const jobId = data.job_id;
+            console.log('[SSE] Job failed:', jobId, data.error);
+            clearJobToolCalls(jobId);
+            updateJobInSidebar(jobId, 'failed');
         } else if (data.type === 'error') {
             stopThinking();
             setProcessing(false);
@@ -2821,4 +2860,123 @@ function positionCommandCompletion() {
     dropdown.style.left = `${inputRect.left}px`;
     dropdown.style.bottom = `${window.innerHeight - inputRect.top + 10}px`;
     dropdown.style.width = `${inputRect.width}px`;
+}
+
+// ---- Async Jobs ----
+
+const jobsGroup = document.getElementById('jobs-group');
+const jobsList = document.getElementById('jobs-list');
+
+function addJobToSidebar(job) {
+    if (!jobsGroup || !jobsList) return;
+    jobsGroup.style.display = '';
+    const li = document.createElement('li');
+    li.className = `job-item job-${job.status}`;
+    li.dataset.jobId = job.job_id;
+    const shortId = job.job_id.substring(0, 8);
+    const shortMsg = (job.message || '').substring(0, 40) + ((job.message || '').length > 40 ? '…' : '');
+    li.innerHTML = `
+        <div class="job-header">
+            <span class="job-status-badge job-${job.status}">${job.status}</span>
+            <span class="job-short-id">${shortId}</span>
+            <span class="job-msg" title="${escapeHtml(job.message || '')}">${escapeHtml(shortMsg)}</span>
+        </div>
+        <details class="job-tool-calls-section" style="display:none">
+            <summary>Tool calls</summary>
+            <div class="job-tool-calls-list"></div>
+        </details>
+    `;
+    li.querySelector('.job-header').addEventListener('click', () => openJobResult(job.job_id));
+    jobsList.prepend(li);
+}
+
+function updateJobInSidebar(jobId, status) {
+    if (!jobsList) return;
+    const li = jobsList.querySelector(`[data-job-id="${jobId}"]`);
+    if (li) {
+        li.className = `job-item job-${status}`;
+        const badge = li.querySelector('.job-status-badge');
+        if (badge) {
+            badge.className = `job-status-badge job-${status}`;
+            badge.textContent = status;
+        }
+        if (status === 'completed') {
+            li.title = 'Click to view result';
+        }
+    }
+}
+
+async function openJobResult(jobId) {
+    if (!currentSessionId) return;
+    try {
+        const response = await fetch(`/sessions/${currentSessionId}/jobs/${jobId}`);
+        if (!response.ok) throw new Error('Failed to fetch job result');
+        const job = await response.json();
+
+        if (job.status === 'pending' || job.status === 'running') {
+            appendMessage(`Job \`${jobId}\` is still in progress (${job.status}).`, 'bot');
+            return;
+        }
+        if (job.status === 'failed') {
+            appendMessage(`Job \`${jobId}\` failed: ${job.error || 'unknown error'}`, 'bot');
+            return;
+        }
+        if (job.result) {
+            createStructuredMessage();
+            const msgDiv = chatContainer.lastElementChild;
+            msgDiv.dataset.structuredData = JSON.stringify(job.result);
+            renderStructuredMessage(msgDiv, job.result);
+            msgDiv.dataset.complete = 'true';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        } else {
+            appendMessage(`Job \`${jobId}\` completed but returned no result.`, 'bot');
+        }
+    } catch (err) {
+        appendMessage(`Error loading job result: ${err.message}`, 'bot');
+    }
+}
+
+async function loadJobsForSession(sessionId) {
+    if (!sessionId || !jobsList) return;
+    try {
+        const response = await fetch(`/sessions/${sessionId}/jobs`);
+        if (!response.ok) return;
+        const jobs = await response.json();
+        jobsList.innerHTML = '';
+        if (jobs.length === 0) {
+            if (jobsGroup) jobsGroup.style.display = 'none';
+            return;
+        }
+        if (jobsGroup) jobsGroup.style.display = '';
+        jobs.forEach(job => addJobToSidebar(job));
+    } catch (e) {
+        console.error('Failed to load jobs', e);
+    }
+}
+
+function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function appendJobToolCall(jobId, agentName, functionName) {
+    if (!jobsList) return;
+    const li = jobsList.querySelector(`[data-job-id="${jobId}"]`);
+    if (!li) return;
+    const section = li.querySelector('.job-tool-calls-section');
+    if (!section) return;
+    section.style.display = '';
+    const list = section.querySelector('.job-tool-calls-list');
+    const callEl = document.createElement('div');
+    callEl.className = 'job-tool-call';
+    callEl.textContent = `⚙ ${agentName}::${functionName}`;
+    list.appendChild(callEl);
+}
+
+function clearJobToolCalls(jobId) {
+    if (!jobsList) return;
+    const li = jobsList.querySelector(`[data-job-id="${jobId}"]`);
+    if (!li) return;
+    // Collapse the section but keep the tool call history
+    const section = li.querySelector('.job-tool-calls-section');
+    if (section) section.removeAttribute('open');
 }

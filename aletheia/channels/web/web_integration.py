@@ -10,7 +10,7 @@ Flow: Frontend (REST/SSE) → WebChannelConnector → WebSocket → Gateway
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -23,6 +23,9 @@ from sse_starlette.sse import EventSourceResponse
 from aletheia.channels.base import BaseChannelConnector
 from aletheia.channels.manifest import ChannelCapability, ChannelManifest
 from aletheia.daemon.protocol import ProtocolMessage
+
+if TYPE_CHECKING:
+    from aletheia.daemon.job_manager import JobManager
 
 logger = structlog.get_logger("aletheia.channel.web")
 
@@ -39,12 +42,14 @@ class WebChannelConnector(BaseChannelConnector):
         self,
         gateway_url: str = "ws://127.0.0.1:8765",
         config: dict[str, Any] | None = None,
+        job_manager: "JobManager | None" = None,
     ):
         """Initialize web channel connector."""
         super().__init__(gateway_url, config)
         self._pending_responses: dict[str, asyncio.Future[ProtocolMessage]] = {}
         self._stream_queues: dict[str, asyncio.Queue[dict[str, Any]]] = {}
         self._active_session_id: str | None = None
+        self._job_manager = job_manager
 
     @classmethod
     def manifest(cls) -> ChannelManifest:
@@ -89,6 +94,37 @@ class WebChannelConnector(BaseChannelConnector):
                     {
                         "type": "commands_updated",
                         "commands": message.payload.get("commands", []),
+                    }
+                )
+            return
+
+        # Push job notifications to SSE stream
+        if msg_type in ("job_completed", "job_failed"):
+            session_id = message.payload.get(
+                "session_id", self._active_session_id or "default"
+            )
+            if session_id in self._stream_queues:
+                await self._stream_queues[session_id].put(
+                    {
+                        "type": msg_type,
+                        "job_id": message.payload.get("job_id"),
+                        "session_id": session_id,
+                        "error": message.payload.get("error"),
+                    }
+                )
+            return
+
+        # Push job function call events to SSE stream
+        if msg_type == "job_function_call":
+            session_id = self._active_session_id or "default"
+            if session_id in self._stream_queues:
+                await self._stream_queues[session_id].put(
+                    {
+                        "type": "job_function_call",
+                        "job_id": message.payload.get("job_id"),
+                        "agent_name": message.payload.get("agent_name"),
+                        "function_name": message.payload.get("function_name"),
+                        "arguments": message.payload.get("arguments", {}),
                     }
                 )
             return
@@ -158,6 +194,8 @@ class WebChannelConnector(BaseChannelConnector):
             "COMMAND_EXECUTE": "chat_stream_end",
             "SCRATCHPAD": "scratchpad_data",
             "TIMELINE": "timeline_data",
+            "MISSING_JOB_ID": "job_result",
+            "JOB_NOT_FOUND": "job_result",
             "MISSING_SESSION_ID": None,
             "MISSING_MESSAGE": None,
         }
@@ -469,5 +507,46 @@ class WebChannelConnector(BaseChannelConnector):
                 timeout=120.0,  # Timeline generation can be slow
             )
             return response.payload
+
+        # --- Async Job Routes ---
+
+        class JobSubmitRequest(BaseModel):
+            message: str
+
+        @app.post("/sessions/{session_id}/jobs", response_model=dict[str, Any])
+        async def submit_job(
+            session_id: str,
+            request: JobSubmitRequest,
+            unsafe: bool = False,
+        ) -> dict[str, Any]:
+            """Submit an async job for the session."""
+            await connector._ensure_session_active(session_id, unsafe=unsafe)
+
+            response = await connector._send_and_wait(
+                "job_submit",
+                {"message": request.message, "session_id": session_id},
+                "job_submitted",
+            )
+            return response.payload
+
+        @app.get("/sessions/{session_id}/jobs", response_model=list[dict[str, Any]])
+        async def list_jobs(session_id: str) -> list[dict[str, Any]]:
+            """List all jobs for a session (direct DB query, no WebSocket hop)."""
+            jm = connector._job_manager
+            if jm is None:
+                raise HTTPException(status_code=503, detail="Job manager unavailable")
+            jobs = await jm.list_jobs(session_id)
+            return [j.to_dict() for j in jobs]
+
+        @app.get("/sessions/{session_id}/jobs/{job_id}", response_model=dict[str, Any])
+        async def get_job(session_id: str, job_id: str) -> dict[str, Any]:
+            """Get a single job by ID (direct DB query, no WebSocket hop)."""
+            jm = connector._job_manager
+            if jm is None:
+                raise HTTPException(status_code=503, detail="Job manager unavailable")
+            job = await jm.get_job(job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+            return job.to_dict()
 
         return app

@@ -123,13 +123,19 @@
                         <div class="input-wrapper">
                             <textarea id="message-input" placeholder="Describe the issue or ask a question..." rows="1"
                                 disabled></textarea>
-                            <button type="submit" id="send-btn" class="btn-send" disabled>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                                </svg>
-                            </button>
+                            <div class="send-controls">
+                                <label class="async-label" title="Run as background job">
+                                    <input type="checkbox" id="async-checkbox">
+                                    <span>Async</span>
+                                </label>
+                                <button type="submit" id="send-btn" class="btn-send" disabled>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -155,6 +161,13 @@
                         <label>Status</label>
                         <span id="info-session-status" class="info-value">Active</span>
                     </div>
+                </div>
+
+                <div class="info-group" id="jobs-group" style="display:none;">
+                    <h3>Background Jobs</h3>
+                    <ul id="jobs-list" class="jobs-list">
+                        <!-- Jobs populated by app.js -->
+                    </ul>
                 </div>
             </aside>
         </main>

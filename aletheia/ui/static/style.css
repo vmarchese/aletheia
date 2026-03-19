@@ -2464,3 +2464,134 @@ body.unsafe-mode #info-session-status::before {
     margin-top: 0.25rem;
     font-size: 0.85rem;
 }
+
+/* ---- Async checkbox ---- */
+.send-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.async-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.async-label input[type="checkbox"] {
+    cursor: pointer;
+    width: 13px;
+    height: 13px;
+}
+
+/* ---- Jobs sidebar section ---- */
+.jobs-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.job-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    background: var(--bg-tertiary, rgba(255,255,255,0.04));
+    font-size: 0.78rem;
+    transition: background 0.15s;
+    overflow: hidden;
+}
+
+.job-item:hover {
+    background: var(--bg-hover, rgba(255,255,255,0.08));
+}
+
+.job-status-badge {
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.job-pending  .job-status-badge, .job-status-badge.job-pending  { background: #374151; color: #9ca3af; }
+.job-running  .job-status-badge, .job-status-badge.job-running  { background: #1d4ed8; color: #bfdbfe; }
+.job-completed .job-status-badge, .job-status-badge.job-completed { background: #065f46; color: #6ee7b7; }
+.job-failed   .job-status-badge, .job-status-badge.job-failed   { background: #7f1d1d; color: #fca5a5; }
+
+.job-short-id {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+}
+
+.job-msg {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.job-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    width: 100%;
+    overflow: hidden;
+}
+
+.job-tool-calls-section {
+    margin-top: 4px;
+    font-size: 0.7rem;
+    color: var(--text-muted, #6b7280);
+}
+
+.job-tool-calls-section > summary {
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-muted, #6b7280);
+    font-size: 0.7rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.job-tool-calls-section > summary::before {
+    content: '▶';
+    font-size: 0.6rem;
+    transition: transform 0.15s;
+}
+
+.job-tool-calls-section[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.job-tool-calls-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-left: 12px;
+    margin-top: 2px;
+}
+
+.job-tool-call {
+    font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

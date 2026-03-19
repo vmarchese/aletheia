@@ -1,6 +1,7 @@
 """Main gateway daemon for Aletheia."""
 
 import asyncio
+import contextvars
 import json
 import signal
 from typing import Any
@@ -11,12 +12,20 @@ from websockets.server import WebSocketServerProtocol
 
 from aletheia.agents.middleware import get_current_agent_name
 from aletheia.config import Config, load_config
+from aletheia.daemon.job_manager import JobManager
 from aletheia.daemon.protocol import ProtocolMessage
 from aletheia.daemon.server import WebSocketServer
 from aletheia.daemon.session_manager import GatewaySessionManager
 from aletheia.daemon.watcher import ConfigWatcher
 from aletheia.engram.tools import Engram
 from aletheia.session import Session, SessionError, SessionNotFoundError
+
+
+# Per-task context variable: set to a job_id string when the worker task is
+# executing an async job.  None in all other tasks (sync chat handlers, etc.).
+_current_job_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "current_job_id", default=None
+)
 
 
 class GatewayFunctionMiddleware(FunctionMiddleware):
@@ -30,6 +39,7 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
         """Initialize with no active websocket."""
         self.websocket: WebSocketServerProtocol | None = None
         self.message_id: str | None = None
+        self._broadcast_fn: Any = None
 
     async def process(
         self,
@@ -49,25 +59,40 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
         except (ImportError, KeyError):
             pass
 
-        if (
-            self.websocket
-            and self.message_id
-            and context.function.name not in skipped_functions
-        ):
-            arguments = {}
-            args = (
-                context.arguments.model_dump()
-                if hasattr(context.arguments, "model_dump")
-                else dict(context.arguments)
-            )
-            for arg_key, arg_value in args.items():
-                str_value = str(arg_value)
-                if len(str_value) > 100:
-                    str_value = str_value[:97] + "..."
-                arguments[arg_key] = str_value
+        if context.function.name in skipped_functions:
+            await call_next()
+            return
 
-            try:
-                agent_name = get_current_agent_name() or "orchestrator"
+        arguments: dict[str, str] = {}
+        args = (
+            context.arguments.model_dump()
+            if hasattr(context.arguments, "model_dump")
+            else dict(context.arguments)
+        )
+        for arg_key, arg_value in args.items():
+            str_value = str(arg_value)
+            if len(str_value) > 100:
+                str_value = str_value[:97] + "..."
+            arguments[arg_key] = str_value
+
+        try:
+            agent_name = get_current_agent_name() or "orchestrator"
+            job_id = _current_job_id.get()
+            if job_id and self._broadcast_fn:
+                # Async job mode: broadcast function call to all channels
+                await self._broadcast_fn(
+                    {
+                        "type": "job_function_call",
+                        "payload": {
+                            "job_id": job_id,
+                            "agent_name": agent_name,
+                            "function_name": context.function.name,
+                            "arguments": arguments,
+                        },
+                    }
+                )
+            elif self.websocket and self.message_id:
+                # Sync chat mode: send to the specific client websocket
                 chunk_msg = ProtocolMessage.create(
                     "chat_stream_chunk",
                     {
@@ -81,8 +106,8 @@ class GatewayFunctionMiddleware(FunctionMiddleware):
                     },
                 )
                 await self.websocket.send(chunk_msg.to_json())
-            except Exception as e:
-                logger.debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
+        except Exception as e:
+            logger.debug(f"[GatewayFunctionMiddleware] Error sending event: {e}")
 
         await call_next()
 
@@ -105,6 +130,13 @@ class AletheiaGateway:
         self.engram: Engram | None = None
         self.running = False
 
+        # Job management
+        from aletheia.config import get_config_dir
+
+        self.job_manager = JobManager(get_config_dir() / "jobs.db")
+        self._session_lock: asyncio.Lock = asyncio.Lock()
+        self._job_worker_task: asyncio.Task[None] | None = None
+
         # Configure logging for gateway
         from aletheia.utils.logging import setup_logging
 
@@ -113,6 +145,7 @@ class AletheiaGateway:
 
         # Function middleware for sending function call events via WebSocket
         self.function_middleware = GatewayFunctionMiddleware()
+        self.function_middleware._broadcast_fn = self.websocket_server.broadcast
         self.session_manager.additional_middleware = [self.function_middleware]
 
         # Optional server components
@@ -188,6 +221,14 @@ class AletheiaGateway:
             self.logger.info(f"  ✓ {channel}")
         self.logger.info("=" * 60)
 
+        # Start async job worker (processes jobs sequentially)
+        self._job_worker_task = self.job_manager.start_worker(
+            self._execute_job,
+            on_complete=self._on_job_complete,
+            on_fail=self._on_job_fail,
+        )
+        self.logger.info("Async job worker started")
+
         # Set up signal handlers for graceful shutdown
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
@@ -204,6 +245,14 @@ class AletheiaGateway:
         """Gracefully stop the gateway daemon."""
         self.logger.info("Stopping gateway...")
         self.running = False
+
+        # Stop job worker
+        if self._job_worker_task and not self._job_worker_task.done():
+            self._job_worker_task.cancel()
+            try:
+                await self._job_worker_task
+            except asyncio.CancelledError:
+                pass
 
         # Stop Telegram bot
         if self.telegram_task and not self.telegram_task.done():
@@ -317,6 +366,15 @@ class AletheiaGateway:
 
         elif msg_type == "timeline_get":
             await self._handle_timeline_get(websocket, payload)
+
+        elif msg_type == "job_submit":
+            await self._handle_job_submit(websocket, payload, channel_id or "unknown")
+
+        elif msg_type == "job_status":
+            await self._handle_job_status(websocket, payload)
+
+        elif msg_type == "job_list":
+            await self._handle_job_list(websocket, payload)
 
         elif msg_type == "ping":
             # Respond to ping
@@ -1072,6 +1130,158 @@ class AletheiaGateway:
             )
             await websocket.send(error_msg.to_json())
 
+    async def _handle_job_submit(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: dict[str, Any],
+        channel: str,
+    ) -> None:
+        """Handle async job submission."""
+        message = payload.get("message")
+        if not message:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "MISSING_MESSAGE", "message": "message field required"},
+            )
+            await websocket.send(error_msg.to_json())
+            return
+
+        if not self.session_manager.get_active_session():
+            sessions = self.session_manager.list_sessions()
+            response = ProtocolMessage.create(
+                "session_required",
+                {"available_sessions": sessions},
+            )
+            await websocket.send(response.to_json())
+            return
+
+        active_session = self.session_manager.get_active_session()
+        session_id = active_session.session_id if active_session else "unknown"
+
+        job = await self.job_manager.enqueue(session_id, channel, message)
+
+        response = ProtocolMessage.create(
+            "job_submitted",
+            {"job_id": job.job_id, "session_id": session_id},
+        )
+        await websocket.send(response.to_json())
+        self.logger.info(f"Job {job.job_id} enqueued for session {session_id}")
+
+    async def _handle_job_status(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Return full job data for a single job."""
+        job_id = payload.get("job_id")
+        if not job_id:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "MISSING_JOB_ID", "message": "job_id field required"},
+            )
+            await websocket.send(error_msg.to_json())
+            return
+
+        job = await self.job_manager.get_job(job_id)
+        if not job:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "JOB_NOT_FOUND", "message": f"Job {job_id} not found"},
+            )
+            await websocket.send(error_msg.to_json())
+            return
+
+        response = ProtocolMessage.create("job_result", {"job": job.to_dict()})
+        await websocket.send(response.to_json())
+
+    async def _handle_job_list(
+        self, websocket: WebSocketServerProtocol, payload: dict[str, Any]
+    ) -> None:
+        """Return all jobs for a session."""
+        session_id = payload.get("session_id")
+        if not session_id:
+            # Fall back to active session
+            active = self.session_manager.get_active_session()
+            session_id = active.session_id if active else None
+
+        if not session_id:
+            error_msg = ProtocolMessage.create(
+                "error",
+                {"code": "MISSING_SESSION_ID", "message": "session_id required"},
+            )
+            await websocket.send(error_msg.to_json())
+            return
+
+        jobs = await self.job_manager.list_jobs(session_id)
+        response = ProtocolMessage.create(
+            "job_list_response",
+            {"jobs": [j.to_dict() for j in jobs]},
+        )
+        await websocket.send(response.to_json())
+
+    async def _execute_job(self, job_id: str) -> dict[str, Any]:
+        """Execute a job using the session manager and return the parsed result.
+
+        Called by JobManager._worker for each dequeued job.
+        Acquires _session_lock to prevent concurrent session usage.
+        """
+        job = await self.job_manager.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        active_session = self.session_manager.get_active_session()
+        if not active_session or active_session.session_id != job.session_id:
+            raise RuntimeError(
+                f"Session {job.session_id} is not active "
+                f"(active: {active_session.session_id if active_session else 'none'})"
+            )
+
+        result: dict[str, Any] = {}
+
+        async with self._session_lock:
+            # Clear sync-chat websocket; set context-local job id so the
+            # middleware routes function calls to broadcast (not a websocket).
+            self.function_middleware.websocket = None
+            self.function_middleware.message_id = None
+            token = _current_job_id.set(job_id)
+            try:
+                async for chunk in self.session_manager.send_message(
+                    job.message, job.channel
+                ):
+                    if chunk.get("type") == "json_complete" and chunk.get("parsed"):
+                        result = chunk["parsed"]
+            finally:
+                _current_job_id.reset(token)
+
+        self.logger.info(f"Job {job_id} executed successfully")
+        return result
+
+    async def _on_job_complete(self, job_id: str) -> None:
+        """Broadcast job_completed after the job is persisted as completed."""
+        job = await self.job_manager.get_job(job_id)
+        session_id = job.session_id if job else "unknown"
+        await self.websocket_server.broadcast(
+            {
+                "type": "job_completed",
+                "payload": {"job_id": job_id, "session_id": session_id},
+            }
+        )
+        self.logger.info(f"Job {job_id} completed, broadcast sent")
+
+    async def _on_job_fail(self, job_id: str, error: str) -> None:
+        """Broadcast job_failed after the job is persisted as failed."""
+        job = await self.job_manager.get_job(job_id)
+        session_id = job.session_id if job else "unknown"
+        await self.websocket_server.broadcast(
+            {
+                "type": "job_failed",
+                "payload": {
+                    "job_id": job_id,
+                    "session_id": session_id,
+                    "error": error,
+                },
+            }
+        )
+        self.logger.warning(f"Job {job_id} failed: {error}")
+
     def _on_skills_changed(self) -> None:
         """Callback invoked by ConfigWatcher when skill files change."""
         self.logger.info("Skills changed on disk, reloading agent instructions")
@@ -1160,7 +1370,8 @@ class AletheiaGateway:
 
             # Create web channel connector and connect to gateway's WebSocket
             self.web_channel = WebChannelConnector(
-                gateway_url=f"ws://{ws_host}:{ws_port}"
+                gateway_url=f"ws://{ws_host}:{ws_port}",
+                job_manager=self.job_manager,
             )
             await self.web_channel.connect()
 
