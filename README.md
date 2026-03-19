@@ -23,6 +23,7 @@ Aletheia uses a **daemon-based architecture** with a central gateway that manage
 - **Multiple Interfaces**: TUI, Web UI, and Telegram bot - all connecting to the same gateway
 - **Persistent Sessions**: Sessions managed centrally by the gateway daemon
 - **Streaming Responses**: Real-time agent output streamed to all connected channels
+- **Asynchronous Jobs**: Submit long-running investigations as background jobs and continue working while they execute
 - **Chat History**: All interactions logged in JSONL format per session
 - **Extensible Channels**: Plugin-based channel system for easy integration of new interfaces
 
@@ -594,6 +595,92 @@ You are a clever, witty assistant with great humor.
 - Success: "And THAT is how it's done. *mic drop*"
 ```
 
+## Asynchronous Jobs
+
+Long-running investigations can be submitted as **background jobs** so the interface stays responsive while the agent works. Jobs are persisted in `~/.config/aletheia/jobs.db` (SQLite) and survive gateway restarts.
+
+### How It Works
+
+```
+User submits job  →  gateway enqueues it  →  immediate job_id returned
+                                            ↓
+                              background worker executes job
+                                            ↓
+                      job_completed / job_failed notification broadcast
+                                            ↓
+                            result stored in SQLite, retrievable any time
+```
+
+Jobs execute **sequentially** — at most one job runs at a time. Additional submitted jobs queue up and execute in order. Synchronous chat messages are never blocked by a running job.
+
+### Job Lifecycle
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Queued, waiting for the current job to finish |
+| `running` | Currently executing |
+| `completed` | Finished successfully; result available |
+| `failed` | Execution error; error message stored |
+
+### Web UI
+
+**Submitting a job:**
+1. Type your investigation request in the message box.
+2. Check the **Async** checkbox next to the Send button.
+3. Click Send. A `job_id` confirmation appears immediately and the checkbox resets.
+
+**Monitoring jobs:**
+- A **Background Jobs** panel in the right sidebar lists all jobs for the session with their current status.
+- While a job is running, each tool call the agent makes appears as a collapsible section under the job entry (click the `▶ Tool calls` toggle to expand).
+- On completion the status badge updates automatically via SSE push — no refresh needed.
+
+**Viewing results:**
+- Click any **completed** job in the sidebar to render its full result in the main chat area (same findings / decisions / next actions tabs as a synchronous response).
+
+### TUI
+
+```
+/job-start <request text>   Submit a background job
+/job-list                   List all jobs for the current session (with status)
+/job-view <job-id>          Display the result of a completed job, or its current status
+```
+
+**Example workflow:**
+
+```
+> /job-start investigate the memory leak in the payment service
+  Job started: 3f8a1b2c-…
+  Use /job-view 3f8a1b2c-… to check the result.
+
+  ... continue chatting synchronously ...
+
+  [ Job 3f8a1b2c-… completed ]  Use /job-view 3f8a1b2c-… to see the result.
+
+> /job-view 3f8a1b2c-…
+  ✓ Job 3f8a1b2c-… result:
+  ## Findings
+  ...
+```
+
+`/job-list` output includes the full job UUID, status (colour-coded), a truncated message preview, and the creation timestamp:
+
+```
+Jobs:
+ ID                                    Status     Message                        Created
+ 3f8a1b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c  completed  investigate the memory leak…   2026-03-19 14:02:31
+ 7c6b5a49-…                             pending    check disk usage on node-01…   2026-03-19 14:05:10
+```
+
+### REST API (Web channel)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/sessions/{id}/jobs` | Submit a job; body: `{"message": "..."}`. Returns `{"job_id": "..."}` |
+| `GET` | `/sessions/{id}/jobs` | List all jobs for the session |
+| `GET` | `/sessions/{id}/jobs/{job_id}` | Get full job record including result |
+
+Job completion and failure are also pushed in real time over the existing SSE stream as `job_completed` / `job_failed` events.
+
 ## Development
 
 ### Code Style
@@ -638,9 +725,18 @@ The gateway uses JSON-based WebSocket messages:
 - `channel_register` - Channel registration
 - `session_create` - Create new session
 - `session_resume` - Resume session
-- `chat_message` - User message
+- `chat_message` - User message (synchronous)
 - `response_chunk` - Streaming response chunk
 - `response_complete` - Response completion
+- `job_submit` - Submit an async job (client → gateway)
+- `job_submitted` - Acknowledgement with `job_id` (gateway → client)
+- `job_status` - Poll a single job (client → gateway)
+- `job_result` - Full job record response (gateway → client)
+- `job_list` - List jobs for a session (client → gateway)
+- `job_list_response` - List of job summaries (gateway → client)
+- `job_completed` - Broadcast when a job finishes successfully
+- `job_failed` - Broadcast when a job fails
+- `job_function_call` - Broadcast per tool call during async job execution
 - `error` - Error message
 
 ### Channel Capabilities (WIP)
