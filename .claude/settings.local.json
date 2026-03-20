@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "*"
+    ],
+    "deny": [
+      "Read(.venv/**)",
+      "Read(misc/**)",
+      "Read(.mypy_cache/**)",
+      "Read(.pytest_cache/**)",
+      "Read(.ruff_cache/**)",
+      "Read(.vscode/**)",
+      "Read(.aletheia/**)",
+      "Read(tmp/**)",
+      "Read(worktrees/**)"
+    ],
+    "ask": []
+  }
+}
