@@ -1271,6 +1271,261 @@ class KubernetesPlugin(BasePlugin):
                 }
             )
 
+    def list_configmaps(
+        self,
+        namespace: Annotated[
+            str, "The Kubernetes namespace to list configmaps from"
+        ] = "default",
+        context: Annotated[
+            str | None,
+            Field(description="Kubernetes context to use (overrides default)"),
+        ] = None,
+    ) -> Annotated[
+        str, "JSON object with configmaps information including name and data keys"
+    ]:
+        """List configmaps in a Kubernetes namespace.
+
+        Args:
+            namespace: Kubernetes namespace (default: "default")
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            JSON string with configmaps information including:
+            - name, namespace
+            - data keys
+            - age and creation timestamp
+        """
+        logger.debug(
+            f"KubernetesPlugin::list_configmaps:: Listing configmaps in namespace '{namespace}'"
+        )
+        cmd = ["kubectl"]
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context
+        if _context:
+            cmd.extend(["--context", _context])
+
+        cmd.extend(["--namespace", namespace, "get", "configmaps", "-o", "json"])
+
+        try:
+            output = self._run_kubernetes_command(
+                cmd,
+                save_key=f"configmaps_{namespace}",
+                log_prefix="KubernetesPlugin::list_configmaps::",
+            )
+            kubectl_output = json.loads(output)
+            configmaps = []
+            for item in kubectl_output.get("items", []):
+                metadata = item.get("metadata", {})
+                data_keys = list(item.get("data", {}).keys())
+                configmaps.append(
+                    {
+                        "name": metadata.get("name"),
+                        "namespace": metadata.get("namespace"),
+                        "data_keys": data_keys,
+                        "age": metadata.get("creationTimestamp"),
+                    }
+                )
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(
+                    SessionDataType.INFO,
+                    f"configmaps_{namespace}",
+                    json.dumps(configmaps, indent=2),
+                )
+                logger.debug(
+                    f"KubernetesPlugin::list_configmaps:: Saved configmaps information to {saved}"
+                )
+            return json.dumps(
+                {
+                    "configmaps": configmaps,
+                    "count": len(configmaps),
+                    "namespace": namespace,
+                    "saved": str(saved),
+                    "timestamp": datetime.now().isoformat(),
+                },
+                indent=2,
+            )
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"KubernetesPlugin::list_configmaps:: Failed to list configmaps: {str(e)}"
+            )
+            return json.dumps(
+                {
+                    "error": f"Failed to list configmaps: {str(e)}",
+                    "namespace": namespace,
+                }
+            )
+
+    def describe_configmap(
+        self,
+        configmap: Annotated[str, "The name of the configmap to describe"],
+        namespace: Annotated[
+            str, "The Kubernetes namespace containing the configmap"
+        ] = "default",
+        context: Annotated[
+            str | None,
+            Field(description="Kubernetes context to use (overrides default)"),
+        ] = None,
+    ) -> Annotated[
+        str,
+        "Human-readable description of the configmap with metadata and data keys",
+    ]:
+        """Describe a Kubernetes configmap in detail.
+
+        Args:
+            configmap: ConfigMap name to describe
+            namespace: Kubernetes namespace (default: "default")
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            Human-readable description string with:
+            - ConfigMap information and labels
+            - Data keys and values
+            - Annotations and age
+        """
+        logger.debug(
+            f"KubernetesPlugin::describe_configmap:: Describing configmap '{configmap}' in namespace '{namespace}'"
+        )
+        cmd = ["kubectl"]
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context
+        if _context:
+            cmd.extend(["--context", _context])
+
+        cmd.extend(["--namespace", namespace, "describe", "configmap", configmap])
+
+        try:
+            output = self._run_kubernetes_command(
+                cmd,
+                save_key=f"configmap_describe_{namespace}_{configmap}",
+                log_prefix="KubernetesPlugin::describe_configmap::",
+            )
+            description = output
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(
+                    SessionDataType.INFO,
+                    f"configmap_describe_{namespace}_{configmap}",
+                    description,
+                )
+                logger.debug(
+                    f"KubernetesPlugin::describe_configmap:: Saved configmap description to {saved}"
+                )
+            return json.dumps(
+                {
+                    "configmap": configmap,
+                    "namespace": namespace,
+                    "description": description,
+                    "saved": str(saved),
+                    "timestamp": datetime.now().isoformat(),
+                },
+                indent=2,
+            )
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"KubernetesPlugin::describe_configmap:: Failed to describe configmap: {str(e)}"
+            )
+            return json.dumps(
+                {
+                    "error": f"Failed to describe configmap: {str(e)}",
+                    "configmap": configmap,
+                    "namespace": namespace,
+                }
+            )
+
+    def get_configmap(
+        self,
+        configmap: Annotated[str, "The name of the configmap to retrieve"],
+        namespace: Annotated[
+            str, "The Kubernetes namespace containing the configmap"
+        ] = "default",
+        context: Annotated[
+            str | None,
+            Field(description="Kubernetes context to use (overrides default)"),
+        ] = None,
+    ) -> Annotated[
+        str, "JSON object with configmap data including all key-value pairs"
+    ]:
+        """Get a Kubernetes configmap and return its data.
+
+        Args:
+            configmap: ConfigMap name to retrieve
+            namespace: Kubernetes namespace (default: "default")
+            context: Kubernetes context to use (overrides default)
+
+        Returns:
+            JSON string with configmap information including:
+            - name, namespace
+            - data key-value pairs
+            - metadata and annotations
+        """
+        logger.debug(
+            f"KubernetesPlugin::get_configmap:: Getting configmap '{configmap}' in namespace '{namespace}'"
+        )
+        cmd = ["kubectl"]
+        _context = self.context
+        if context is not None and context.strip() != "":
+            _context = context
+        if _context:
+            cmd.extend(["--context", _context])
+
+        cmd.extend(
+            ["--namespace", namespace, "get", "configmap", configmap, "-o", "json"]
+        )
+
+        try:
+            output = self._run_kubernetes_command(
+                cmd,
+                save_key=None,
+                log_prefix="KubernetesPlugin::get_configmap::",
+            )
+            kubectl_output = json.loads(output)
+
+            metadata = kubectl_output.get("metadata", {})
+            data = kubectl_output.get("data", {})
+
+            result = {
+                "name": metadata.get("name"),
+                "namespace": metadata.get("namespace"),
+                "data": data,
+                "labels": metadata.get("labels", {}),
+                "annotations": metadata.get("annotations", {}),
+                "created": metadata.get("creationTimestamp"),
+            }
+
+            saved = ""
+            if self.session:
+                saved = self.session.save_data(
+                    SessionDataType.INFO,
+                    f"configmap_{namespace}_{configmap}",
+                    json.dumps(result, indent=2),
+                )
+                logger.debug(
+                    f"KubernetesPlugin::get_configmap:: Saved configmap data to {saved}"
+                )
+
+            return json.dumps(
+                {
+                    "configmap": result,
+                    "saved": str(saved),
+                    "timestamp": datetime.now().isoformat(),
+                },
+                indent=2,
+            )
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"KubernetesPlugin::get_configmap:: Failed to get configmap: {str(e)}"
+            )
+            return json.dumps(
+                {
+                    "error": f"Failed to get configmap: {str(e)}",
+                    "configmap": configmap,
+                    "namespace": namespace,
+                }
+            )
+
     def get_tools(self) -> list[FunctionTool]:
         return [
             self.fetch_kubernetes_logs,
@@ -1290,4 +1545,7 @@ class KubernetesPlugin(BasePlugin):
             self.list_secrets,
             self.describe_secret,
             self.get_secret,
+            self.list_configmaps,
+            self.describe_configmap,
+            self.get_configmap,
         ]
