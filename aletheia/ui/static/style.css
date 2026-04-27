@@ -2595,3 +2595,61 @@ body.unsafe-mode #info-session-status::before {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ============================================
+   Smart Scroll Toast
+   ============================================ */
+
+.scroll-toast {
+    position: fixed;
+    /* right offset is set dynamically by JS to track the chat-wrapper right edge */
+    bottom: 90px;
+    right: var(--scroll-toast-right, calc(20% + 1.5rem));
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    user-select: none;
+    z-index: 500;
+    white-space: nowrap;
+    animation: toast-in 0.22s ease-out;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.scroll-toast:hover {
+    background: var(--accent-hover);
+    transform: translateY(-2px);
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toast-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+
+.scroll-toast.hiding {
+    animation: toast-out 0.18s ease-in forwards;
+}

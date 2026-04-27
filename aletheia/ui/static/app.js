@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initTheme();
     initSidebar();
+    updateToastPosition();
     fetchSessions();
     setupEventListeners();
     loadCommands(); // Load available commands for autocomplete
@@ -391,6 +392,38 @@ function setupEventListeners() {
     if (toggleInfoBtn) {
         toggleInfoBtn.addEventListener('click', toggleInfoSidebar);
     }
+
+    // Scroll toast: click scrolls to the top of the pending new message
+    const scrollToast = document.getElementById('scroll-toast');
+    if (scrollToast) {
+        scrollToast.addEventListener('click', () => {
+            if (_pendingNewMessageEl) {
+                // offsetTop relative to chatContainer's scrollable content
+                smoothScrollTo(_pendingNewMessageEl.offsetTop, 500);
+            } else {
+                smoothScrollTo(chatContainer.scrollHeight, 500);
+            }
+            hideScrollToast();
+        });
+    }
+
+    // Scroll listener: cancel in-flight animation on manual scroll, manage toast visibility.
+    chatContainer.addEventListener('scroll', () => {
+        if (_isAnimatingScroll) return; // ignore events fired by our own RAF loop
+        if (_scrollRafId) {
+            cancelAnimationFrame(_scrollRafId);
+            _scrollRafId = null;
+            _isAnimatingScroll = false;
+        }
+        if (isNearBottom()) {
+            hideScrollToast();
+        } else {
+            // User has scrolled up — show "go to bottom" only when no "new response" toast is active
+            if (_toastMode !== 'new-response') {
+                showScrollToast('go-to-bottom');
+            }
+        }
+    }, { passive: true });
 }
 
 // Theme Functions
@@ -449,7 +482,7 @@ function setTheme(theme) {
     });
 }
 
-// Resize all ECharts instances on window resize
+// Resize all ECharts instances on window resize; also reposition the scroll toast
 window.addEventListener('resize', function() {
     document.querySelectorAll('.chart-canvas').forEach(function(el) {
         const instance = echarts.getInstanceByDom(el);
@@ -457,6 +490,7 @@ window.addEventListener('resize', function() {
             instance.resize();
         }
     });
+    updateToastPosition();
 });
 
 // API Functions
@@ -483,6 +517,14 @@ function toggleInfoSidebar() {
         chatWrapper.style.maxWidth = '80%';
         chatWrapper.style.flex = '0 0 80%';
     }
+    updateToastPosition();
+}
+
+function updateToastPosition() {
+    // Position the toast at the bottom-right corner of the chat-wrapper
+    const rect = chatWrapper.getBoundingClientRect();
+    const rightOffset = window.innerWidth - rect.right + 16;
+    document.documentElement.style.setProperty('--scroll-toast-right', `${rightOffset}px`);
 }
 
 async function fetchSessions() {
@@ -520,6 +562,7 @@ async function loadSession(sessionId, force = false) {
     }
     stopThinking();
     setProcessing(false);
+    hideScrollToast();
 
     currentSessionId = sessionId;
 
@@ -1200,7 +1243,11 @@ function appendMessage(content, role) {
     }
 
     chatContainer.appendChild(msgDiv);
-    scrollToBottom();
+    if (role === 'bot') {
+        notifyNewBotMessage(msgDiv);
+    } else {
+        scrollToBottom();
+    }
 }
 
 function renderAvatar(container, iconSource, title) {
@@ -1500,7 +1547,7 @@ function createStructuredMessage() {
     });
 
     chatContainer.appendChild(msgDiv);
-    scrollToBottom();
+    notifyNewBotMessage(msgDiv);
 }
 
 // ============================================
@@ -1952,7 +1999,7 @@ function appendRawHtmlMessage(html) {
     msgDiv.appendChild(bodyWrapper);
 
     chatContainer.appendChild(msgDiv);
-    scrollToBottom();
+    notifyNewBotMessage(msgDiv);
 }
 
 function renderContextDump(data) {
@@ -2495,9 +2542,102 @@ function updateSessionSidebar(session) {
     }
 }
 
-function scrollToBottom() {
+// ============================================
+// Smart Scrolling
+// ============================================
 
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+const NEAR_BOTTOM_THRESHOLD = 150; // px
+
+function isNearBottom() {
+    return chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight <= NEAR_BOTTOM_THRESHOLD;
+}
+
+// RAF-based smooth scroll inside the chatContainer overflow element.
+// duration: ms, easeFn: t -> [0,1]
+let _scrollRafId = null;
+let _isAnimatingScroll = false;
+
+function smoothScrollTo(targetTop, duration) {
+    if (_scrollRafId) cancelAnimationFrame(_scrollRafId);
+
+    const start = chatContainer.scrollTop;
+    const distance = targetTop - start;
+    if (Math.abs(distance) < 1) return;
+
+    const startTime = performance.now();
+    _isAnimatingScroll = true;
+
+    function easeInOut(t) {
+        return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    }
+
+    function step(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        chatContainer.scrollTop = start + distance * easeInOut(progress);
+        if (progress < 1) {
+            _scrollRafId = requestAnimationFrame(step);
+        } else {
+            _isAnimatingScroll = false;
+            _scrollRafId = null;
+        }
+    }
+    _scrollRafId = requestAnimationFrame(step);
+}
+
+function scrollToBottom() {
+    if (_isAnimatingScroll) return; // don't interrupt a toast-triggered scroll
+    if (isNearBottom()) {
+        smoothScrollTo(chatContainer.scrollHeight, 300);
+    }
+}
+
+// pendingNewMessageEl: the DOM element for the most recent new bot message (set when toast fires)
+let _pendingNewMessageEl = null;
+let _toastHideTimer = null;
+
+// _toastMode: 'new-response' | 'go-to-bottom' | null
+let _toastMode = null;
+
+function notifyNewBotMessage(msgEl) {
+    if (isNearBottom()) {
+        smoothScrollTo(chatContainer.scrollHeight, 300);
+        return;
+    }
+    _pendingNewMessageEl = msgEl;
+    showScrollToast('new-response');
+}
+
+function showScrollToast(mode) {
+    const toast = document.getElementById('scroll-toast');
+    const label = document.getElementById('scroll-toast-label');
+    if (!toast || !label) return;
+
+    // 'new-response' takes priority over 'go-to-bottom'
+    if (_toastMode === 'new-response' && mode === 'go-to-bottom') return;
+
+    _toastMode = mode;
+    label.textContent = mode === 'new-response' ? 'New response' : 'Jump to latest';
+
+    if (_toastHideTimer) {
+        clearTimeout(_toastHideTimer);
+        _toastHideTimer = null;
+    }
+    toast.classList.remove('hiding');
+    toast.style.display = 'flex';
+}
+
+function hideScrollToast() {
+    const toast = document.getElementById('scroll-toast');
+    if (!toast || toast.style.display === 'none') return;
+    toast.classList.add('hiding');
+    _toastHideTimer = setTimeout(() => {
+        toast.style.display = 'none';
+        toast.classList.remove('hiding');
+        _pendingNewMessageEl = null;
+        _toastMode = null;
+        _toastHideTimer = null;
+    }, 180);
 }
 
 /**
@@ -2927,7 +3067,6 @@ async function openJobResult(jobId) {
             msgDiv.dataset.structuredData = JSON.stringify(job.result);
             renderStructuredMessage(msgDiv, job.result);
             msgDiv.dataset.complete = 'true';
-            chatContainer.scrollTop = chatContainer.scrollHeight;
         } else {
             appendMessage(`Job \`${jobId}\` completed but returned no result.`, 'bot');
         }

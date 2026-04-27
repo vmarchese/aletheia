@@ -6,8 +6,8 @@ import os
 
 import structlog
 from agent_framework.azure import AzureOpenAIChatClient
-from agent_framework.openai import OpenAIChatClient
 from azure.identity import AzureCliCredential
+from agent_framework.openai import OpenAIChatClient
 
 try:
     from agent_framework_bedrock import BedrockChatClient
